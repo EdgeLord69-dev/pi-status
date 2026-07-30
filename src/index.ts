@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { loadConfig, saveConfigToSettings } from "./core/config.ts";
+import { loadConfig, saveConfig } from "./core/config.ts";
 import { buildSnapshot, resolveFooter } from "./core/resolve-footer.ts";
 import { createRuntimeStateMachine } from "./core/runtime-state.ts";
 import { createUsageRuntime } from "./core/usage-runtime.ts";
@@ -46,7 +46,7 @@ function isLiveTheme(value: unknown): boolean {
 }
 
 export default function createExtension(pi: ExtensionAPI): void {
-  const runtimeState = createRuntimeStateMachine(loadConfig().config, String(pi.getThinkingLevel()));
+  const runtimeState = createRuntimeStateMachine(loadConfig(), String(pi.getThinkingLevel()));
 
   const usageRuntime = createUsageRuntime(pi);
   const footerProviderState: FooterProviderState = {
@@ -176,12 +176,10 @@ export default function createExtension(pi: ExtensionAPI): void {
       if (!result) return;
 
       try {
-        saveConfigToSettings(result, { cwd: ctx.cwd });
-        runtimeState.update({ type: "config_reload", config: result });
-      } catch (error) {
-        const message =
-          error instanceof Error ? error.message : "Failed to save statusline settings";
-        ctx.ui.notify(message, "warning");
+        saveConfig(result);
+        runtimeState.update({ type: "config_reload", config: loadConfig() });
+      } catch {
+        ctx.ui.notify("Failed to save statusline config", "warning");
       }
     },
   });
@@ -195,10 +193,7 @@ export default function createExtension(pi: ExtensionAPI): void {
       ctx,
       level: String(ctx.thinkingLevel ?? pi.getThinkingLevel()),
     });
-    runtimeState.update({
-      type: "config_reload",
-      config: loadConfig({ cwd: ctx.cwd }).config,
-    });
+    runtimeState.update({ type: "config_reload", config: loadConfig() });
     installFooter(ctx);
   });
 
@@ -210,10 +205,7 @@ export default function createExtension(pi: ExtensionAPI): void {
       ctx,
       level: String(ctx.thinkingLevel ?? pi.getThinkingLevel()),
     });
-    runtimeState.update({
-      type: "config_reload",
-      config: loadConfig({ cwd: ctx.cwd }).config,
-    });
+    runtimeState.update({ type: "config_reload", config: loadConfig() });
     installFooter(ctx);
   });
 

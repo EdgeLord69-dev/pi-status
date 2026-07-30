@@ -1,16 +1,23 @@
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { dirname, join } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("node:fs", async (importOriginal) => {
+  const fs = await importOriginal<typeof import("node:fs")>();
+  return { ...fs, mkdtempSync: vi.fn(fs.mkdtempSync) };
+});
 import {
-  getSettingsPaths,
+  getConfigPath,
   loadConfig,
   normalizeExtensionSegments,
   normalizeSegments,
-  saveConfigToSettings,
+  saveConfig,
 } from "../../src/core/config.ts";
-import { DEFAULT_SEGMENTS } from "../../src/shared/types.ts";
-import { MemorySettingsStore } from "../helpers.ts";
+import { DEFAULT_SEGMENTS, type PiStatusConfig } from "../../src/shared/types.ts";
+import { MemoryConfigStore } from "../helpers.ts";
+
+const config: PiStatusConfig = { segments: ["git-branch"], extensionSegments: { hidden: ["alpha"] } };
 
 describe("config — normalization", () => {
   it("normalizes segments: dedupes, rejects unknowns and non-strings", () => {
@@ -33,155 +40,114 @@ describe("config — normalization", () => {
   });
 });
 
-describe("config — loadConfig", () => {
-  it("returns default when no settings files exist", () => {
-    const store = new MemorySettingsStore();
-    const result = loadConfig({ cwd: "/project", store });
-    expect(result.source).toBe("default");
-    expect(result.config.segments).toEqual(DEFAULT_SEGMENTS);
+describe("config — direct extension file", () => {
+  it("uses the exact extension config path", () => {
+    expect(getConfigPath("/agent")).toBe(join("/agent", "extensions", "statusline.json"));
   });
 
-  it("loads from global settings", () => {
-    const store = new MemorySettingsStore();
-    const paths = getSettingsPaths("/project");
-    store.seed(paths.global, JSON.stringify({ statusLine: { segments: ["git-branch"] } }));
-    const result = loadConfig({ cwd: "/project", store });
-    expect(result.source).toBe("settings");
-    expect(result.config.segments).toEqual(["git-branch"]);
-  });
-
-  it("merges project settings over global settings", () => {
-    const store = new MemorySettingsStore();
-    const paths = getSettingsPaths("/project");
-    store.seed(paths.global, JSON.stringify({ statusLine: { segments: ["git-branch"] } }));
+  it("hard-cuts over from legacy global and project settings without accessing them", () => {
+    const store = new MemoryConfigStore();
+    const agentDir = "/agent-root";
+    const path = getConfigPath(agentDir);
+    store.seed("/agent-root/settings.json", JSON.stringify({ statusLine: { segments: ["model"] } }));
     store.seed(
-      paths.project,
+      "/work/repo/.pi/settings.json",
+      JSON.stringify({ statusLine: { segments: ["git-branch"] } }),
+    );
+
+    expect(loadConfig({ agentDir, store })).toEqual({
+      segments: DEFAULT_SEGMENTS,
+      extensionSegments: { hidden: [] },
+    });
+    expect(store.accessPaths).toEqual([path]);
+    expect(store.accessPaths.some((accessed) => accessed.includes("settings.json"))).toBe(false);
+  });
+
+  it("loads and normalizes the direct config schema", () => {
+    const store = new MemoryConfigStore();
+    const path = getConfigPath("/agent");
+    store.seed(
+      path,
       JSON.stringify({
-        statusLine: { extensionSegments: { hidden: ["x"] } },
+        segments: ["git-branch", "git-branch", "unknown"],
+        extensionSegments: { hidden: ["alpha", "alpha", "", 1] },
       }),
     );
-    const result = loadConfig({ cwd: "/project", store });
-    expect(result.source).toBe("settings");
-    expect(result.config.segments).toEqual(["git-branch"]);
-    expect(result.config.extensionSegments).toEqual({ hidden: ["x"] });
+
+    expect(loadConfig({ agentDir: "/agent", store })).toEqual(config);
+    expect(store.accessPaths).toEqual([path, path]);
   });
 
-  it("returns default when both settings files are malformed JSON", () => {
-    const store = new MemorySettingsStore();
-    const paths = getSettingsPaths("/project");
-    store.seed(paths.global, "{ bad");
-    store.seed(paths.project, "{ bad");
-    const result = loadConfig({ cwd: "/project", store });
-    expect(result.source).toBe("default");
-    expect(result.config.segments).toEqual(DEFAULT_SEGMENTS);
+  it.each(["{ bad", "null", "[]"])("returns a fresh default for malformed or non-object config: %s", (content) => {
+    const store = new MemoryConfigStore();
+    store.seed(getConfigPath("/agent"), content);
+
+    expect(loadConfig({ agentDir: "/agent", store })).toEqual({
+      segments: DEFAULT_SEGMENTS,
+      extensionSegments: { hidden: [] },
+    });
+  });
+
+  it("saves the direct config schema without accessing legacy settings", () => {
+    const store = new MemoryConfigStore();
+    const path = getConfigPath("/agent");
+
+    expect(saveConfig(config, { agentDir: "/agent", store })).toEqual({ path });
+    expect(JSON.parse(store.read(path) as string)).toEqual(config);
+    expect(store.accessPaths).toEqual([path, path, path]);
+    expect(store.accessPaths.some((accessed) => accessed.includes("settings.json"))).toBe(false);
+  });
+
+  it.each(["{ bad", "null", "[]"])("refuses to overwrite malformed or non-object config: %s", (content) => {
+    const store = new MemoryConfigStore();
+    const path = getConfigPath("/agent");
+    store.seed(path, content);
+
+    expect(() => saveConfig(config, { agentDir: "/agent", store })).toThrow(
+      /refusing to overwrite malformed or non-object config/i,
+    );
+    expect(store.writePaths).toEqual([]);
+  });
+
+  it("propagates storage read and write failures", () => {
+    const readStore = new MemoryConfigStore();
+    readStore.read = () => {
+      throw new Error("read failed");
+    };
+    readStore.seed(getConfigPath("/agent"), "{}");
+    expect(() => loadConfig({ agentDir: "/agent", store: readStore })).toThrow("read failed");
+
+    const writeStore = new MemoryConfigStore();
+    writeStore.write = () => {
+      throw new Error("write failed");
+    };
+    expect(() => saveConfig(config, { agentDir: "/agent", store: writeStore })).toThrow(
+      "write failed",
+    );
   });
 });
 
-describe("config — saveConfigToSettings", () => {
-  it("saves to project when project has statusLine key", () => {
-    const store = new MemorySettingsStore();
-    const paths = getSettingsPaths("/project");
-    store.seed(paths.project, JSON.stringify({ statusLine: { segments: ["model"] }, x: 1 }));
+describe("config — filesystem", () => {
+  let agentDir: string;
 
-    const result = saveConfigToSettings(
-      { segments: ["current-dir"], extensionSegments: { hidden: [] } },
-      { cwd: "/project", store },
-    );
-    expect(result.target).toBe("project");
-
-    const rawProject = store.read(paths.project);
-    expect(rawProject).not.toBeNull();
-    const written = JSON.parse(rawProject as string);
-    expect(written.x).toBe(1);
-    expect(written.statusLine.segments).toEqual(["current-dir"]);
-    expect(written.statusLine.extensionSegments).toEqual({ hidden: [] });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    rmSync(agentDir, { recursive: true, force: true });
   });
 
-  it("saves to global when project has no statusLine key", () => {
-    const store = new MemorySettingsStore();
-    const paths = getSettingsPaths("/project");
-    store.seed(paths.project, JSON.stringify({ y: 2 }));
+  it("round-trips through PI_CODING_AGENT_DIR with no temp residue", () => {
+    agentDir = mkdtempSync(join(tmpdir(), "pi-status-fs-"));
+    vi.stubEnv("PI_CODING_AGENT_DIR", agentDir);
+    const path = join(agentDir, "extensions", "statusline.json");
 
-    const result = saveConfigToSettings(
-      { segments: ["model"], extensionSegments: { hidden: ["a"] } },
-      { cwd: "/project", store },
-    );
-    expect(result.target).toBe("global");
-
-    const rawGlobal = store.read(paths.global);
-    expect(rawGlobal).not.toBeNull();
-    const written = JSON.parse(rawGlobal as string);
-    expect(written.statusLine.segments).toEqual(["model"]);
-    expect(written.statusLine.extensionSegments).toEqual({ hidden: ["a"] });
-  });
-
-  it("saves to global when project settings file does not exist", () => {
-    const store = new MemorySettingsStore();
-
-    const result = saveConfigToSettings(
-      { segments: ["model"], extensionSegments: { hidden: [] } },
-      { cwd: "/project", store },
-    );
-    expect(result.target).toBe("global");
-  });
-
-  it("throws when target global settings are malformed", () => {
-    const store = new MemorySettingsStore();
-    const paths = getSettingsPaths("/project");
-    store.seed(paths.project, JSON.stringify({ y: 2 }));
-    store.seed(paths.global, "{ bad");
-
-    expect(() =>
-      saveConfigToSettings(
-        { segments: ["model"], extensionSegments: { hidden: [] } },
-        { cwd: "/project", store },
-      ),
-    ).toThrow(/refusing to write malformed/i);
-  });
-
-  it("throws when project settings are malformed", () => {
-    const store = new MemorySettingsStore();
-    const paths = getSettingsPaths("/project");
-    store.seed(paths.project, "{ bad");
-
-    expect(() =>
-      saveConfigToSettings(
-        { segments: ["model"], extensionSegments: { hidden: [] } },
-        { cwd: "/project", store },
-      ),
-    ).toThrow(/project settings are malformed/i);
-  });
-});
-
-describe("config — FsSettingsStore integration", () => {
-  it("round-trips through real filesystem", () => {
-    const dir = mkdtempSync(join(tmpdir(), "pi-status-fs-"));
-    const globalHome = join(dir, "home");
-    const project = join(dir, "project");
-
-    mkdirSync(join(project, ".pi"), { recursive: true });
-    mkdirSync(join(globalHome, ".pi/agent"), { recursive: true });
-    writeFileSync(
-      join(project, ".pi/settings.json"),
-      JSON.stringify({ statusLine: { segments: ["model"] } }),
-      "utf8",
-    );
-
-    const oldHome = process.env.HOME;
-    process.env.HOME = globalHome;
-    try {
-      const loaded = loadConfig({ cwd: project });
-      expect(loaded.config.segments).toEqual(["model"]);
-
-      saveConfigToSettings(
-        { segments: ["git-branch"], extensionSegments: { hidden: [] } },
-        { cwd: project },
-      );
-
-      const raw = JSON.parse(readFileSync(join(project, ".pi/settings.json"), "utf8"));
-      expect(raw.statusLine.segments).toEqual(["git-branch"]);
-    } finally {
-      process.env.HOME = oldHome;
-    }
+    expect(loadConfig()).toEqual({ segments: DEFAULT_SEGMENTS, extensionSegments: { hidden: [] } });
+    vi.mocked(mkdtempSync).mockClear();
+    expect(saveConfig(config)).toEqual({ path });
+    expect(loadConfig()).toEqual(config);
+    expect(JSON.parse(readFileSync(path, "utf8"))).toEqual(config);
+    expect(mkdtempSync).toHaveBeenCalledWith(join(dirname(path), ".pi-status-"));
+    const tempDir = vi.mocked(mkdtempSync).mock.results[0]?.value;
+    expect(typeof tempDir).toBe("string");
+    expect(existsSync(tempDir as string)).toBe(false);
   });
 });

@@ -53,7 +53,7 @@ export function isUsageSegment(id: StatusLineSegmentId): boolean {
   return USAGE_SEGMENTS.has(id);
 }
 
-export interface SettingsStore {
+export interface ConfigStore {
   exists(path: string): boolean;
   read(path: string): string | null;
   write(path: string, data: string): void;

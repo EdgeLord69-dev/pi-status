@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { SettingsStore } from "../src/shared/types.ts";
+import type { ConfigStore } from "../src/shared/types.ts";
 import { DEFAULT_SEGMENTS, type FooterRenderInput } from "../src/tui/render.ts";
 
 export function withDefaults(
@@ -120,19 +120,29 @@ export function buildSetFooterSpy() {
   return { calls, setFooter };
 }
 
-export class MemorySettingsStore implements SettingsStore {
+export class MemoryConfigStore implements ConfigStore {
   private files = new Map<string, string>();
+  readonly existsPaths: string[] = [];
+  readonly readPaths: string[] = [];
+  readonly writePaths: string[] = [];
+  readonly accessPaths: string[] = [];
 
   seed(path: string, content: string): void {
     this.files.set(path, content);
   }
   exists(path: string): boolean {
+    this.existsPaths.push(path);
+    this.accessPaths.push(path);
     return this.files.has(path);
   }
   read(path: string): string | null {
+    this.readPaths.push(path);
+    this.accessPaths.push(path);
     return this.files.get(path) ?? null;
   }
   write(path: string, data: string): void {
+    this.writePaths.push(path);
+    this.accessPaths.push(path);
     this.files.set(path, data);
   }
 }

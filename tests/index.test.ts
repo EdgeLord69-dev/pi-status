@@ -1,9 +1,21 @@
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import createExtension from "../src/index.ts";
+
+let agentDir: string;
+
+beforeEach(() => {
+  agentDir = mkdtempSync(join(tmpdir(), "pi-status-index-"));
+  vi.stubEnv("PI_CODING_AGENT_DIR", agentDir);
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  rmSync(agentDir, { recursive: true, force: true });
+});
 import {
   buildPiWithHandlers,
   buildSetFooterSpy,
@@ -346,19 +358,14 @@ describe("extension wiring", () => {
     expect(requestRender).toHaveBeenCalledTimes(1);
   });
 
-  it("reloads persisted settings on session events", () => {
-    const dir = mkdtempSync(join(tmpdir(), "pi-status-runtime-"));
-    const globalHome = join(dir, "home");
-    const project = join(dir, "project");
-    const projectSettings = join(project, ".pi/settings.json");
-
-    mkdirSync(join(project, ".pi"), { recursive: true });
-    mkdirSync(join(globalHome, ".pi/agent"), { recursive: true });
+  it("reloads persisted config on session events", () => {
+    const project = join(agentDir, "project");
+    const configPath = join(agentDir, "extensions", "statusline.json");
+    mkdirSync(join(agentDir, "extensions"), { recursive: true });
+    mkdirSync(join(project, ".git"), { recursive: true });
     writeFileSync(
-      projectSettings,
-      JSON.stringify({
-        statusLine: { segments: ["model"], extensionSegments: { hidden: [] } },
-      }),
+      configPath,
+      JSON.stringify({ segments: ["model"], extensionSegments: { hidden: [] } }),
       "utf8",
     );
 
@@ -368,60 +375,35 @@ describe("extension wiring", () => {
       | undefined;
     const events = createBus();
     const registerCommand = vi.fn();
-    const oldHome = process.env.HOME;
-    process.env.HOME = globalHome;
+    const pi = {
+      events,
+      on(event: string, handler: (event: unknown, ctx: ExtensionContext) => void) {
+        handlers.set(event, [...(handlers.get(event) ?? []), handler]);
+      },
+      registerCommand,
+      getThinkingLevel: () => "medium",
+    } as unknown as ExtensionAPI;
 
-    try {
-      const pi = {
-        events,
-        on(event: string, handler: (event: unknown, ctx: ExtensionContext) => void) {
-          handlers.set(event, [...(handlers.get(event) ?? []), handler]);
-        },
-        registerCommand,
-        getThinkingLevel: () => "medium",
-      } as unknown as ExtensionAPI;
+    createExtension(pi);
+    const ctx = createContext({
+      cwd: project,
+      ui: { ...createContext().ui, setFooter: (x: unknown) => (footerFactory = x as never) },
+    });
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+    const footer = footerFactory?.(
+      {},
+      { fg: (_c: string, t: string) => t },
+      { getGitBranch: () => "main", getExtensionStatuses: () => new Map() },
+    );
+    expect(footer?.render(200).join("\n")).toBe("GPT-5");
 
-      createExtension(pi);
-
-      const ctx = createContext({
-        cwd: project,
-        ui: {
-          ...createContext().ui,
-          setFooter: (x: unknown) => (footerFactory = x as never),
-        },
-      });
-
-      for (const h of handlers.get("session_start") ?? []) h({}, ctx);
-
-      const footer = footerFactory?.(
-        {},
-        { fg: (_c: string, t: string) => t },
-        {
-          getGitBranch: () => "main",
-          getExtensionStatuses: () => new Map(),
-        },
-      );
-
-      expect(footer?.render(200).join("\n")).toBe("GPT-5");
-
-      writeFileSync(
-        projectSettings,
-        JSON.stringify({
-          statusLine: {
-            segments: ["project-name"],
-            extensionSegments: { hidden: [] },
-          },
-        }),
-        "utf8",
-      );
-      mkdirSync(join(project, ".git"), { recursive: true });
-
-      for (const h of handlers.get("session_tree") ?? []) h({}, ctx);
-
-      expect(footer?.render(200).join("\n")).toBe("project");
-    } finally {
-      process.env.HOME = oldHome;
-    }
+    writeFileSync(
+      configPath,
+      JSON.stringify({ segments: ["project-name"], extensionSegments: { hidden: [] } }),
+      "utf8",
+    );
+    for (const h of handlers.get("session_tree") ?? []) h({}, ctx);
+    expect(footer?.render(200).join("\n")).toBe("project");
   });
 
   it("declares only pi-status in pi.extensions", () => {
@@ -467,252 +449,141 @@ describe("extension wiring", () => {
     expect(callArgs[1]).toBeUndefined();
   });
 
-  it("persists /statusline result to settings when user saves", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "pi-status-inline-"));
-    const globalHome = join(dir, "home");
-    const project = join(dir, "project");
-    const globalSettings = join(globalHome, ".pi/agent/settings.json");
-
-    mkdirSync(join(project, ".pi"), { recursive: true });
-    mkdirSync(join(globalHome, ".pi/agent"), { recursive: true });
-    writeFileSync(join(project, ".pi/settings.json"), JSON.stringify({ y: 1 }), "utf8");
-
-    const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => void>>();
-    const events = createBus();
-    const registerCommand = vi.fn();
+  it("persists /statusline result to the direct config file when user saves", async () => {
+    const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
     const customMock = vi.fn();
+    createExtension(pi);
+    const ctx = createContext({ ui: { ...createContext().ui, custom: customMock } });
+    for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
 
-    const oldHome = process.env.HOME;
-    process.env.HOME = globalHome;
-
-    try {
-      const pi = {
-        events,
-        on(event: string, handler: (event: unknown, ctx: ExtensionContext) => void) {
-          handlers.set(event, [...(handlers.get(event) ?? []), handler]);
-        },
-        registerCommand,
-        getThinkingLevel: () => "medium",
-      } as unknown as ExtensionAPI;
-
-      createExtension(pi);
-
-      const ctx = createContext({
-        cwd: project,
-        ui: { ...createContext().ui, custom: customMock },
-      });
-
-      for (const h of handlers.get("session_start") ?? []) h({}, ctx);
-
-      const { handler } = getRegisteredCommand(registerCommand.mock.calls, "statusline");
-
+    customMock.mockImplementationOnce(async (factory: (...args: unknown[]) => unknown) => {
       let savedResult: unknown;
-      customMock.mockImplementationOnce(async (factory: (...args: unknown[]) => unknown) => {
-        const component = (
-          factory as unknown as (...args: unknown[]) => { handleInput: (data: string) => void }
-        )(
-          { requestRender: () => {} },
-          { fg: (_c: string, t: string) => t },
-          {},
-          (result: unknown) => {
-            savedResult = result;
-          },
-        );
-        component.handleInput("\r");
-        return savedResult;
-      });
+      const component = (factory as (...args: unknown[]) => { handleInput: (data: string) => void })(
+        { requestRender: () => {} },
+        { fg: (_c: string, text: string) => text },
+        {},
+        (result: unknown) => (savedResult = result),
+      );
+      component.handleInput("\r");
+      return savedResult;
+    });
 
-      await handler("", ctx);
-
-      const saved = JSON.parse(readFileSync(globalSettings, "utf8"));
-      expect(saved.statusLine).toBeDefined();
-      expect(saved.statusLine.segments).toEqual(["model-with-reasoning", "current-dir"]);
-    } finally {
-      process.env.HOME = oldHome;
-    }
+    await getRegisteredCommand(registerCommandCalls, "statusline").handler("", ctx);
+    expect(JSON.parse(readFileSync(join(agentDir, "extensions", "statusline.json"), "utf8"))).toEqual({
+      segments: ["model-with-reasoning", "current-dir"],
+      extensionSegments: { hidden: [] },
+    });
   });
 
   it("does not persist /statusline result when user cancels", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "pi-status-inline-cancel-"));
-    const globalHome = join(dir, "home");
-    const project = join(dir, "project");
-    const projectSettings = join(project, ".pi/settings.json");
-
-    mkdirSync(join(project, ".pi"), { recursive: true });
-    mkdirSync(join(globalHome, ".pi/agent"), { recursive: true });
-    const beforeContent = JSON.stringify({ y: 1 });
-    writeFileSync(projectSettings, beforeContent, "utf8");
-
-    const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => void>>();
-    const events = createBus();
-    const registerCommand = vi.fn();
+    const path = join(agentDir, "extensions", "statusline.json");
+    const beforeContent = JSON.stringify({ segments: ["model"], extensionSegments: { hidden: [] } });
+    mkdirSync(join(agentDir, "extensions"), { recursive: true });
+    writeFileSync(path, beforeContent, "utf8");
+    const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
     const customMock = vi.fn();
+    createExtension(pi);
+    const ctx = createContext({ ui: { ...createContext().ui, custom: customMock } });
+    for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
 
-    const oldHome = process.env.HOME;
-    process.env.HOME = globalHome;
+    customMock.mockImplementationOnce(async (factory: (...args: unknown[]) => unknown) => {
+      const component = (factory as (...args: unknown[]) => { handleInput: (data: string) => void })(
+        { requestRender: () => {} },
+        { fg: (_c: string, text: string) => text },
+        {},
+        () => {},
+      );
+      component.handleInput("\x1b");
+      return null;
+    });
 
-    try {
-      const pi = {
-        events,
-        on(event: string, handler: (event: unknown, ctx: ExtensionContext) => void) {
-          handlers.set(event, [...(handlers.get(event) ?? []), handler]);
-        },
-        registerCommand,
-        getThinkingLevel: () => "medium",
-      } as unknown as ExtensionAPI;
+    await getRegisteredCommand(registerCommandCalls, "statusline").handler("", ctx);
+    expect(readFileSync(path, "utf8")).toBe(beforeContent);
+  });
 
-      createExtension(pi);
+  it("keeps the prior runtime config when saving malformed config fails", async () => {
+    const path = join(agentDir, "extensions", "statusline.json");
+    mkdirSync(join(agentDir, "extensions"), { recursive: true });
+    writeFileSync(path, JSON.stringify({ segments: ["model"], extensionSegments: { hidden: [] } }), "utf8");
+    const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
+    const customMock = vi.fn();
+    const notify = vi.fn();
+    const footerSpy = buildSetFooterSpy();
+    createExtension(pi);
+    const ctx = createContext({
+      ui: { ...createContext().ui, custom: customMock, notify, setFooter: footerSpy.setFooter },
+    });
+    for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
+    writeFileSync(path, "{ bad", "utf8");
 
-      const ctx = createContext({
-        cwd: project,
-        ui: { ...createContext().ui, custom: customMock },
-      });
+    customMock.mockImplementationOnce(async (factory: (...args: unknown[]) => unknown) => {
+      let savedResult: unknown;
+      const component = (factory as (...args: unknown[]) => { handleInput: (data: string) => void })(
+        { requestRender: () => {} },
+        { fg: (_c: string, text: string) => text },
+        {},
+        (result: unknown) => (savedResult = result),
+      );
+      component.handleInput("\r");
+      return savedResult;
+    });
 
-      for (const h of handlers.get("session_start") ?? []) h({}, ctx);
-
-      const { handler } = getRegisteredCommand(registerCommand.mock.calls, "statusline");
-
-      customMock.mockImplementationOnce(async (factory: (...args: unknown[]) => unknown) => {
-        const component = (
-          factory as unknown as (...args: unknown[]) => { handleInput: (data: string) => void }
-        )({ requestRender: () => {} }, { fg: (_c: string, t: string) => t }, {}, () => {});
-        component.handleInput("\x1b");
-        return null;
-      });
-
-      await handler("", ctx);
-
-      const afterContent = readFileSync(projectSettings, "utf8");
-      expect(afterContent).toBe(beforeContent);
-    } finally {
-      process.env.HOME = oldHome;
-    }
+    await getRegisteredCommand(registerCommandCalls, "statusline").handler("", ctx);
+    expect(notify).toHaveBeenCalledWith("Failed to save statusline config", "warning");
+    expect(renderWithFactory(footerSpy.calls[footerSpy.calls.length - 1])).toBe("GPT-5");
   });
 
   it("swaps to empty footer during /statusline editor and restores live footer on save", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "pi-status-footer-save-"));
-    const globalHome = join(dir, "home");
-    const project = join(dir, "project");
-    const globalSettings = join(globalHome, ".pi/agent/settings.json");
-
-    mkdirSync(join(project, ".pi"), { recursive: true });
-    mkdirSync(join(globalHome, ".pi/agent"), { recursive: true });
-    writeFileSync(join(project, ".pi/settings.json"), JSON.stringify({ y: 1 }), "utf8");
-
     const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
     const customMock = vi.fn();
     const footerSpy = buildSetFooterSpy();
+    createExtension(pi);
+    const ctx = createContext({
+      ui: { ...createContext().ui, setFooter: footerSpy.setFooter, custom: customMock },
+    });
+    for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
+    const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
 
-    const oldHome = process.env.HOME;
-    process.env.HOME = globalHome;
-
-    try {
-      createExtension(pi);
-
-      const ctx = createContext({
-        cwd: project,
-        ui: {
-          ...createContext().ui,
-          setFooter: footerSpy.setFooter,
-          custom: customMock,
-        },
-      });
-
-      for (const h of handlers.get("session_start") ?? []) h({}, ctx);
-
-      expect(footerSpy.calls).toHaveLength(1);
-      expect(renderWithFactory(footerSpy.calls[0])).toContain("GPT-5 [med]");
-
-      const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
-
-      customMock.mockImplementationOnce(async (factory: (...args: unknown[]) => unknown) => {
-        expect(footerSpy.calls).toHaveLength(2);
-        expect(renderWithFactory(footerSpy.calls[1])).toBe("");
-
-        let savedResult: unknown = null;
-        const component = (
-          factory as unknown as (...args: unknown[]) => { handleInput: (data: string) => void }
-        )(
-          { requestRender: () => {} },
-          { fg: (_c: string, t: string) => t },
-          {},
-          (result: unknown) => {
-            savedResult = result;
-          },
-        );
-        component.handleInput("\r");
-        return savedResult;
-      });
-
-      await handler("", ctx);
-
-      expect(footerSpy.calls).toHaveLength(3);
-      expect(renderWithFactory(footerSpy.calls[2])).toContain("GPT-5 [med]");
-
-      const saved = JSON.parse(readFileSync(globalSettings, "utf8"));
-      expect(saved.statusLine).toBeDefined();
-      expect(saved.statusLine.segments).toEqual(["model-with-reasoning", "current-dir"]);
-    } finally {
-      process.env.HOME = oldHome;
-    }
+    customMock.mockImplementationOnce(async (factory: (...args: unknown[]) => unknown) => {
+      expect(renderWithFactory(footerSpy.calls[1])).toBe("");
+      let savedResult: unknown;
+      const component = (factory as (...args: unknown[]) => { handleInput: (data: string) => void })(
+        { requestRender: () => {} },
+        { fg: (_c: string, text: string) => text },
+        {},
+        (result: unknown) => (savedResult = result),
+      );
+      component.handleInput("\r");
+      return savedResult;
+    });
+    await handler("", ctx);
+    expect(renderWithFactory(footerSpy.calls[2])).toContain("GPT-5 [med]");
   });
 
   it("swaps to empty footer during /statusline editor and restores live footer on cancel", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "pi-status-footer-cancel-"));
-    const globalHome = join(dir, "home");
-    const project = join(dir, "project");
-    const projectSettings = join(project, ".pi/settings.json");
-
-    mkdirSync(join(project, ".pi"), { recursive: true });
-    mkdirSync(join(globalHome, ".pi/agent"), { recursive: true });
-    const beforeContent = JSON.stringify({ y: 1 });
-    writeFileSync(projectSettings, beforeContent, "utf8");
-
     const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
     const customMock = vi.fn();
     const footerSpy = buildSetFooterSpy();
+    createExtension(pi);
+    const ctx = createContext({
+      ui: { ...createContext().ui, setFooter: footerSpy.setFooter, custom: customMock },
+    });
+    for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
+    const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
 
-    const oldHome = process.env.HOME;
-    process.env.HOME = globalHome;
-
-    try {
-      createExtension(pi);
-
-      const ctx = createContext({
-        cwd: project,
-        ui: {
-          ...createContext().ui,
-          setFooter: footerSpy.setFooter,
-          custom: customMock,
-        },
-      });
-
-      for (const h of handlers.get("session_start") ?? []) h({}, ctx);
-
-      expect(footerSpy.calls).toHaveLength(1);
-      expect(renderWithFactory(footerSpy.calls[0])).toContain("GPT-5 [med]");
-
-      const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
-
-      customMock.mockImplementationOnce(async (factory: (...args: unknown[]) => unknown) => {
-        expect(footerSpy.calls).toHaveLength(2);
-        expect(renderWithFactory(footerSpy.calls[1])).toBe("");
-
-        const component = (
-          factory as unknown as (...args: unknown[]) => { handleInput: (data: string) => void }
-        )({ requestRender: () => {} }, { fg: (_c: string, t: string) => t }, {}, () => {});
-        component.handleInput("\x1b");
-        return null;
-      });
-
-      await handler("", ctx);
-
-      expect(footerSpy.calls).toHaveLength(3);
-      expect(renderWithFactory(footerSpy.calls[2])).toContain("GPT-5 [med]");
-      expect(readFileSync(projectSettings, "utf8")).toBe(beforeContent);
-    } finally {
-      process.env.HOME = oldHome;
-    }
+    customMock.mockImplementationOnce(async (factory: (...args: unknown[]) => unknown) => {
+      expect(renderWithFactory(footerSpy.calls[1])).toBe("");
+      const component = (factory as (...args: unknown[]) => { handleInput: (data: string) => void })(
+        { requestRender: () => {} },
+        { fg: (_c: string, text: string) => text },
+        {},
+        () => {},
+      );
+      component.handleInput("\x1b");
+      return null;
+    });
+    await handler("", ctx);
+    expect(renderWithFactory(footerSpy.calls[2])).toContain("GPT-5 [med]");
   });
 
   it("restores live footer when ctx.ui.custom throws during /statusline", async () => {
