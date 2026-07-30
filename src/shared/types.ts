@@ -16,8 +16,19 @@ export type StatusLineSegmentId =
 
 export type ExtensionSegments = { hidden: string[] };
 
+export const STATUS_LINE_ZONE_ORDER = ["topLeft", "topRight", "bottomLeft", "bottomRight"] as const;
+
+export type StatusLineZone = (typeof STATUS_LINE_ZONE_ORDER)[number];
+
+export interface StatusLineZones {
+  topLeft: StatusLineSegmentId[];
+  topRight: StatusLineSegmentId[];
+  bottomLeft: StatusLineSegmentId[];
+  bottomRight: StatusLineSegmentId[];
+}
+
 export type PiStatusConfig = {
-  segments: StatusLineSegmentId[];
+  zones: StatusLineZones;
   extensionSegments: ExtensionSegments;
 };
 
@@ -38,10 +49,12 @@ export const KNOWN_SEGMENTS: readonly StatusLineSegmentId[] = [
   "weekly-limit",
 ] as const;
 
-export const DEFAULT_SEGMENTS: readonly StatusLineSegmentId[] = [
-  "model-with-reasoning",
-  "current-dir",
-] as const;
+export const DEFAULT_ZONES: StatusLineZones = {
+  topLeft: ["model-with-reasoning"],
+  topRight: [],
+  bottomLeft: ["current-dir"],
+  bottomRight: [],
+};
 
 export const USAGE_SEGMENTS = new Set<StatusLineSegmentId>(["five-hour-limit", "weekly-limit"]);
 
