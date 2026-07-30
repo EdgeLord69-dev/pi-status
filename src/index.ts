@@ -1,8 +1,5 @@
-import type {
-  ExtensionAPI,
-  ExtensionContext,
-} from "@earendil-works/pi-coding-agent";
-import { loadConfig, saveConfigToSettings } from "./core/config.ts";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { loadConfig, saveConfig } from "./core/config.ts";
 import { buildSnapshot, resolveFooter } from "./core/resolve-footer.ts";
 import { createRuntimeStateMachine } from "./core/runtime-state.ts";
 import { createUsageRuntime } from "./core/usage-runtime.ts";
@@ -45,13 +42,11 @@ const EMPTY_FOOTER_FACTORY: FooterFactory = () => ({
 function isLiveTheme(value: unknown): boolean {
   if (!value || typeof value !== "object") return false;
   const candidate = value as { fg?: unknown; bold?: unknown };
-  return (
-    typeof candidate.fg === "function" && typeof candidate.bold === "function"
-  );
+  return typeof candidate.fg === "function" && typeof candidate.bold === "function";
 }
 
 export default function createExtension(pi: ExtensionAPI): void {
-  const runtimeState = createRuntimeStateMachine(loadConfig().config);
+  const runtimeState = createRuntimeStateMachine(loadConfig(), String(pi.getThinkingLevel()));
 
   const usageRuntime = createUsageRuntime(pi);
   const footerProviderState: FooterProviderState = {
@@ -66,13 +61,11 @@ export default function createExtension(pi: ExtensionAPI): void {
 
   function refreshFooterProviderState(footerData: FooterDataLike): void {
     footerProviderState.gitBranch = footerData.getGitBranch();
-    footerProviderState.extensionStatuses = new Map(
-      footerData.getExtensionStatuses().entries(),
-    );
+    footerProviderState.extensionStatuses = new Map(footerData.getExtensionStatuses().entries());
   }
 
   function installFooter(ctx: ExtensionContext): void {
-    if (!ctx.hasUI) return;
+    if (ctx.mode !== "tui") return;
 
     const factory: FooterFactory = (tui, theme, footerData) => {
       const requestRender = () => tui.requestRender?.();
@@ -131,55 +124,51 @@ export default function createExtension(pi: ExtensionAPI): void {
   }
 
   function installEmptyFooter(ctx: ExtensionContext): void {
-    if (ctx.hasUI) ctx.ui.setFooter(EMPTY_FOOTER_FACTORY as never);
+    if (ctx.mode === "tui") ctx.ui.setFooter(EMPTY_FOOTER_FACTORY as never);
   }
 
   pi.registerCommand("statusline", {
     description: "Configure statusline segments and extension-status visibility",
     handler: async (_args, ctx) => {
-      if (!ctx.hasUI) {
+      if (ctx.mode !== "tui") {
         ctx.ui.notify("/statusline requires interactive UI", "warning");
         return;
       }
 
-      const discovered = [...footerProviderState.extensionStatuses.keys()].sort(
-        (a, b) => a.localeCompare(b),
+      const discovered = [...footerProviderState.extensionStatuses.keys()].sort((a, b) =>
+        a.localeCompare(b),
       );
 
       let result: PiStatusConfig | null = null;
       try {
         installEmptyFooter(ctx);
-        result = await ctx.ui.custom<PiStatusConfig | null>(
-          (tui, theme, _keys, done) => {
-            const editorSnap = runtimeState.snapshot();
-            const activeCtx = editorSnap.ctx ?? ctx;
-            const menuTheme: StatusLineTheme = isLiveTheme(theme)
-              ? fromPiTheme(theme)
-              : noTheme;
-            const snapshot = buildSnapshot({
-              model: activeCtx.model,
-              cwd: activeCtx.cwd,
-              thinkingLevel: editorSnap.thinkingLevel,
-              gitBranch: footerProviderState.gitBranch,
-              isIdle: activeCtx.isIdle(),
-              hasPendingMessages: activeCtx.hasPendingMessages(),
-              contextUsage: activeCtx.getContextUsage(),
-              branch: activeCtx.sessionManager.getBranch() as unknown[],
-              sessionId: activeCtx.sessionManager.getSessionId(),
-              usageState: usageRuntime.getState(),
-              extensionStatuses: footerProviderState.extensionStatuses,
-            });
-            return createStatusLineEditor({
-              config: editorSnap.config,
-              discoveredStatuses: discovered,
-              previewInput: snapshot,
-              theme: menuTheme,
-              done,
-              requestRender: () => tui.requestRender?.(),
-              usageAvailable: usageRuntime.getAvailable(),
-            });
-          },
-        );
+        result = await ctx.ui.custom<PiStatusConfig | null>((tui, theme, _keys, done) => {
+          const editorSnap = runtimeState.snapshot();
+          const activeCtx = editorSnap.ctx ?? ctx;
+          const menuTheme: StatusLineTheme = isLiveTheme(theme) ? fromPiTheme(theme) : noTheme;
+          const snapshot = buildSnapshot({
+            model: activeCtx.model,
+            cwd: activeCtx.cwd,
+            thinkingLevel: editorSnap.thinkingLevel,
+            gitBranch: footerProviderState.gitBranch,
+            isIdle: activeCtx.isIdle(),
+            hasPendingMessages: activeCtx.hasPendingMessages(),
+            contextUsage: activeCtx.getContextUsage(),
+            branch: activeCtx.sessionManager.getBranch() as unknown[],
+            sessionId: activeCtx.sessionManager.getSessionId(),
+            usageState: usageRuntime.getState(),
+            extensionStatuses: footerProviderState.extensionStatuses,
+          });
+          return createStatusLineEditor({
+            config: editorSnap.config,
+            discoveredStatuses: discovered,
+            previewInput: snapshot,
+            theme: menuTheme,
+            done,
+            requestRender: () => tui.requestRender?.(),
+            usageAvailable: usageRuntime.getAvailable(),
+          });
+        });
       } finally {
         installFooter(ctx);
       }
@@ -187,14 +176,10 @@ export default function createExtension(pi: ExtensionAPI): void {
       if (!result) return;
 
       try {
-        saveConfigToSettings(result, { cwd: ctx.cwd });
+        saveConfig(result);
         runtimeState.update({ type: "config_reload", config: result });
-      } catch (error) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : "Failed to save statusline settings";
-        ctx.ui.notify(message, "warning");
+      } catch {
+        ctx.ui.notify("Failed to save statusline config", "warning");
       }
     },
   });
@@ -204,9 +189,11 @@ export default function createExtension(pi: ExtensionAPI): void {
     usageRuntime.requestCurrent();
     runtimeState.update({ type: "session_start", ctx });
     runtimeState.update({
-      type: "config_reload",
-      config: loadConfig({ cwd: ctx.cwd }).config,
+      type: "thinking_level_changed",
+      ctx,
+      level: String(ctx.thinkingLevel ?? pi.getThinkingLevel()),
     });
+    runtimeState.update({ type: "config_reload", config: loadConfig() });
     installFooter(ctx);
   });
 
@@ -214,9 +201,11 @@ export default function createExtension(pi: ExtensionAPI): void {
     resetFooterProviderState();
     runtimeState.update({ type: "session_tree", ctx });
     runtimeState.update({
-      type: "config_reload",
-      config: loadConfig({ cwd: ctx.cwd }).config,
+      type: "thinking_level_changed",
+      ctx,
+      level: String(ctx.thinkingLevel ?? pi.getThinkingLevel()),
     });
+    runtimeState.update({ type: "config_reload", config: loadConfig() });
     installFooter(ctx);
   });
 
@@ -224,11 +213,11 @@ export default function createExtension(pi: ExtensionAPI): void {
     runtimeState.update({ type: "model_select", ctx });
   });
 
-  pi.on("thinking_level_select", (_event, ctx) => {
+  pi.on("thinking_level_select", (event, ctx) => {
     runtimeState.update({
       type: "thinking_level_changed",
       ctx,
-      level: String(pi.getThinkingLevel()),
+      level: String(event.level),
     });
   });
 
@@ -236,6 +225,6 @@ export default function createExtension(pi: ExtensionAPI): void {
     resetFooterProviderState();
     runtimeState.update({ type: "session_shutdown" });
     usageRuntime.setOnChange(undefined);
-    if (ctx.hasUI) ctx.ui.setFooter(undefined);
+    if (ctx.mode === "tui") ctx.ui.setFooter(undefined);
   });
 }

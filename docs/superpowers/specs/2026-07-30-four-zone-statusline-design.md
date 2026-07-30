@@ -54,7 +54,7 @@ export type PiStatusConfig = {
 
 A segment ID may occur in only one zone. Normalization visits zones in `topLeft`, `topRight`, `bottomLeft`, `bottomRight` order; the first valid occurrence wins. Unknown values, non-string values, and later duplicates are dropped.
 
-Select the layout source before merging other settings: use the project `statusLine` layout when it owns either `zones` or legacy `segments`; otherwise use the global layout. Within the selected source, `zones` takes precedence over legacy `segments`. A selected `zones` object replaces the other source's layout as a whole, and missing zone arrays normalize to empty arrays rather than inheriting individual zones. `extensionSegments` retains its existing property-level global/project merge.
+Read layout and `extensionSegments` from the one direct extension config object. Within that object, an own `zones` key takes precedence over legacy `segments`, even when malformed. Missing zone arrays normalize to empty arrays rather than inheriting values from another source; there is no source merge or ownership selection.
 
 ### Defaults
 
@@ -73,14 +73,14 @@ If normalization leaves all four zones empty, use `DEFAULT_ZONES`. This avoids p
 
 ### Legacy Migration
 
-Existing settings may contain `statusLine.segments: StatusLineSegmentId[]`.
+The extension config may contain direct `segments: StatusLineSegmentId[]`.
 
 - When `zones` is absent, normalize the legacy array into `topLeft`; all other zones are empty.
 - When `zones` exists, ignore the legacy array.
 - A migrated configuration with an empty bottom row renders one line, preserving its existing footer height.
 - The first successful editor or preset save writes `zones` and removes the obsolete `segments` key.
-- The existing ownership rule remains: save to project settings only when the project file owns `statusLine`; otherwise save globally.
-- The settings update remains atomic and preserves unrelated keys.
+- Saves write the direct normalized object to the global extension config file.
+- The config update remains atomic and preserves current normalized fields.
 
 ## Resolution and Rendering
 
@@ -129,10 +129,10 @@ Extension-status visibility remains a separate editor section. Its placement is 
 The existing flow remains recognizable:
 
 ```text
-settings -> normalize zones -> runtime config
+extension config -> normalize zones -> runtime config
 session/footer snapshot -> formatter registry -> resolved zone items
 resolved top row + resolved bottom row -> responsive fit -> two-row footer
-editor reducer -> complete zone config -> atomic settings save -> runtime reload
+editor reducer -> complete zone config -> atomic config save -> runtime reload
 ```
 
 No new lifecycle owner is introduced. Session start/tree replacement still reloads effective configuration and installs the footer. Footer disposal still removes existing listeners. The refactor adds no timers, process calls, file watchers, event subscriptions, or mutable render cache.
@@ -142,7 +142,7 @@ No new lifecycle owner is introduced. Session start/tree replacement still reloa
 This design replaces the flat-layout portion of the existing Phase 2 responsive-footer plan. Phase 2 will own:
 
 - four-zone types and normalization;
-- legacy migration and ownership-aware saving;
+- direct legacy migration and global atomic saving;
 - tabbed editor state/rendering;
 - two-row left/right composition;
 - per-row responsive fitting and final truncation;
@@ -160,7 +160,7 @@ All other command, lifecycle, telemetry, notification, and tool-control work rem
 - Malformed zone values cannot throw during startup; they normalize as empty.
 - Unknown and duplicate segment IDs are discarded deterministically.
 - A fully empty normalized layout falls back to the minimal default.
-- Failed settings writes leave runtime configuration and the live footer unchanged and report through the existing warning boundary.
+- Failed config writes leave runtime configuration and the live footer unchanged and report through the existing warning boundary.
 - Editor cancellation performs no write or runtime update.
 - Missing segment data omits only that segment.
 - Tiny widths remain bounded by final ANSI-safe truncation.
@@ -171,8 +171,8 @@ All other command, lifecycle, telemetry, notification, and tool-control work rem
 
 - Legacy arrays migrate to top-left with an empty bottom row.
 - New zone objects normalize unknown values, malformed arrays, and cross-zone duplicates.
-- Project layout ownership wins when the project owns either `zones` or legacy `segments`; `extensionSegments` keeps its existing merge behavior.
-- Saving writes all zones, removes legacy `segments`, preserves unrelated settings, and remains atomic.
+- Direct legacy `segments` migrate to top-left, while an own `zones` key takes precedence in the same config object.
+- Saving writes all zones, removes legacy `segments`, preserves current normalized config fields, and remains atomic.
 - An empty normalized layout becomes `DEFAULT_ZONES`.
 
 ### Editor

@@ -37,8 +37,7 @@ const SEGMENT_ORDER: readonly SegmentMetadata[] = [
   {
     id: "context-remaining",
     label: "Context Remaining",
-    description:
-      "Context tokens remaining vs window size (omitted when unknown)",
+    description: "Context tokens remaining vs window size (omitted when unknown)",
   },
   {
     id: "context-used",
@@ -68,20 +67,16 @@ const SEGMENT_ORDER: readonly SegmentMetadata[] = [
   {
     id: "five-hour-limit",
     label: "5h Limit",
-    description:
-      "Remaining usage on the primary usage limit (omitted when unavailable)",
+    description: "Remaining usage on the primary usage limit (omitted when unavailable)",
   },
   {
     id: "weekly-limit",
     label: "Weekly Limit",
-    description:
-      "Remaining usage on the secondary usage limit (omitted when unavailable)",
+    description: "Remaining usage on the secondary usage limit (omitted when unavailable)",
   },
 ] as const;
 
-export const SEGMENT_METADATA = new Map(
-  SEGMENT_ORDER.map((segment) => [segment.id, segment]),
-);
+export const SEGMENT_METADATA = new Map(SEGMENT_ORDER.map((segment) => [segment.id, segment]));
 
 export interface EditorState {
   enabledSegments: StatusLineSegmentId[];
@@ -115,9 +110,7 @@ export function collectHiddenStatuses(input: {
   discoveredKeys: string[];
   shownKeys: Iterable<string>;
 }): string[] {
-  const discovered = [...input.discoveredKeys].sort((a, b) =>
-    a.localeCompare(b),
-  );
+  const discovered = [...input.discoveredKeys].sort((a, b) => a.localeCompare(b));
   const shown = new Set(input.shownKeys);
   return discovered.filter((k) => !shown.has(k));
 }
@@ -131,10 +124,7 @@ function includesFuzzy(haystack: string, needle: string): boolean {
   return j === n.length;
 }
 
-export function isEnabledSegment(
-  state: EditorState,
-  id: StatusLineSegmentId,
-): boolean {
+export function isEnabledSegment(state: EditorState, id: StatusLineSegmentId): boolean {
   return state.enabledSegments.includes(id);
 }
 
@@ -164,16 +154,11 @@ function rowMatchesQuery(state: EditorState, row: InteractiveRow): boolean {
     if (!meta) return false;
     return includesFuzzy(`${meta.label} ${meta.description}`, state.query);
   }
-  return includesFuzzy(
-    `${row.key} Toggle visibility in the status line`,
-    state.query,
-  );
+  return includesFuzzy(`${row.key} Toggle visibility in the status line`, state.query);
 }
 
 export function getFilteredRows(state: EditorState): InteractiveRow[] {
-  return getInteractiveRows(state).filter((row) =>
-    rowMatchesQuery(state, row),
-  );
+  return getInteractiveRows(state).filter((row) => rowMatchesQuery(state, row));
 }
 
 function clampIndex(state: EditorState, index: number): number {
@@ -201,16 +186,12 @@ export function initEditorState(
   discoveredStatuses: string[],
   usageAvailable = true,
 ): EditorState {
-  const orderedStatuses = [...discoveredStatuses].sort((a, b) =>
-    a.localeCompare(b),
-  );
+  const orderedStatuses = [...discoveredStatuses].sort((a, b) => a.localeCompare(b));
   const visibleSegments = SEGMENT_ORDER.filter(
     (segment) => usageAvailable || !isUsageSegment(segment.id),
   );
   const hiddenSet = new Set(config.extensionSegments.hidden);
-  const shownStatuses = new Set(
-    orderedStatuses.filter((x) => !hiddenSet.has(x)),
-  );
+  const shownStatuses = new Set(orderedStatuses.filter((x) => !hiddenSet.has(x)));
 
   return {
     enabledSegments: [...config.segments],
@@ -222,10 +203,7 @@ export function initEditorState(
   };
 }
 
-export function editorReducer(
-  state: EditorState,
-  action: EditorAction,
-): EditorResult {
+export function editorReducer(state: EditorState, action: EditorAction): EditorResult {
   switch (action.type) {
     case "cancel":
       return { type: "done", config: null };
@@ -287,8 +265,7 @@ export function editorReducer(
 
       const delta = action.type === "reorder_left" ? -1 : 1;
       const next = segIdx + delta;
-      if (next < 0 || next >= state.enabledSegments.length)
-        return { type: "next", state };
+      if (next < 0 || next >= state.enabledSegments.length) return { type: "next", state };
 
       const copy = [...state.enabledSegments];
       const [item] = copy.splice(segIdx, 1);

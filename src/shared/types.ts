@@ -43,10 +43,7 @@ export const DEFAULT_SEGMENTS: readonly StatusLineSegmentId[] = [
   "current-dir",
 ] as const;
 
-export const USAGE_SEGMENTS = new Set<StatusLineSegmentId>([
-  "five-hour-limit",
-  "weekly-limit",
-]);
+export const USAGE_SEGMENTS = new Set<StatusLineSegmentId>(["five-hour-limit", "weekly-limit"]);
 
 export function isKnownSegment(value: string): value is StatusLineSegmentId {
   return (KNOWN_SEGMENTS as readonly string[]).includes(value);
@@ -56,7 +53,7 @@ export function isUsageSegment(id: StatusLineSegmentId): boolean {
   return USAGE_SEGMENTS.has(id);
 }
 
-export interface SettingsStore {
+export interface ConfigStore {
   exists(path: string): boolean;
   read(path: string): string | null;
   write(path: string, data: string): void;

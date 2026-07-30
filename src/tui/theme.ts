@@ -21,8 +21,14 @@ function isPiThemeLike(value: unknown): value is PiThemeLike {
 }
 
 const RAINBOW_COLORS = [
-  "#b281d6", "#d787af", "#febc38", "#e4c00f",
-  "#89d281", "#00afaf", "#178fb9", "#b281d6",
+  "#b281d6",
+  "#d787af",
+  "#febc38",
+  "#e4c00f",
+  "#89d281",
+  "#00afaf",
+  "#178fb9",
+  "#b281d6",
 ];
 
 function hexToAnsi(hex: string): string {

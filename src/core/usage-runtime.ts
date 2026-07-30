@@ -35,10 +35,7 @@ export function createUsageRuntime(pi: ExtensionAPI) {
   };
 
   const unsubscribeReady = pi.events.on(USAGE_CORE_READY_EVENT, acceptPayload);
-  const unsubscribeUpdate = pi.events.on(
-    USAGE_CORE_UPDATE_CURRENT_EVENT,
-    acceptPayload,
-  );
+  const unsubscribeUpdate = pi.events.on(USAGE_CORE_UPDATE_CURRENT_EVENT, acceptPayload);
 
   requestCurrent();
 

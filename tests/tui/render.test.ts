@@ -23,9 +23,7 @@ const identityTheme: ThemeLike = { fg: (_c, t) => t, rainbow: (t) => t };
 const markerTheme: ThemeLike = { fg: (c, t) => `[${c}:${t}]`, rainbow: (t) => `[rainbow:${t}]` };
 
 /** Build a minimal FooterRenderInput with sensible defaults; override only the fields under test. */
-function segmentInput(
-  overrides?: Partial<FooterRenderInput>,
-): FooterRenderInput {
+function segmentInput(overrides?: Partial<FooterRenderInput>): FooterRenderInput {
   return {
     cwd: "/Users/test/project",
     thinkingLevel: "medium",
@@ -46,19 +44,11 @@ describe("render", () => {
 
   it("formats model with reasoning", () => {
     expect(
-      formatModelWithReasoning(
-        { id: "x", name: "X", reasoning: true },
-        "medium",
-        identityTheme,
-      ),
+      formatModelWithReasoning({ id: "x", name: "X", reasoning: true }, "medium", identityTheme),
     ).toEqual(["X [med]", null]);
 
     expect(
-      formatModelWithReasoning(
-        { id: "x", name: "X", reasoning: false },
-        "medium",
-        identityTheme,
-      ),
+      formatModelWithReasoning({ id: "x", name: "X", reasoning: false }, "medium", identityTheme),
     ).toEqual(["X", "accent"]);
 
     expect(formatModelWithReasoning(undefined, "medium", identityTheme)).toBeNull();
@@ -148,11 +138,7 @@ describe("formatSegment — model", () => {
   });
 
   it("falls back to model id when name is missing", () => {
-    const result = formatSegment(
-      "model",
-      segmentInput({ model: { id: "gpt-5" } }),
-      identityTheme,
-    );
+    const result = formatSegment("model", segmentInput({ model: { id: "gpt-5" } }), identityTheme);
     expect(result).toEqual(["gpt-5", "accent"]);
   });
 
@@ -193,11 +179,7 @@ describe("formatSegment — model-with-reasoning", () => {
   });
 
   it("returns null when model is undefined", () => {
-    const result = formatSegment(
-      "model-with-reasoning",
-      segmentInput(),
-      markerTheme,
-    );
+    const result = formatSegment("model-with-reasoning", segmentInput(), markerTheme);
     expect(result).toBeNull();
   });
 
@@ -307,11 +289,7 @@ describe("formatSegment — model-with-reasoning", () => {
 
 describe("formatSegment — current-dir", () => {
   it("returns cwd with success color", () => {
-    const result = formatSegment(
-      "current-dir",
-      segmentInput({ cwd: "/tmp/foo" }),
-      identityTheme,
-    );
+    const result = formatSegment("current-dir", segmentInput({ cwd: "/tmp/foo" }), identityTheme);
     expect(result).toEqual(["/tmp/foo", "success"]);
   });
 
@@ -328,31 +306,19 @@ describe("formatSegment — current-dir", () => {
 
 describe("formatSegment — project-name", () => {
   it("returns null when no project root is found", () => {
-    const result = formatSegment(
-      "project-name",
-      segmentInput({ cwd: "/tmp" }),
-      identityTheme,
-    );
+    const result = formatSegment("project-name", segmentInput({ cwd: "/tmp" }), identityTheme);
     expect(result).toBeNull();
   });
 });
 
 describe("formatSegment — git-branch", () => {
   it("returns branch name with warning color", () => {
-    const result = formatSegment(
-      "git-branch",
-      segmentInput({ gitBranch: "main" }),
-      identityTheme,
-    );
+    const result = formatSegment("git-branch", segmentInput({ gitBranch: "main" }), identityTheme);
     expect(result).toEqual(["main", "warning"]);
   });
 
   it("returns null when gitBranch is null", () => {
-    const result = formatSegment(
-      "git-branch",
-      segmentInput({ gitBranch: null }),
-      identityTheme,
-    );
+    const result = formatSegment("git-branch", segmentInput({ gitBranch: null }), identityTheme);
     expect(result).toBeNull();
   });
 
@@ -364,29 +330,17 @@ describe("formatSegment — git-branch", () => {
 
 describe("formatSegment — run-state", () => {
   it("returns 'idle' with dim color", () => {
-    const result = formatSegment(
-      "run-state",
-      segmentInput({ runState: "idle" }),
-      identityTheme,
-    );
+    const result = formatSegment("run-state", segmentInput({ runState: "idle" }), identityTheme);
     expect(result).toEqual(["idle", "dim"]);
   });
 
   it("returns 'busy' with accent color", () => {
-    const result = formatSegment(
-      "run-state",
-      segmentInput({ runState: "busy" }),
-      identityTheme,
-    );
+    const result = formatSegment("run-state", segmentInput({ runState: "busy" }), identityTheme);
     expect(result).toEqual(["busy", "accent"]);
   });
 
   it("returns 'queued' with accent color", () => {
-    const result = formatSegment(
-      "run-state",
-      segmentInput({ runState: "queued" }),
-      identityTheme,
-    );
+    const result = formatSegment("run-state", segmentInput({ runState: "queued" }), identityTheme);
     expect(result).toEqual(["queued", "accent"]);
   });
 });
@@ -612,11 +566,7 @@ describe("formatSegment — context-remaining", () => {
   });
 
   it("returns null when contextUsage is undefined", () => {
-    const result = formatSegment(
-      "context-remaining",
-      segmentInput(),
-      identityTheme,
-    );
+    const result = formatSegment("context-remaining", segmentInput(), identityTheme);
     expect(result).toBeNull();
   });
 });
@@ -652,11 +602,7 @@ describe("formatSegment — total-input-tokens", () => {
   });
 
   it("returns null when branchTotals is undefined", () => {
-    const result = formatSegment(
-      "total-input-tokens",
-      segmentInput(),
-      identityTheme,
-    );
+    const result = formatSegment("total-input-tokens", segmentInput(), identityTheme);
     expect(result).toBeNull();
   });
 });
@@ -674,11 +620,7 @@ describe("formatSegment — total-output-tokens", () => {
   });
 
   it("returns null when branchTotals is undefined", () => {
-    const result = formatSegment(
-      "total-output-tokens",
-      segmentInput(),
-      identityTheme,
-    );
+    const result = formatSegment("total-output-tokens", segmentInput(), identityTheme);
     expect(result).toBeNull();
   });
 });
@@ -820,11 +762,7 @@ describe("formatSegment — five-hour-limit", () => {
   });
 
   it("returns null when usageState is undefined", () => {
-    const result = formatSegment(
-      "five-hour-limit",
-      segmentInput(),
-      identityTheme,
-    );
+    const result = formatSegment("five-hour-limit", segmentInput(), identityTheme);
     expect(result).toBeNull();
   });
 
@@ -1038,12 +976,7 @@ describe("buildFooterLineFromResolved", () => {
 
   it("appends extensionStatusText after segments", () => {
     const segments: ResolvedSegment[] = [{ text: "idle", color: "dim" }];
-    const line = buildFooterLineFromResolved(
-      segments,
-      "5h: 60%",
-      identityTheme,
-      200,
-    );
+    const line = buildFooterLineFromResolved(segments, "5h: 60%", identityTheme, 200);
     expect(line).toBe("idle · 5h: 60%");
   });
 

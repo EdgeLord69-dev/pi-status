@@ -1,16 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  Key,
-  matchesKey,
-  visibleWidth,
-  type Component,
-} from "@earendil-works/pi-tui";
+import { Key, matchesKey, visibleWidth, type Component } from "@earendil-works/pi-tui";
 import type { PiStatusConfig } from "../../src/shared/types.ts";
 import type { FooterRenderInput } from "../../src/tui/render.ts";
-import {
-  collectHiddenStatuses,
-  createStatusLineEditor,
-} from "../../src/tui/editor.ts";
+import { collectHiddenStatuses, createStatusLineEditor } from "../../src/tui/editor.ts";
 import { noTheme, type StatusLineTheme } from "../../src/tui/theme.ts";
 
 type EditorComponent = Component & { handleInput: (data: string) => void };
@@ -114,9 +106,7 @@ describe("statusline editor shell", () => {
     expect(lines).not.toContain("Preview:");
     expect(lines.at(-3)).toBe("");
     expect((lines.at(-2) ?? "").length).toBeGreaterThan(0);
-    expect(lines.at(-1)).toBe(
-      "Toggle: Space  •  Reorder: ← / →  •  Save: Enter  •  Cancel: Esc",
-    );
+    expect(lines.at(-1)).toBe("Toggle: Space  •  Reorder: ← / →  •  Save: Enter  •  Cancel: Esc");
   });
 
   it("swaps the reorder clause in the help line when search is active", () => {
@@ -185,11 +175,7 @@ describe("statusline editor usage availability", () => {
     });
     editor.handleInput(ENTER);
     const saved = done.mock.calls[0]?.[0] as PiStatusConfig | null;
-    expect(saved?.segments).toEqual([
-      "five-hour-limit",
-      "model-with-reasoning",
-      "weekly-limit",
-    ]);
+    expect(saved?.segments).toEqual(["five-hour-limit", "model-with-reasoning", "weekly-limit"]);
   });
 });
 
@@ -212,9 +198,7 @@ describe("statusline editor sections and ordering", () => {
     const lines = rowLines(renderLines(editor, 200));
     const segmentLines = lines.filter(
       (line) =>
-        line.includes("Model") ||
-        line.includes("Current Dir") ||
-        line.includes("Git Branch"),
+        line.includes("Model") || line.includes("Current Dir") || line.includes("Git Branch"),
     );
 
     expect(segmentLines[0]).toContain("Current Dir (1)");
@@ -242,12 +226,8 @@ describe("statusline editor sections and ordering", () => {
     });
     const lines = rowLines(renderLines(editor, 200));
     const modelIndex = lines.findIndex((line) => line.includes("Model"));
-    const reasoningIndex = lines.findIndex((line) =>
-      line.includes("Model + Reasoning"),
-    );
-    const projectNameIndex = lines.findIndex((line) =>
-      line.includes("Project Name"),
-    );
+    const reasoningIndex = lines.findIndex((line) => line.includes("Model + Reasoning"));
+    const projectNameIndex = lines.findIndex((line) => line.includes("Project Name"));
 
     expect(modelIndex).toBeLessThan(reasoningIndex);
     expect(reasoningIndex).toBeLessThan(projectNameIndex);
@@ -293,9 +273,7 @@ describe("statusline editor search", () => {
     const lines = rowLines(renderLines(editor, 200));
 
     expect(lines.some((line) => line.includes("Run State"))).toBe(true);
-    expect(lines.some((line) => line.includes("Model + Reasoning"))).toBe(
-      false,
-    );
+    expect(lines.some((line) => line.includes("Model + Reasoning"))).toBe(false);
   });
 
   it("searches discovered status rows by key and generic description", () => {
@@ -334,27 +312,19 @@ describe("statusline editor descriptions", () => {
     const { editor } = makeEditor();
     const lines = renderLines(editor, 200);
 
-    expect(
-      lines.some((line) =>
-        line.includes("Current model name with reasoning level"),
-      ),
-    ).toBe(true);
-    expect(
-      lines.some((line) =>
-        line.includes("Project name (omitted when unavailable)"),
-      ),
-    ).toBe(true);
+    expect(lines.some((line) => line.includes("Current model name with reasoning level"))).toBe(
+      true,
+    );
+    expect(lines.some((line) => line.includes("Project name (omitted when unavailable)"))).toBe(
+      true,
+    );
   });
 
   it("renders generic descriptions for discovered rows", () => {
     const { editor } = makeEditor({ discovered: ["custom-status"] });
     const lines = renderLines(editor, 200);
 
-    expect(
-      lines.some((line) =>
-        line.includes("Toggle visibility in the status line"),
-      ),
-    ).toBe(true);
+    expect(lines.some((line) => line.includes("Toggle visibility in the status line"))).toBe(true);
   });
 });
 
@@ -494,11 +464,7 @@ describe("statusline editor interactions", () => {
     editor.handleInput(ESCAPE);
 
     expect(done).toHaveBeenCalledWith(null);
-    expect(initialConfig.segments).toEqual([
-      "model",
-      "current-dir",
-      "git-branch",
-    ]);
+    expect(initialConfig.segments).toEqual(["model", "current-dir", "git-branch"]);
   });
 
   it("preserves keybinding matching for the editor keys", () => {
@@ -523,9 +489,7 @@ describe("statusline editor live preview and layout", () => {
     expect(lines).not.toContain("Preview:");
     expect(lines.at(-3)).toBe("");
     expect(lines.at(-2)).toBe("/Users/test/project");
-    expect(lines.at(-1)).toBe(
-      "Toggle: Space  •  Reorder: ← / →  •  Save: Enter  •  Cancel: Esc",
-    );
+    expect(lines.at(-1)).toBe("Toggle: Space  •  Reorder: ← / →  •  Save: Enter  •  Cancel: Esc");
   });
 
   it("updates the preview line after toggling a segment", () => {
@@ -635,8 +599,7 @@ describe("statusline editor width hardening", () => {
   });
 
   it("renders the preview with the full requested width without the extra two-column loss", () => {
-    const longCwd =
-      "/Users/test/project/very/long/path/that/exceeds/fifty/characters/xx";
+    const longCwd = "/Users/test/project/very/long/path/that/exceeds/fifty/characters/xx";
     const editor = createStatusLineEditor({
       config: makeConfig({ segments: ["current-dir"] }),
       discoveredStatuses: [],
@@ -672,13 +635,11 @@ describe("statusline editor width hardening", () => {
   it("keeps default and searching help lines distinct at widths that show full copy", () => {
     for (const width of [40, 80, 120, 200]) {
       const baseEditor = makeEditor();
-      const baseHelp =
-        baseEditor.editor.render(width).map(stripAnsi).at(-1) ?? "";
+      const baseHelp = baseEditor.editor.render(width).map(stripAnsi).at(-1) ?? "";
 
       const searching = makeEditor();
       searching.editor.handleInput("m");
-      const searchHelp =
-        searching.editor.render(width).map(stripAnsi).at(-1) ?? "";
+      const searchHelp = searching.editor.render(width).map(stripAnsi).at(-1) ?? "";
 
       expect(baseHelp).not.toBe(searchHelp);
       expect(baseHelp.startsWith("Toggle: Space")).toBe(true);
@@ -793,9 +754,7 @@ describe("statusline editor theme plumbing", () => {
     // The title is the only place we wrap bold inside fg("accent", …).
     // Find the fg call whose payload is the bolded title — that uniquely
     // identifies the title rendering.
-    const titleCall = calls.fg.find(
-      ([, payload]) => payload === "Configure Status Line",
-    );
+    const titleCall = calls.fg.find(([, payload]) => payload === "Configure Status Line");
     expect(titleCall?.[0]).toBe("accent");
 
     // The bold call must have wrapped the title text directly, not the
@@ -810,9 +769,7 @@ describe("statusline editor theme plumbing", () => {
 
     const dividerCall = calls.fg.find(
       ([color, payload]) =>
-        color === "borderMuted" &&
-        typeof payload === "string" &&
-        payload.includes("─"),
+        color === "borderMuted" && typeof payload === "string" && payload.includes("─"),
     );
     expect(dividerCall).toBeDefined();
     expect(dividerCall?.[0]).toBe("borderMuted");
@@ -829,17 +786,13 @@ describe("statusline editor theme plumbing", () => {
     // Row description copy
     expect(dimTexts.has("Current model name with reasoning level")).toBe(true);
     // Subtitle
-    expect(
-      dimTexts.has("Select which items to display in the status line."),
-    ).toBe(true);
+    expect(dimTexts.has("Select which items to display in the status line.")).toBe(true);
     // Search placeholder
     expect(dimTexts.has("Type to search")).toBe(true);
     // Help line copy
-    expect(
-      dimTexts.has(
-        "Toggle: Space  •  Reorder: ← / →  •  Save: Enter  •  Cancel: Esc",
-      ),
-    ).toBe(true);
+    expect(dimTexts.has("Toggle: Space  •  Reorder: ← / →  •  Save: Enter  •  Cancel: Esc")).toBe(
+      true,
+    );
     // Empty-state hint
     expect(dimTexts.has("No extension statuses yet.")).toBe(true);
   });
@@ -889,8 +842,7 @@ describe("statusline editor live theme sync", () => {
     const theme: StatusLineTheme = {
       fg: (color, text) => {
         if (color === "accent") return `[${accentTag}]${text}[/${accentTag}]`;
-        if (color === "borderMuted")
-          return `[${borderTag}]${text}[/${borderTag}]`;
+        if (color === "borderMuted") return `[${borderTag}]${text}[/${borderTag}]`;
         return text;
       },
       bold: (text) => `[B]${text}[/B]`,
@@ -916,9 +868,7 @@ describe("statusline editor live theme sync", () => {
     expect(firstTitle).toContain("[B]Configure Status Line[/B]");
 
     // The divider is the only line that uses borderMuted.
-    const firstDivider = firstLines.find((line) =>
-      line.startsWith("[first-border]"),
-    );
+    const firstDivider = firstLines.find((line) => line.startsWith("[first-border]"));
     expect(firstDivider).toBeDefined();
     const firstPreview = firstLines.at(-2) ?? "";
     expect(firstPreview).toContain("[first-accent]GPT-5[/first-accent]");
@@ -936,9 +886,7 @@ describe("statusline editor live theme sync", () => {
     expect(secondTitle).toContain("[second-accent]");
     expect(secondTitle).toContain("[B]Configure Status Line[/B]");
 
-    const secondDivider = secondLines.find((line) =>
-      line.startsWith("[second-border]"),
-    );
+    const secondDivider = secondLines.find((line) => line.startsWith("[second-border]"));
     expect(secondDivider).toBeDefined();
     const secondPreview = secondLines.at(-2) ?? "";
     expect(secondPreview).toContain("[second-accent]GPT-5[/second-accent]");

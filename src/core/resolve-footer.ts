@@ -51,17 +51,13 @@ function aggregateBranchTotals(branch: unknown[]): {
     if (!usage) continue;
     if (typeof usage.input === "number") totals.input += usage.input;
     if (typeof usage.output === "number") totals.output += usage.output;
-    if (typeof usage.totalTokens === "number")
-      totals.totalTokens += usage.totalTokens;
+    if (typeof usage.totalTokens === "number") totals.totalTokens += usage.totalTokens;
   }
 
   return totals;
 }
 
-function deriveRunState(
-  isIdle: boolean,
-  hasPendingMessages: boolean,
-): RunState {
+function deriveRunState(isIdle: boolean, hasPendingMessages: boolean): RunState {
   if (!isIdle) return "busy";
   if (hasPendingMessages) return "queued";
   return "idle";

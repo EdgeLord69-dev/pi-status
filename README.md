@@ -117,14 +117,25 @@ model-with-reasoning · current-dir · alpha: ready
 
 ## Configuration Behavior
 
-`@pi-vault/pi-status` reads settings from both Pi settings locations:
+`@pi-vault/pi-status` stores one global configuration file at
+`<Pi agent directory>/extensions/statusline.json`. When
+`PI_CODING_AGENT_DIR` is set, the path is
+`$PI_CODING_AGENT_DIR/extensions/statusline.json`; otherwise Pi supplies its
+default agent directory.
 
-- global: `~/.pi/agent/settings.json`
-- project: `.pi/settings.json`
+The file contains the statusline config directly:
 
-Project `statusLine` values override global `statusLine` values when both exist.
+```json
+{
+  "segments": ["model-with-reasoning", "current-dir"],
+  "extensionSegments": { "hidden": [] }
+}
+```
 
-When you save from `/statusline`, pi-status writes back to the project settings file if that file already owns the `statusLine` key. Otherwise it writes to the global settings file.
+There are no project-specific overrides. pi-status no longer reads or writes
+Pi's global or project `settings.json`. Existing `statusLine` values in those
+files are ignored and left unchanged. To keep them, manually copy the contents
+of the old `statusLine` object into `extensions/statusline.json`.
 
 ## Upgrade Notes For 0.2.x Users
 
@@ -133,9 +144,9 @@ If you are upgrading from `0.2.x`, note these compatibility changes:
 - `context-window-size` and `extension-statuses` are no longer supported segment IDs.
 - Existing configs that still mention removed IDs are normalized by dropping those unsupported entries.
 - Extension status visibility now comes from per-key hidden status settings instead of a dedicated `extension-statuses` segment.
-- Global and project `statusLine` settings still merge, with project values overriding global values.
-- The extension now requires Node.js `>=24.15.0`.
-- The tested Pi host baseline is now `@earendil-works/pi-coding-agent@0.79.10` and `@earendil-works/pi-tui@0.79.10`.
+- Configuration now has a hard cutover to the global extension-owned `extensions/statusline.json` file; Pi `settings.json` values are ignored and not migrated automatically.
+- The extension requires Node.js `>=24.15.0`.
+- The tested Pi host baseline is now `@earendil-works/pi-coding-agent@0.82.0` and `@earendil-works/pi-tui@0.82.0`.
 
 ## Development And Verification
 

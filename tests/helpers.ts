@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { SettingsStore } from "../src/shared/types.ts";
+import type { ConfigStore } from "../src/shared/types.ts";
 import { DEFAULT_SEGMENTS, type FooterRenderInput } from "../src/tui/render.ts";
 
 export function withDefaults(
@@ -14,9 +14,7 @@ export function withDefaults(
   };
 }
 
-export function createContext(
-  overrides?: Partial<ExtensionContext>,
-): ExtensionContext {
+export function createContext(overrides?: Partial<ExtensionContext>): ExtensionContext {
   return {
     ui: {
       select: async () => undefined,
@@ -43,6 +41,7 @@ export function createContext(
       theme: {} as never,
       getAllThemes: () => [],
     },
+    mode: "tui",
     hasUI: true,
     cwd: "/Users/test/project",
     sessionManager: {
@@ -60,6 +59,19 @@ export function createContext(
     getSystemPrompt: () => "",
     ...overrides,
   } as ExtensionContext;
+}
+
+export function getRegisteredCommand(
+  calls: readonly (readonly unknown[])[],
+  name: string,
+): {
+  handler: (args: string, ctx: ExtensionContext) => Promise<void> | void;
+} {
+  const command = calls.find(([registeredName]) => registeredName === name);
+  if (!command) throw new Error(`Command not registered: ${name}`);
+  return command[1] as {
+    handler: (args: string, ctx: ExtensionContext) => Promise<void> | void;
+  };
 }
 
 export function createBus() {
@@ -80,11 +92,8 @@ export function createBus() {
   };
 }
 
-export function buildPiWithHandlers() {
-  const handlers = new Map<
-    string,
-    Array<(event: unknown, ctx: ExtensionContext) => void>
-  >();
+export function buildPiWithHandlers(options: { thinkingLevel?: string } = {}) {
+  const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => void>>();
   const events = createBus();
   const registerCommand = {
     calls: [] as unknown[][],
@@ -98,7 +107,7 @@ export function buildPiWithHandlers() {
       handlers.set(event, [...(handlers.get(event) ?? []), handler]);
     },
     registerCommand: registerCommand.fn.bind(registerCommand),
-    getThinkingLevel: () => "medium",
+    getThinkingLevel: () => options.thinkingLevel ?? "medium",
   } as unknown as ExtensionAPI;
   return { pi, handlers, registerCommandCalls: registerCommand.calls };
 }
@@ -111,19 +120,29 @@ export function buildSetFooterSpy() {
   return { calls, setFooter };
 }
 
-export class MemorySettingsStore implements SettingsStore {
+export class MemoryConfigStore implements ConfigStore {
   private files = new Map<string, string>();
+  readonly existsPaths: string[] = [];
+  readonly readPaths: string[] = [];
+  readonly writePaths: string[] = [];
+  readonly accessPaths: string[] = [];
 
   seed(path: string, content: string): void {
     this.files.set(path, content);
   }
   exists(path: string): boolean {
+    this.existsPaths.push(path);
+    this.accessPaths.push(path);
     return this.files.has(path);
   }
   read(path: string): string | null {
+    this.readPaths.push(path);
+    this.accessPaths.push(path);
     return this.files.get(path) ?? null;
   }
   write(path: string, data: string): void {
+    this.writePaths.push(path);
+    this.accessPaths.push(path);
     this.files.set(path, data);
   }
 }

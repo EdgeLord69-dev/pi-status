@@ -14,10 +14,10 @@
 
 ## Dependencies and assumptions
 
-- Phases 1–5 are complete, including the Pi 0.82.0 development baseline, Phase 2 four-zone layout/config migration, compatibility lifecycle, `/statusline` argument router, and ownership-aware settings writer.
+- Phases 1–5 are complete, including the global extension-owned config file, Phase 2 four-zone migration, compatibility lifecycle, and `/statusline` argument router.
 - The authoritative completion signal is Pi's public `agent_settled` event. Do not infer completion from `agent_end`, `turn_end`, assistant text, or tool completion.
 - The installed `@pi-vault/pi-questionnaire` v0.2.1 public contract emits `pi-vault:questionnaire:status` with `{ active: true, label: string }` immediately before waiting and `{ active: false }` in `finally`. Listen through Pi's public event bus using the literal event name, without importing or depending on the package. Notify only on a false-to-true interval, ignore `label`, rearm after false, and ignore malformed payloads.
-- Configuration remains backward compatible: absent `completionNotifications` means `false`, and project/session configuration cannot override this global preference.
+- Configuration remains backward compatible: absent `completionNotifications` means `false`; no project or session configuration exists.
 - TUI and RPC sessions may both receive lifecycle events, but native desktop notifications and the command's TUI controls are TUI-only.
 
 ## Non-goals
@@ -43,15 +43,13 @@ export type PiStatusConfig = {
 export function saveCompletionNotifications(
   enabled: boolean,
   options?: {
-    store?: SettingsStore;
+    store?: ConfigStore;
     agentDir?: string;
   },
 ): void;
 ```
 
-`DEFAULT_CONFIG.completionNotifications` is `false`. Normalization accepts only literal `true`. `loadConfig()` always takes this field from the global `statusLine` object after global/project display settings merge, so project config cannot override it. `saveCompletionNotifications()` patches only the global `statusLine.completionNotifications` field while preserving unrelated global keys and display settings.
-
-`saveConfigToSettings()` remains the display ownership writer, with one ownership-specific rule: when the target is global, preserve/write the current `completionNotifications` value alongside display fields; when the target is project, serialize display fields only and never copy the global-only boolean into project settings. This rule applies to no-argument editor saves and later display-preset saves.
+`DEFAULT_CONFIG.completionNotifications` is `false`. Normalization accepts only literal `true`. `loadConfig()` normalizes `completionNotifications` from the direct config object. `saveConfig()` preserves it during editor and preset saves. `saveCompletionNotifications()` atomically updates the same `<getAgentDir()>/extensions/statusline.json` object while preserving display fields.
 
 ### Command
 
@@ -160,24 +158,18 @@ Expected: one full commit SHA from the completed Phase 5 branch. Keep this shell
 - Test: `tests/core/config.test.ts`
 - Test: `tests/tui/editor-state.test.ts`
 
-- [ ] Add failing tests proving absent/false is disabled, only literal `true` is enabled, project `completionNotifications` is ignored, the existing editor round-trips the active global flag without changing it, a global display save preserves the boolean, a project display save omits the boolean, a global notification update preserves unrelated keys/display settings, and a write failure does not produce a partially updated file.
+- [ ] Add failing tests proving absent/false is disabled, only literal `true` is enabled, the existing editor round-trips the active flag without changing it, display saves preserve the boolean, a notification update preserves unrelated display settings, and a write failure does not produce a partially updated file.
 
 ```ts
-expect(loadConfig({ store, projectTrusted: true }).config.completionNotifications).toBe(false);
+expect(loadConfig({ store, agentDir: "/agent" }).completionNotifications).toBe(false);
 saveCompletionNotifications(true, { store, agentDir: "/agent" });
-expect(JSON.parse(store.read("/agent/settings.json") ?? "{}").statusLine).toMatchObject({
-  zones: {
-    topLeft: ["model"],
-    topRight: [],
-    bottomLeft: [],
-    bottomRight: [],
-  },
-  completionNotifications: true,
-});
+expect(
+  JSON.parse(store.read("/agent/extensions/statusline.json") ?? "{}"),
+).toMatchObject({ completionNotifications: true });
 ```
 
 - [ ] Run `pnpm vitest run tests/core/config.test.ts tests/tui/editor-state.test.ts`; expect the new imports/assertions to fail.
-- [ ] Add `completionNotifications`, global-only normalization, and the smallest global patch function that reuses the existing atomic store. Make display saves preserve the field only for a global target and omit it for a project target. Add the boolean to `EditorState`; initialize it from `PiStatusConfig` and copy it unchanged from `toConfig()` so the no-argument editor cannot toggle it.
+- [ ] Add `completionNotifications`, direct-object normalization, and the smallest patch function that reuses the existing atomic store. Make display saves preserve the field. Add the boolean to `EditorState`; initialize it from `PiStatusConfig` and copy it unchanged from `toConfig()` so the no-argument editor cannot toggle it.
 - [ ] Run `pnpm vitest run tests/core/config.test.ts tests/tui/editor-state.test.ts`; expect all selected tests to pass.
 - [ ] Commit only this coherent change:
 
@@ -229,7 +221,7 @@ it.each([
 });
 ```
 
-Preserve explicit regression cases for empty/editor, `session`, `tools`, and generic unknown input. Add command-handler tests for query/on/off, invalid usage, global ownership, immediate update, and failed-write rollback.
+Preserve explicit regression cases for empty/editor, `session`, `tools`, and generic unknown input. Add command-handler tests for query/on/off, invalid usage, global config persistence, immediate update, and failed-write rollback.
 - [ ] Add failing lifecycle tests proving: `agent_start` or `turn_start` rearms settlement; one notification on `agent_settled`; none on `agent_end`/`turn_end`; one per `{ active: false }` to `{ active: true, label }` questionnaire interval; duplicate true, missing-label true, malformed payloads, and label content are ignored; disabled means none; RPC means none; session replacement calls `reset`; shutdown calls `dispose`; stale callbacks after either boundary do nothing.
 - [ ] Run `pnpm vitest run tests/tui/command-router.test.ts tests/index.test.ts`; expect the new cases to fail.
 - [ ] Add `NotificationCommandAction` and the `notifications` variant to the existing router. Parse the exact token grammar from Public design before falling through to generic unknown input. Do not create a second command registration or accept aliases.

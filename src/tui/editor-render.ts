@@ -23,8 +23,7 @@ const MIN_DESCRIPTION_WIDTH = 12;
 const SHELL_TITLE = "Configure Status Line";
 const SHELL_SUBTITLE = "Select which items to display in the status line.";
 const SHELL_PLACEHOLDER = "Type to search";
-const HELP_BASE =
-  "Toggle: Space  •  Reorder: ← / →  •  Save: Enter  •  Cancel: Esc";
+const HELP_BASE = "Toggle: Space  •  Reorder: ← / →  •  Save: Enter  •  Cancel: Esc";
 const HELP_SEARCHING =
   "Toggle: Space  •  Reorder: disabled while search is active  •  Save: Enter  •  Cancel: Esc";
 
@@ -34,11 +33,7 @@ type RenderRow =
   | { type: "hint"; text: string }
   | { type: "interactive"; row: InteractiveRow; interactiveIndex: number };
 
-function styleSelected(
-  text: string,
-  theme: StatusLineTheme,
-  selected: boolean,
-): string {
+function styleSelected(text: string, theme: StatusLineTheme, selected: boolean): string {
   return selected ? theme.fg("accent", theme.bold(text)) : text;
 }
 
@@ -59,10 +54,7 @@ function renderRowLine(
   const prefixRaw = `${markerRaw} ${row.checkbox} `;
   const prefixWidth = visibleWidth(prefixRaw);
   const alignedMinWidth =
-    prefixWidth +
-    LABEL_COLUMN_WIDTH +
-    LAYOUT_GAP.length +
-    MIN_DESCRIPTION_WIDTH;
+    prefixWidth + LABEL_COLUMN_WIDTH + LAYOUT_GAP.length + MIN_DESCRIPTION_WIDTH;
 
   const checkbox = styleSelected(row.checkbox, theme, row.selected);
 
@@ -71,10 +63,7 @@ function renderRowLine(
   if (width >= alignedMinWidth) {
     const labelFitted = truncateToWidth(row.labelWithOrder, LABEL_COLUMN_WIDTH);
     const labelPadded = labelFitted.padEnd(LABEL_COLUMN_WIDTH);
-    const descWidth = Math.max(
-      1,
-      width - prefixWidth - LABEL_COLUMN_WIDTH - LAYOUT_GAP.length,
-    );
+    const descWidth = Math.max(1, width - prefixWidth - LABEL_COLUMN_WIDTH - LAYOUT_GAP.length);
     const desc = truncateToWidth(row.description, descWidth);
     const label = styleSelected(labelPadded, theme, row.selected);
     return `${marker} ${checkbox} ${label}${LAYOUT_GAP}${theme.dim(desc)}`;
@@ -83,10 +72,7 @@ function renderRowLine(
   const separator = " - ";
   const remainingWidth = width - prefixWidth;
   if (remainingWidth <= separator.length + 1) {
-    const label = truncateToWidth(
-      row.labelWithOrder,
-      Math.max(0, width - prefixWidth),
-    );
+    const label = truncateToWidth(row.labelWithOrder, Math.max(0, width - prefixWidth));
     return truncateToWidth(`${markerRaw} ${row.checkbox} ${label}`, width);
   }
 
@@ -99,26 +85,15 @@ function renderRowLine(
   return `${marker} ${checkbox} ${label}${separator}${theme.dim(desc)}`;
 }
 
-function renderSectionHeader(
-  text: string,
-  width: number,
-  theme: StatusLineTheme,
-): string {
+function renderSectionHeader(text: string, width: number, theme: StatusLineTheme): string {
   return truncateToWidth(theme.dim(text), width);
 }
 
 function renderDivider(width: number, theme: StatusLineTheme): string {
-  return truncateToWidth(
-    theme.fg("borderMuted", "─".repeat(Math.max(1, width))),
-    width,
-  );
+  return truncateToWidth(theme.fg("borderMuted", "─".repeat(Math.max(1, width))), width);
 }
 
-function renderHint(
-  text: string,
-  width: number,
-  theme: StatusLineTheme,
-): string {
+function renderHint(text: string, width: number, theme: StatusLineTheme): string {
   return truncateToWidth(theme.dim(text), width);
 }
 
@@ -133,12 +108,10 @@ function getRenderRows(state: EditorState): RenderRow[] {
   }
 
   const segmentRows = filtered.filter(
-    (row): row is Extract<InteractiveRow, { type: "segment" }> =>
-      row.type === "segment",
+    (row): row is Extract<InteractiveRow, { type: "segment" }> => row.type === "segment",
   );
   const extensionRows = filtered.filter(
-    (row): row is Extract<InteractiveRow, { type: "status" }> =>
-      row.type === "status",
+    (row): row is Extract<InteractiveRow, { type: "status" }> => row.type === "status",
   );
 
   const renderRows: RenderRow[] = [];
@@ -186,9 +159,7 @@ export function renderEditor(
   );
 
   const lines: string[] = [];
-  lines.push(
-    truncateToWidth(theme.fg("accent", theme.bold(SHELL_TITLE)), width),
-  );
+  lines.push(truncateToWidth(theme.fg("accent", theme.bold(SHELL_TITLE)), width));
   lines.push(truncateToWidth(theme.dim(SHELL_SUBTITLE), width));
   lines.push(truncateToWidth("", width));
   lines.push(truncateToWidth(theme.dim(SHELL_PLACEHOLDER), width));
@@ -247,11 +218,6 @@ export function renderEditor(
 
   lines.push(truncateToWidth("", width));
   lines.push(truncateToWidth(preview, width));
-  lines.push(
-    truncateToWidth(
-      theme.dim(state.query ? HELP_SEARCHING : HELP_BASE),
-      width,
-    ),
-  );
+  lines.push(truncateToWidth(theme.dim(state.query ? HELP_SEARCHING : HELP_BASE), width));
   return lines;
 }

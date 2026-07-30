@@ -21,10 +21,7 @@ export function abbreviateHomeDir(cwd: string, home = homedir()): string {
 export function findProjectRootLabel(cwd: string): string | null {
   let current = cwd;
   while (true) {
-    if (
-      existsSync(join(current, ".git")) ||
-      existsSync(join(current, ".pi/settings.json"))
-    ) {
+    if (existsSync(join(current, ".git")) || existsSync(join(current, ".pi/settings.json"))) {
       const base = basename(current);
       return base || current;
     }

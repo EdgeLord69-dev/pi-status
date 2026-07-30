@@ -48,8 +48,8 @@ Changes:
 
 - Use `ctx.mode === "tui"` for custom TUI behavior.
 - Initialize reasoning level from Pi state.
-- Resolve configuration through `getAgentDir` and `CONFIG_DIR_NAME`.
-- Ignore untrusted project configuration.
+- Resolve configuration through `getAgentDir()` into the extension-owned global file.
+- Ignore Pi-owned global and project `settings.json` configuration.
 - Align CI with the declared Node `>=24.15.0` baseline.
 - Add formatting checks and explicit tarball-content verification.
 - Remove duplicated formatter compatibility code and redundant tests only after confirming no runtime callers.
@@ -147,7 +147,7 @@ For each priority:
    - `pnpm check`
    - Package-content verification
 4. Test footer rendering across narrow, medium, and wide terminal widths.
-5. Test TUI, RPC, untrusted-project, session-switch, and shutdown behavior.
+5. Test TUI, RPC, extension-config reload, session-switch, and shutdown behavior.
 6. Test sidebar installation, resizing, restoration, incompatible-host fallback, and repeated cleanup.
 7. Test stale Workspace Pulse results and nonfatal notification failures.
 8. Verify package contents and workflows under Node `24.15.0` or newer.
