@@ -46,6 +46,19 @@ describe("renderEditor", () => {
     expect(text).toContain("Tab/Shift+Tab");
   });
 
+  it("labels telemetry choices once", () => {
+    const text = render(200).join("\n");
+    for (const label of [
+      "Cache Read Tokens",
+      "Cache Write Tokens",
+      "Cache Hit",
+      "Session Cost",
+      "Access Type",
+    ]) {
+      expect(text.match(new RegExp(label, "g"))).toHaveLength(1);
+    }
+  });
+
   it("renders every footer preview row without exceeding width", () => {
     const lines = render(20);
     expect(lines).toContain("/tmp/test");

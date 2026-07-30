@@ -15,6 +15,11 @@ const DROP_TIER = {
   "total-input-tokens": 3,
   "total-output-tokens": 3,
   "session-id": 3,
+  "cache-read-tokens": 3,
+  "cache-write-tokens": 3,
+  "cache-hit": 3,
+  "session-cost": 3,
+  "access-type": 3,
   "extension-status": 3,
 } as const satisfies Readonly<Record<FooterLayoutKey, 0 | 1 | 2 | 3>>;
 

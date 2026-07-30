@@ -91,6 +91,18 @@ describe("fitFooterRow", () => {
     expect(result).toEqual({ left: [item("model")], right: [] });
   });
 
+  it("drops telemetry before the existing model anchor", () => {
+    expect(
+      fitFooterRow(
+        [item("model", "m"), item("cache-read-tokens", "cache")],
+        [],
+        1,
+        " · ",
+        visibleWidth,
+      ),
+    ).toEqual({ left: [item("model", "m")], right: [] });
+  });
+
   it("keeps one oversized item rather than removing every item", () => {
     expect(fitFooterRow([item("model", "oversized")], [], 1, " · ", visibleWidth)).toEqual({
       left: [item("model", "oversized")],

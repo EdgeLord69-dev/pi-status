@@ -24,6 +24,7 @@ import {
   type SegmentFormatter,
 } from "../../src/tui/formatters.ts";
 import type { FooterRenderInput } from "../../src/tui/render.ts";
+import { formatSegment } from "../../src/tui/render.ts";
 
 const identityTheme = { fg: (_c: string, t: string) => t, rainbow: (t: string) => t };
 const markerTheme = {
@@ -43,7 +44,7 @@ function input(overrides?: Partial<FooterRenderInput>): FooterRenderInput {
 }
 
 describe("segmentFormatters registry", () => {
-  it("contains all 14 segment ids", () => {
+  it("contains all 19 segment ids", () => {
     const expectedIds = [
       "model",
       "model-with-reasoning",
@@ -59,17 +60,85 @@ describe("segmentFormatters registry", () => {
       "session-id",
       "five-hour-limit",
       "weekly-limit",
+      "cache-read-tokens",
+      "cache-write-tokens",
+      "cache-hit",
+      "session-cost",
+      "access-type",
     ];
     for (const id of expectedIds) {
       expect(segmentFormatters.has(id as never), `missing formatter for "${id}"`).toBe(true);
     }
-    expect(segmentFormatters.size).toBe(14);
+    expect(segmentFormatters.size).toBe(19);
   });
 
   it("each registry value is a function", () => {
     for (const [id, fn] of segmentFormatters) {
       expect(typeof fn, `formatter for "${id}" is not a function`).toBe("function");
     }
+  });
+});
+
+describe("telemetry segments", () => {
+  const metrics = {
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+    cacheReadTokens: 1_200,
+    cacheWriteTokens: 45,
+    latestCacheHitPercent: 80.4,
+    costUsd: 0.1234,
+  };
+
+  it("formats cache telemetry", () => {
+    expect(
+      formatSegment("cache-read-tokens", input({ sessionMetrics: metrics }), identityTheme),
+    ).toEqual(["Cache read: 1.2k", "dim"]);
+    expect(
+      formatSegment("cache-write-tokens", input({ sessionMetrics: metrics }), identityTheme),
+    ).toEqual(["Cache write: 45", "dim"]);
+    expect(formatSegment("cache-hit", input({ sessionMetrics: metrics }), identityTheme)).toEqual([
+      "Cache hit: 80%",
+      "dim",
+    ]);
+  });
+
+  it("formats observed cost and omits absent telemetry", () => {
+    expect(
+      formatSegment("session-cost", input({ sessionMetrics: metrics }), identityTheme),
+    ).toEqual(["Cost: $0.1234", "dim"]);
+    expect(
+      formatSegment(
+        "session-cost",
+        input({ sessionMetrics: { ...metrics, costUsd: 1.2 } }),
+        identityTheme,
+      ),
+    ).toEqual(["Cost: $1.20", "dim"]);
+    expect(
+      formatSegment(
+        "session-cost",
+        input({ sessionMetrics: { ...metrics, costUsd: undefined } }),
+        identityTheme,
+      ),
+    ).toBeNull();
+    expect(
+      formatSegment(
+        "cache-hit",
+        input({ sessionMetrics: { ...metrics, latestCacheHitPercent: undefined } }),
+        identityTheme,
+      ),
+    ).toBeNull();
+  });
+
+  it("formats known access type and omits absent access type", () => {
+    expect(
+      formatSegment("access-type", input({ accessType: "subscription" }), identityTheme),
+    ).toEqual(["Access: subscription", "dim"]);
+    expect(formatSegment("access-type", input({ accessType: "metered" }), identityTheme)).toEqual([
+      "Access: metered",
+      "dim",
+    ]);
+    expect(formatSegment("access-type", input(), identityTheme)).toBeNull();
   });
 });
 

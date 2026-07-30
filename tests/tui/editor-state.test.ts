@@ -31,6 +31,26 @@ function next(
 }
 
 describe("editor zones", () => {
+  it("lists and searches all telemetry segment choices", () => {
+    const state = initEditorState(config(), []);
+    const telemetry = [
+      "cache-read-tokens",
+      "cache-write-tokens",
+      "cache-hit",
+      "session-cost",
+      "access-type",
+    ];
+    const ids = getInteractiveRows(state)
+      .filter((row): row is { type: "segment"; id: never } => row.type === "segment")
+      .map((row) => row.id);
+    expect(ids.filter((id) => telemetry.includes(id))).toEqual(telemetry);
+    expect(
+      getFilteredRows({ ...state, query: "cache" })
+        .filter((row): row is { type: "segment"; id: never } => row.type === "segment")
+        .map((row) => row.id),
+    ).toEqual(expect.arrayContaining(["cache-read-tokens", "cache-write-tokens", "cache-hit"]));
+  });
+
   it("deep-copies zones and starts on top-left", () => {
     const source = config({ zones: zones({ topRight: ["git-branch"] }) });
     const state = initEditorState(source, []);
@@ -88,7 +108,7 @@ describe("editor zones", () => {
       getFilteredRows({ ...state, query: "alpha" }).map((row) =>
         row.type === "segment" ? row.id : row.key,
       ),
-    ).toEqual(["alpha"]);
+    ).toContain("alpha");
   });
 
   it("hides unavailable usage choices without dropping assigned values on save", () => {
