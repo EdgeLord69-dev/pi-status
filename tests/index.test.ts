@@ -26,6 +26,19 @@ import {
 } from "./helpers.ts";
 
 describe("extension wiring", () => {
+  it("does not call action methods during extension loading", () => {
+    const { pi } = buildPiWithHandlers();
+    const getThinkingLevel = vi.fn(() => {
+      throw new Error(
+        "Extension runtime not initialized. Action methods cannot be called during extension loading.",
+      );
+    });
+    Object.assign(pi, { getThinkingLevel });
+
+    expect(() => createExtension(pi)).not.toThrow();
+    expect(getThinkingLevel).not.toHaveBeenCalled();
+  });
+
   it("uses noTheme for live footer and editor whenever NO_COLOR is present", async () => {
     vi.stubEnv("NO_COLOR", "");
     const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();

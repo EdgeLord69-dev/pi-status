@@ -46,7 +46,7 @@ function isLiveTheme(value: unknown): boolean {
 }
 
 export default function createExtension(pi: ExtensionAPI): void {
-  const runtimeState = createRuntimeStateMachine(loadConfig(), String(pi.getThinkingLevel()));
+  const runtimeState = createRuntimeStateMachine(loadConfig(), "off");
 
   const usageRuntime = createUsageRuntime(pi);
   const footerProviderState: FooterProviderState = {
