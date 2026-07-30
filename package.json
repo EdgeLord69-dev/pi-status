@@ -43,15 +43,15 @@
     "README.md"
   ],
   "dependencies": {
-    "@pi-vault/pi-usage": "^0.5.0"
+    "@pi-vault/pi-usage": "^0.7.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.0",
-    "@earendil-works/pi-coding-agent": "^0.79.10",
-    "@earendil-works/pi-tui": "^0.79.10",
-    "@types/node": "^26.0.0",
+    "@biomejs/biome": "^2.5.6",
+    "@earendil-works/pi-coding-agent": "^0.82.0",
+    "@earendil-works/pi-tui": "^0.82.0",
+    "@types/node": "^26.1.0",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.10"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
