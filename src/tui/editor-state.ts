@@ -262,10 +262,16 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorR
 
   const assignment = findSegmentAssignment(state.zones, current.id);
   if (action.type === "toggle") {
-    if (assignment && assignedCount(state.zones) === 1) return { type: "next", state };
     const zones = cloneZones(state.zones);
-    if (assignment) zones[assignment.zone].splice(assignment.index, 1);
-    else zones[state.activeZone].push(current.id);
+    if (!assignment) {
+      zones[state.activeZone].push(current.id);
+    } else if (assignment.zone === state.activeZone) {
+      if (assignedCount(state.zones) === 1) return { type: "next", state };
+      zones[assignment.zone].splice(assignment.index, 1);
+    } else {
+      zones[assignment.zone].splice(assignment.index, 1);
+      zones[state.activeZone].push(current.id);
+    }
     return { type: "next", state: withClampedIndex({ ...state, zones }) };
   }
 

@@ -219,8 +219,8 @@ export function buildFooterRowsFromResolved(
   theme: ThemeLike,
   width: number,
 ): string[] {
-  return [
-    renderRow(zones.topLeft, zones.topRight, theme, width),
-    renderRow(zones.bottomLeft, zones.bottomRight, theme, width),
-  ].filter((row): row is string => row !== null);
+  const top = renderRow(zones.topLeft, zones.topRight, theme, width);
+  const bottom = renderRow(zones.bottomLeft, zones.bottomRight, theme, width);
+  if (bottom === null) return top === null ? [] : [top];
+  return [top ?? "", bottom];
 }

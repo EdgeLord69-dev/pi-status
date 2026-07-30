@@ -14,7 +14,7 @@ function render(width = 80) {
           topLeft: ["model-with-reasoning"],
           topRight: ["run-state"],
           bottomLeft: ["current-dir"],
-          bottomRight: [],
+          bottomRight: ["git-branch"],
         },
         extensionSegments: { hidden: [] },
       },
@@ -35,11 +35,13 @@ describe("renderEditor", () => {
     expect(text).toContain("BR");
     expect(text).toContain("Model + Reasoning (TL 1)");
     expect(text).toContain("Run State (TR 1)");
+    expect(text).toContain("Current Dir (BL 1)");
+    expect(text).toContain("Git Branch (BR 1)");
   });
 
   it("keeps extension statuses in their fixed section and names zone navigation", () => {
     const text = render(200).join("\n");
-    expect(text).toContain("Extension statuses");
+    expect(text).toContain("Extension statuses (fixed Bottom Right)");
     expect(text).toContain("alpha");
     expect(text).toContain("Tab/Shift+Tab");
   });

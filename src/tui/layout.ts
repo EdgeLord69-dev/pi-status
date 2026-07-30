@@ -1,4 +1,22 @@
-import type { FooterLayoutItem } from "./render.ts";
+import type { FooterLayoutItem, FooterLayoutKey } from "./render.ts";
+
+const DROP_TIER = {
+  "run-state": 0,
+  "context-remaining": 0,
+  "context-used": 0,
+  model: 0,
+  "model-with-reasoning": 0,
+  "project-name": 1,
+  "five-hour-limit": 1,
+  "weekly-limit": 1,
+  "current-dir": 2,
+  "git-branch": 2,
+  "used-tokens": 3,
+  "total-input-tokens": 3,
+  "total-output-tokens": 3,
+  "session-id": 3,
+  "extension-status": 3,
+} as const satisfies Readonly<Record<FooterLayoutKey, 0 | 1 | 2 | 3>>;
 
 export function fitFooterRow<T extends FooterLayoutItem>(
   left: readonly T[],
@@ -17,14 +35,21 @@ export function fitFooterRow<T extends FooterLayoutItem>(
     (fittedLeft.length && fittedRight.length ? 1 : 0);
 
   while (rowWidth() > width && fittedLeft.length + fittedRight.length > 1) {
-    const extensionIndex = fittedRight.findIndex((item) => item.key === "extension-status");
-    if (extensionIndex >= 0) {
-      fittedRight.splice(extensionIndex, 1);
-    } else if (fittedRight.length > 0) {
-      fittedRight.pop();
-    } else {
-      fittedLeft.pop();
+    let dropSide: "left" | "right" = "left";
+    let dropIndex = -1;
+    let dropTier = -1;
+    for (const [side, items] of [
+      ["left", fittedLeft],
+      ["right", fittedRight],
+    ] as const) {
+      for (const [index, item] of items.entries()) {
+        if (DROP_TIER[item.key] < dropTier) continue;
+        dropSide = side;
+        dropIndex = index;
+        dropTier = DROP_TIER[item.key];
+      }
     }
+    (dropSide === "left" ? fittedLeft : fittedRight).splice(dropIndex, 1);
   }
 
   return { left: fittedLeft, right: fittedRight };

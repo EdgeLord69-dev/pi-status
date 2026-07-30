@@ -63,8 +63,20 @@ describe("fitFooterRow", () => {
     expect(result.left).toEqual([item("model", "a", 1), item("current-dir", "b", 2)]);
   });
 
+  it("keeps higher-priority right content over lower-priority left content", () => {
+    const result = fitFooterRow(
+      [item("session-id", "s")],
+      [item("model", "m")],
+      1,
+      " · ",
+      visibleWidth,
+    );
+
+    expect(result).toEqual({ left: [], right: [item("model", "m")] });
+  });
+
   it("drops a later candidate on a priority tie", () => {
-    const result = fitFooterRow([item("model")], [item("current-dir")], 1, " · ", visibleWidth);
+    const result = fitFooterRow([item("model")], [item("run-state")], 1, " · ", visibleWidth);
     expect(result).toEqual({ left: [item("model")], right: [] });
   });
 

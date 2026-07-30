@@ -900,7 +900,7 @@ describe("buildFooterRows", () => {
     ]);
   });
 
-  it("omits empty rows and supports a one-row migration layout", () => {
+  it("preserves an empty top row when only the bottom row has content", () => {
     const rows = buildFooterRowsFromResolved(
       {
         topLeft: [],
@@ -911,7 +911,7 @@ describe("buildFooterRows", () => {
       identityTheme,
       20,
     );
-    expect(rows).toEqual(["dir"]);
+    expect(rows).toEqual(["", "dir"]);
   });
 
   it("fits rows independently and truncates the final ANSI row once", () => {

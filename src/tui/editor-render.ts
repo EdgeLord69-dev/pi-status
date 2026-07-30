@@ -63,7 +63,10 @@ function getRenderRows(state: EditorState): RenderRow[] {
   let interactiveIndex = 0;
   for (const row of segments)
     rows.push({ type: "interactive", row, interactiveIndex: interactiveIndex++ });
-  rows.push({ type: "divider" }, { type: "header", text: "Extension statuses" });
+  rows.push(
+    { type: "divider" },
+    { type: "header", text: "Extension statuses (fixed Bottom Right)" },
+  );
   for (const row of statuses)
     rows.push({ type: "interactive", row, interactiveIndex: interactiveIndex++ });
   if (state.orderedStatuses.length === 0)

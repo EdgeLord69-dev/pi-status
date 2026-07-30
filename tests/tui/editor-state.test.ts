@@ -64,6 +64,49 @@ describe("editor zones", () => {
     expect(ids.slice(0, 4)).toEqual(["git-branch", "current-dir", "model", "run-state"]);
     expect(ids.slice(4, 7)).toEqual(["model-with-reasoning", "project-name", "context-remaining"]);
   });
+
+  it("clamps navigation when selection or search results change", () => {
+    const state = initEditorState(config(), []);
+    const lastIndex = getFilteredRows(state).length - 1;
+    expect(next({ ...state, selectedIndex: lastIndex }, { type: "move_down" }).selectedIndex).toBe(
+      lastIndex,
+    );
+    expect(
+      next({ ...state, selectedIndex: lastIndex, query: "no-match" }, { type: "move_down" })
+        .selectedIndex,
+    ).toBe(0);
+  });
+
+  it("searches segment metadata and extension status keys", () => {
+    const state = initEditorState(config(), ["alpha"]);
+    const segmentMatches = getFilteredRows({ ...state, query: "git" }).map((row) =>
+      row.type === "segment" ? row.id : row.key,
+    );
+    expect(segmentMatches).toContain("git-branch");
+    expect(segmentMatches).not.toContain("run-state");
+    expect(
+      getFilteredRows({ ...state, query: "alpha" }).map((row) =>
+        row.type === "segment" ? row.id : row.key,
+      ),
+    ).toEqual(["alpha"]);
+  });
+
+  it("hides unavailable usage choices without dropping assigned values on save", () => {
+    const state = initEditorState(
+      config({ zones: zones({ topLeft: ["five-hour-limit", "model"] }) }),
+      [],
+      false,
+    );
+
+    expect(state.visibleSegments.map(({ id }) => id)).not.toContain("five-hour-limit");
+    expect(editorReducer(state, { type: "save" })).toEqual({
+      type: "done",
+      config: {
+        zones: zones({ topLeft: ["five-hour-limit", "model"] }),
+        extensionSegments: { hidden: [] },
+      },
+    });
+  });
 });
 
 describe("editor zone actions", () => {
@@ -74,13 +117,28 @@ describe("editor zone actions", () => {
       (row) => row.type === "segment" && row.id === "current-dir",
     );
     state = next({ ...state, selectedIndex: index }, { type: "toggle" });
-    const unassignedIndex = getFilteredRows(state).findIndex(
-      (row) => row.type === "segment" && row.id === "current-dir",
-    );
-    state = next({ ...state, selectedIndex: unassignedIndex }, { type: "toggle" });
 
     expect(state.zones.topRight).toEqual(["current-dir"]);
     expect(state.zones.bottomLeft).toEqual([]);
+  });
+
+  it("moves the sole assigned segment instead of blocking it", () => {
+    const state = initEditorState(
+      config({
+        zones: zones({
+          topLeft: [],
+          bottomLeft: ["current-dir"],
+        }),
+      }),
+      [],
+    );
+    const index = getFilteredRows(state).findIndex(
+      (row) => row.type === "segment" && row.id === "current-dir",
+    );
+    const moved = next({ ...state, selectedIndex: index }, { type: "toggle" });
+
+    expect(moved.zones.topLeft).toEqual(["current-dir"]);
+    expect(moved.zones.bottomLeft).toEqual([]);
   });
 
   it("removes from whichever zone holds it but protects the last assigned segment", () => {
@@ -103,6 +161,17 @@ describe("editor zone actions", () => {
     expect(state.zones.topLeft).toEqual(["git-branch", "model"]);
   });
 
+  it("keeps reorder at zone boundaries and outside the active zone as no-ops", () => {
+    const state = initEditorState(
+      config({ zones: zones({ topLeft: ["model", "git-branch"] }) }),
+      [],
+    );
+    expect(next(state, { type: "reorder_left" }).zones).toEqual(state.zones);
+
+    const topRight = next(state, { type: "next_zone" });
+    expect(next(topRight, { type: "reorder_right" }).zones).toEqual(state.zones);
+  });
+
   it("saves a deep zone config and keeps extension status toggles separate", () => {
     let state = initEditorState(config(), ["alpha"]);
     const statusIndex = getFilteredRows(state).findIndex(
@@ -115,5 +184,28 @@ describe("editor zone actions", () => {
       type: "done",
       config: { zones: zones(), extensionSegments: { hidden: ["alpha"] } },
     });
+  });
+
+  it("shows an initially hidden status and cancels without a config", () => {
+    let state = initEditorState(config({ extensionSegments: { hidden: ["alpha"] } }), ["alpha"]);
+    const statusIndex = getFilteredRows(state).findIndex(
+      (row) => row.type === "status" && row.key === "alpha",
+    );
+    state = next({ ...state, selectedIndex: statusIndex }, { type: "toggle" });
+
+    expect(editorReducer(state, { type: "save" })).toMatchObject({
+      config: { extensionSegments: { hidden: [] } },
+    });
+    expect(editorReducer(state, { type: "cancel" })).toEqual({ type: "done", config: null });
+  });
+
+  it("returns zone arrays that do not alias editor state", () => {
+    const state = initEditorState(config(), []);
+    const result = editorReducer(state, { type: "save" });
+    if (result.type !== "done" || !result.config) throw new Error("expected saved config");
+
+    result.config.zones.topLeft.push("model");
+
+    expect(state.zones.topLeft).toEqual(["model-with-reasoning"]);
   });
 });

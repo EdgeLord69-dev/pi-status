@@ -60,7 +60,7 @@ describe("statusline editor input", () => {
 
     expect(saved.done).toHaveBeenCalledWith({
       zones: {
-        topLeft: ["model-with-reasoning"],
+        topLeft: ["model-with-reasoning", "current-dir"],
         topRight: [],
         bottomLeft: [],
         bottomRight: [],
@@ -72,5 +72,15 @@ describe("statusline editor input", () => {
     const cancelled = editor();
     cancelled.component.handleInput("\x1b");
     expect(cancelled.done).toHaveBeenCalledWith(null);
+  });
+
+  it("searches with printable input and keeps Space reserved for toggling", () => {
+    const { component } = editor();
+    component.handleInput("m");
+    component.handleInput("o");
+    component.handleInput(" ");
+    expect(component.render(200)[4]).toBe("▸ mo");
+    component.handleInput("\x7f");
+    expect(component.render(200)[4]).toBe("▸ m");
   });
 });
