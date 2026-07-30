@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  buildSnapshot,
-  resolveFooter,
-  type SnapshotInput,
-} from "../../src/core/resolve-footer.ts";
+import { buildSnapshot, resolveFooter, type SnapshotInput } from "../../src/core/resolve-footer.ts";
 import type { ThemeLike } from "../../src/tui/render.ts";
 
 function makeInput(overrides?: Partial<SnapshotInput>): SnapshotInput {
@@ -49,23 +45,17 @@ describe("buildSnapshot", () => {
   });
 
   it("derives runState as 'busy' when not idle", () => {
-    const result = buildSnapshot(
-      makeInput({ isIdle: false, hasPendingMessages: false }),
-    );
+    const result = buildSnapshot(makeInput({ isIdle: false, hasPendingMessages: false }));
     expect(result.runState).toBe("busy");
   });
 
   it("derives runState as 'queued' when idle with pending messages", () => {
-    const result = buildSnapshot(
-      makeInput({ isIdle: true, hasPendingMessages: true }),
-    );
+    const result = buildSnapshot(makeInput({ isIdle: true, hasPendingMessages: true }));
     expect(result.runState).toBe("queued");
   });
 
   it("derives runState as 'idle' when idle without pending messages", () => {
-    const result = buildSnapshot(
-      makeInput({ isIdle: true, hasPendingMessages: false }),
-    );
+    const result = buildSnapshot(makeInput({ isIdle: true, hasPendingMessages: false }));
     expect(result.runState).toBe("idle");
   });
 
@@ -240,9 +230,7 @@ describe("resolveFooter", () => {
   });
 
   it("returns empty segments when all resolve to null", () => {
-    const snapshot = buildSnapshot(
-      makeInput({ model: undefined, gitBranch: null }),
-    );
+    const snapshot = buildSnapshot(makeInput({ model: undefined, gitBranch: null }));
     const config = {
       segments: ["model" as const, "git-branch" as const],
       extensionSegments: { hidden: [] },

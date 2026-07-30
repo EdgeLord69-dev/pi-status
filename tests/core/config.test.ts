@@ -29,9 +29,7 @@ describe("config — normalization", () => {
 
   it("normalizes extension segments: dedupes, rejects empty and non-strings", () => {
     expect(normalizeExtensionSegments(undefined)).toEqual({ hidden: [] });
-    expect(
-      normalizeExtensionSegments({ hidden: ["a", "a", "", 1] }),
-    ).toEqual({ hidden: ["a"] });
+    expect(normalizeExtensionSegments({ hidden: ["a", "a", "", 1] })).toEqual({ hidden: ["a"] });
   });
 });
 
@@ -46,10 +44,7 @@ describe("config — loadConfig", () => {
   it("loads from global settings", () => {
     const store = new MemorySettingsStore();
     const paths = getSettingsPaths("/project");
-    store.seed(
-      paths.global,
-      JSON.stringify({ statusLine: { segments: ["git-branch"] } }),
-    );
+    store.seed(paths.global, JSON.stringify({ statusLine: { segments: ["git-branch"] } }));
     const result = loadConfig({ cwd: "/project", store });
     expect(result.source).toBe("settings");
     expect(result.config.segments).toEqual(["git-branch"]);
@@ -58,10 +53,7 @@ describe("config — loadConfig", () => {
   it("merges project settings over global settings", () => {
     const store = new MemorySettingsStore();
     const paths = getSettingsPaths("/project");
-    store.seed(
-      paths.global,
-      JSON.stringify({ statusLine: { segments: ["git-branch"] } }),
-    );
+    store.seed(paths.global, JSON.stringify({ statusLine: { segments: ["git-branch"] } }));
     store.seed(
       paths.project,
       JSON.stringify({
@@ -89,10 +81,7 @@ describe("config — saveConfigToSettings", () => {
   it("saves to project when project has statusLine key", () => {
     const store = new MemorySettingsStore();
     const paths = getSettingsPaths("/project");
-    store.seed(
-      paths.project,
-      JSON.stringify({ statusLine: { segments: ["model"] }, x: 1 }),
-    );
+    store.seed(paths.project, JSON.stringify({ statusLine: { segments: ["model"] }, x: 1 }));
 
     const result = saveConfigToSettings(
       { segments: ["current-dir"], extensionSegments: { hidden: [] } },
@@ -189,9 +178,7 @@ describe("config — FsSettingsStore integration", () => {
         { cwd: project },
       );
 
-      const raw = JSON.parse(
-        readFileSync(join(project, ".pi/settings.json"), "utf8"),
-      );
+      const raw = JSON.parse(readFileSync(join(project, ".pi/settings.json"), "utf8"));
       expect(raw.statusLine.segments).toEqual(["git-branch"]);
     } finally {
       process.env.HOME = oldHome;

@@ -43,10 +43,7 @@ export const DEFAULT_SEGMENTS: readonly StatusLineSegmentId[] = [
   "current-dir",
 ] as const;
 
-export const USAGE_SEGMENTS = new Set<StatusLineSegmentId>([
-  "five-hour-limit",
-  "weekly-limit",
-]);
+export const USAGE_SEGMENTS = new Set<StatusLineSegmentId>(["five-hour-limit", "weekly-limit"]);
 
 export function isKnownSegment(value: string): value is StatusLineSegmentId {
   return (KNOWN_SEGMENTS as readonly string[]).includes(value);

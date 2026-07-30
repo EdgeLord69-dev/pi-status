@@ -22,9 +22,7 @@ export interface RuntimeStateMachine {
   dispose(): void;
 }
 
-export function createRuntimeStateMachine(
-  initialConfig: PiStatusConfig,
-): RuntimeStateMachine {
+export function createRuntimeStateMachine(initialConfig: PiStatusConfig): RuntimeStateMachine {
   let ctx: ExtensionContext | undefined;
   let config = initialConfig;
   let thinkingLevel = "medium";

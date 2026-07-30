@@ -118,10 +118,7 @@ function normalizeFilterList(input: string[]): string[] {
   return out;
 }
 
-export function formatExtensionStatuses(
-  input: FooterRenderInput,
-  theme: ThemeLike,
-): string | null {
+export function formatExtensionStatuses(input: FooterRenderInput, theme: ThemeLike): string | null {
   const entries = [...(input.extensionStatuses?.entries() ?? [])].sort(([a], [b]) =>
     a.localeCompare(b),
   );
@@ -134,10 +131,7 @@ export function formatExtensionStatuses(
     const trimmed = hasAnsi(value)
       ? value
       : value.replace(
-          new RegExp(
-            `^${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:\\s*[:=-]\\s*|\\s+)`,
-            "i",
-          ),
+          new RegExp(`^${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:\\s*[:=-]\\s*|\\s+)`, "i"),
           "",
         );
     return truncateToWidth(trimmed, 18, "...");
@@ -155,11 +149,7 @@ export function formatSegment(
   return segmentFormatters.get(id)?.(input, theme) ?? null;
 }
 
-export function buildFooterLine(
-  input: FooterRenderInput,
-  theme: ThemeLike,
-  width: number,
-): string {
+export function buildFooterLine(input: FooterRenderInput, theme: ThemeLike, width: number): string {
   const segments = input.segments
     .map((id) => formatSegment(id, input, theme))
     .filter((x): x is [string, FooterRenderColor | null] => x !== null)
@@ -176,9 +166,7 @@ export function buildFooterLineFromResolved(
   theme: ThemeLike,
   width: number,
 ): string {
-  const parts = segments.map(({ text, color }) =>
-    color ? theme.fg(color, text) : text,
-  );
+  const parts = segments.map(({ text, color }) => (color ? theme.fg(color, text) : text));
   if (extensionStatusText) parts.push(extensionStatusText);
   const line = parts.join(theme.fg("dim", " · "));
   return truncateToWidth(line, width);

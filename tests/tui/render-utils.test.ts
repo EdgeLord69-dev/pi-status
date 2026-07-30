@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  thinkingLevelColor,
-} from "../../src/tui/render-utils.ts";
+import { thinkingLevelColor } from "../../src/tui/render-utils.ts";
 
 describe("thinkingLevelColor", () => {
   it("returns thinkingOff for level off", () => {

@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  editorReducer,
-  getFilteredRows,
-  initEditorState,
-} from "../../src/tui/editor-state.ts";
+import { editorReducer, getFilteredRows, initEditorState } from "../../src/tui/editor-state.ts";
 
 function makeState(overrides?: {
   segments?: Parameters<typeof initEditorState>[0]["segments"];
@@ -97,9 +93,7 @@ describe("editorReducer — toggle", () => {
     const state = makeState({ segments: ["model"] });
     // move to first disabled segment (after model in the list)
     const list = getFilteredRows(state);
-    const firstDisabledIdx = list.findIndex(
-      (r) => r.type === "segment" && r.id !== "model",
-    );
+    const firstDisabledIdx = list.findIndex((r) => r.type === "segment" && r.id !== "model");
     const positioned = { ...state, selectedIndex: firstDisabledIdx };
     const result = editorReducer(positioned, { type: "toggle" });
     if (result.type === "next") {
@@ -110,9 +104,7 @@ describe("editorReducer — toggle", () => {
   it("toggle hides a shown extension status", () => {
     const state = makeState({ discovered: ["ext-a", "ext-b"] });
     const list = getFilteredRows(state);
-    const statusIdx = list.findIndex(
-      (r) => r.type === "status" && r.key === "ext-a",
-    );
+    const statusIdx = list.findIndex((r) => r.type === "status" && r.key === "ext-a");
     const positioned = { ...state, selectedIndex: statusIdx };
     expect(positioned.shownStatuses.has("ext-a")).toBe(true);
     const result = editorReducer(positioned, { type: "toggle" });
@@ -130,9 +122,7 @@ describe("editorReducer — toggle", () => {
       ["ext-a"],
     );
     const list = getFilteredRows(state);
-    const statusIdx = list.findIndex(
-      (r) => r.type === "status" && r.key === "ext-a",
-    );
+    const statusIdx = list.findIndex((r) => r.type === "status" && r.key === "ext-a");
     const positioned = { ...state, selectedIndex: statusIdx };
     expect(positioned.shownStatuses.has("ext-a")).toBe(false);
     const result = editorReducer(positioned, { type: "toggle" });
@@ -148,11 +138,7 @@ describe("editorReducer — reorder", () => {
     // selectedIndex 0 → model
     const result = editorReducer(state, { type: "reorder_right" });
     if (result.type === "next") {
-      expect(result.state.enabledSegments).toEqual([
-        "current-dir",
-        "model",
-        "git-branch",
-      ]);
+      expect(result.state.enabledSegments).toEqual(["current-dir", "model", "git-branch"]);
     }
   });
 

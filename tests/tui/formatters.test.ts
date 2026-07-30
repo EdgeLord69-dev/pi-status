@@ -26,7 +26,10 @@ import {
 import type { FooterRenderInput } from "../../src/tui/render.ts";
 
 const identityTheme = { fg: (_c: string, t: string) => t, rainbow: (t: string) => t };
-const markerTheme = { fg: (c: string, t: string) => `[${c}:${t}]`, rainbow: (t: string) => `[rainbow:${t}]` };
+const markerTheme = {
+  fg: (c: string, t: string) => `[${c}:${t}]`,
+  rainbow: (t: string) => `[rainbow:${t}]`,
+};
 
 function input(overrides?: Partial<FooterRenderInput>): FooterRenderInput {
   return {
@@ -107,13 +110,17 @@ describe("SegmentFormatter type", () => {
 
 describe("formatModel", () => {
   it("returns model name with accent color", () => {
-    expect(formatModel(input({ model: { id: "x", name: "GPT-5" } }), identityTheme))
-      .toEqual(["GPT-5", "accent"]);
+    expect(formatModel(input({ model: { id: "x", name: "GPT-5" } }), identityTheme)).toEqual([
+      "GPT-5",
+      "accent",
+    ]);
   });
 
   it("falls back to model id when name is missing", () => {
-    expect(formatModel(input({ model: { id: "gpt-5" } }), identityTheme))
-      .toEqual(["gpt-5", "accent"]);
+    expect(formatModel(input({ model: { id: "gpt-5" } }), identityTheme)).toEqual([
+      "gpt-5",
+      "accent",
+    ]);
   });
 
   it("returns null when model is undefined", () => {
@@ -156,20 +163,20 @@ describe("formatModelWithReasoningSegment", () => {
 
 describe("formatRunState", () => {
   it("returns idle with dim color", () => {
-    expect(formatRunState(input({ runState: "idle" }), identityTheme))
-      .toEqual(["idle", "dim"]);
+    expect(formatRunState(input({ runState: "idle" }), identityTheme)).toEqual(["idle", "dim"]);
   });
 
   it("returns busy with accent color", () => {
-    expect(formatRunState(input({ runState: "busy" }), identityTheme))
-      .toEqual(["busy", "accent"]);
+    expect(formatRunState(input({ runState: "busy" }), identityTheme)).toEqual(["busy", "accent"]);
   });
 });
 
 describe("formatGitBranch", () => {
   it("returns branch with warning color", () => {
-    expect(formatGitBranch(input({ gitBranch: "main" }), identityTheme))
-      .toEqual(["main", "warning"]);
+    expect(formatGitBranch(input({ gitBranch: "main" }), identityTheme)).toEqual([
+      "main",
+      "warning",
+    ]);
   });
 
   it("returns null when gitBranch is null", () => {
@@ -246,8 +253,10 @@ describe("formatTotalOutputTokens", () => {
 
 describe("formatSessionId", () => {
   it("truncates to first 8 chars with sid prefix", () => {
-    expect(formatSessionId(input({ sessionId: "abcdef1234567890" }), identityTheme))
-      .toEqual(["sid abcdef12", "dim"]);
+    expect(formatSessionId(input({ sessionId: "abcdef1234567890" }), identityTheme)).toEqual([
+      "sid abcdef12",
+      "dim",
+    ]);
   });
 
   it("returns null when sessionId is undefined", () => {
@@ -301,8 +310,10 @@ describe("formatWeeklyLimit", () => {
 
 describe("formatCurrentDir", () => {
   it("returns cwd with success color", () => {
-    expect(formatCurrentDir(input({ cwd: "/tmp/foo" }), identityTheme))
-      .toEqual(["/tmp/foo", "success"]);
+    expect(formatCurrentDir(input({ cwd: "/tmp/foo" }), identityTheme)).toEqual([
+      "/tmp/foo",
+      "success",
+    ]);
   });
 });
 

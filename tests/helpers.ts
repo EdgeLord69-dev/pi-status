@@ -14,9 +14,7 @@ export function withDefaults(
   };
 }
 
-export function createContext(
-  overrides?: Partial<ExtensionContext>,
-): ExtensionContext {
+export function createContext(overrides?: Partial<ExtensionContext>): ExtensionContext {
   return {
     ui: {
       select: async () => undefined,
@@ -62,6 +60,19 @@ export function createContext(
   } as ExtensionContext;
 }
 
+export function getRegisteredCommand(
+  calls: readonly (readonly unknown[])[],
+  name: string,
+): {
+  handler: (args: string, ctx: ExtensionContext) => Promise<void> | void;
+} {
+  const command = calls.find(([registeredName]) => registeredName === name);
+  if (!command) throw new Error(`Command not registered: ${name}`);
+  return command[1] as {
+    handler: (args: string, ctx: ExtensionContext) => Promise<void> | void;
+  };
+}
+
 export function createBus() {
   const listeners = new Map<string, Array<(payload: unknown) => void>>();
   return {
@@ -81,10 +92,7 @@ export function createBus() {
 }
 
 export function buildPiWithHandlers() {
-  const handlers = new Map<
-    string,
-    Array<(event: unknown, ctx: ExtensionContext) => void>
-  >();
+  const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => void>>();
   const events = createBus();
   const registerCommand = {
     calls: [] as unknown[][],

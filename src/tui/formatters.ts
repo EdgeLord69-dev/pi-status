@@ -21,17 +21,13 @@ export const RATE_ERROR_THRESHOLD = 90;
 export const REMAINING_WARNING_THRESHOLD = 40;
 export const REMAINING_ERROR_THRESHOLD = 20;
 
-function contextUsedColor(
-  percent: number,
-): "success" | "warning" | "error" {
+function contextUsedColor(percent: number): "success" | "warning" | "error" {
   if (percent < CONTEXT_WARNING_THRESHOLD) return "success";
   if (percent < CONTEXT_ERROR_THRESHOLD) return "warning";
   return "error";
 }
 
-function contextRemainingColor(
-  remainingPercent: number,
-): "success" | "warning" | "error" {
+function contextRemainingColor(remainingPercent: number): "success" | "warning" | "error" {
   if (remainingPercent <= REMAINING_ERROR_THRESHOLD) return "error";
   if (remainingPercent <= REMAINING_WARNING_THRESHOLD) return "warning";
   return "success";
@@ -41,14 +37,9 @@ function getRateWindow(
   input: FooterRenderInput,
   key: "fiveHour" | "weekly",
 ): { usedPercent: number } | null {
-  const snapshot =
-    input.usageState?.compatibility?.currentLiveProviderSnapshot;
+  const snapshot = input.usageState?.compatibility?.currentLiveProviderSnapshot;
   const window = snapshot?.windows.find((item) => item.key === key);
-  if (
-    !window ||
-    typeof window.usedPercent !== "number" ||
-    window.unavailableReason
-  ) {
+  if (!window || typeof window.usedPercent !== "number" || window.unavailableReason) {
     return null;
   }
   return { usedPercent: window.usedPercent };
@@ -77,10 +68,7 @@ export function formatModelWithReasoningSegment(
   if (!input.model?.reasoning) return [base, "accent"];
   const abbrev = normalizeThinkingLevel(input.thinkingLevel);
   if (input.thinkingLevel === "xhigh") {
-    return [
-      `${theme.fg("accent", base)} ${theme.rainbow(`[${abbrev}]`)}`,
-      null,
-    ];
+    return [`${theme.fg("accent", base)} ${theme.rainbow(`[${abbrev}]`)}`, null];
   }
   return [
     `${theme.fg("accent", base)} ${theme.fg(thinkingLevelColor(input.thinkingLevel), `[${abbrev}]`)}`,
@@ -157,9 +145,7 @@ export function formatUsedTokens(
   _theme: ThemeLike,
 ): [string, FooterRenderColor | null] | null {
   const value = input.branchTotals?.totalTokens;
-  return value === undefined
-    ? null
-    : [`${formatCompactNumber(value)} tok`, "dim"];
+  return value === undefined ? null : [`${formatCompactNumber(value)} tok`, "dim"];
 }
 
 export function formatTotalInputTokens(
@@ -182,9 +168,7 @@ export function formatSessionId(
   input: FooterRenderInput,
   _theme: ThemeLike,
 ): [string, FooterRenderColor | null] | null {
-  return input.sessionId
-    ? [`sid ${input.sessionId.slice(0, 8)}`, "dim"]
-    : null;
+  return input.sessionId ? [`sid ${input.sessionId.slice(0, 8)}`, "dim"] : null;
 }
 
 export function formatFiveHourLimit(
@@ -193,10 +177,7 @@ export function formatFiveHourLimit(
 ): [string, FooterRenderColor | null] | null {
   const window = getRateWindow(input, "fiveHour");
   if (!window) return null;
-  const remaining = Math.min(
-    100,
-    Math.max(0, 100 - Math.round(window.usedPercent)),
-  );
+  const remaining = Math.min(100, Math.max(0, 100 - Math.round(window.usedPercent)));
   const dim = (s: string) => theme.fg("dim", s);
   return [
     `${dim("5h ")}${theme.fg(rateColor(window.usedPercent), `${remaining}%`)}${dim(" left")}`,
@@ -210,10 +191,7 @@ export function formatWeeklyLimit(
 ): [string, FooterRenderColor | null] | null {
   const window = getRateWindow(input, "weekly");
   if (!window) return null;
-  const remaining = Math.min(
-    100,
-    Math.max(0, 100 - Math.round(window.usedPercent)),
-  );
+  const remaining = Math.min(100, Math.max(0, 100 - Math.round(window.usedPercent)));
   const dim = (s: string) => theme.fg("dim", s);
   return [
     `${dim("wk ")}${theme.fg(rateColor(window.usedPercent), `${remaining}%`)}${dim(" left")}`,
@@ -221,21 +199,19 @@ export function formatWeeklyLimit(
   ];
 }
 
-export const segmentFormatters = new Map<StatusLineSegmentId, SegmentFormatter>(
-  [
-    ["model", formatModel],
-    ["model-with-reasoning", formatModelWithReasoningSegment],
-    ["current-dir", formatCurrentDir],
-    ["project-name", formatProjectName],
-    ["git-branch", formatGitBranch],
-    ["run-state", formatRunState],
-    ["context-used", formatContextUsed],
-    ["context-remaining", formatContextRemaining],
-    ["used-tokens", formatUsedTokens],
-    ["total-input-tokens", formatTotalInputTokens],
-    ["total-output-tokens", formatTotalOutputTokens],
-    ["session-id", formatSessionId],
-    ["five-hour-limit", formatFiveHourLimit],
-    ["weekly-limit", formatWeeklyLimit],
-  ],
-);
+export const segmentFormatters = new Map<StatusLineSegmentId, SegmentFormatter>([
+  ["model", formatModel],
+  ["model-with-reasoning", formatModelWithReasoningSegment],
+  ["current-dir", formatCurrentDir],
+  ["project-name", formatProjectName],
+  ["git-branch", formatGitBranch],
+  ["run-state", formatRunState],
+  ["context-used", formatContextUsed],
+  ["context-remaining", formatContextRemaining],
+  ["used-tokens", formatUsedTokens],
+  ["total-input-tokens", formatTotalInputTokens],
+  ["total-output-tokens", formatTotalOutputTokens],
+  ["session-id", formatSessionId],
+  ["five-hour-limit", formatFiveHourLimit],
+  ["weekly-limit", formatWeeklyLimit],
+]);

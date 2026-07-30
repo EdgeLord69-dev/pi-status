@@ -9,15 +9,13 @@ import {
   buildSetFooterSpy,
   createBus,
   createContext,
+  getRegisteredCommand,
   renderWithFactory,
 } from "./helpers.ts";
 
 describe("extension wiring", () => {
   it("installs footer and registers /statusline", () => {
-    const handlers = new Map<
-      string,
-      Array<(event: unknown, ctx: ExtensionContext) => void>
-    >();
+    const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => void>>();
     let footerFactory:
       | ((...args: unknown[]) => { render: (width: number) => string[] })
       | undefined;
@@ -64,10 +62,7 @@ describe("extension wiring", () => {
   });
 
   it("shows extension statuses on initial render without waiting for onBranchChange", () => {
-    const handlers = new Map<
-      string,
-      Array<(event: unknown, ctx: ExtensionContext) => void>
-    >();
+    const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => void>>();
     let footerFactory:
       | ((...args: unknown[]) => { render: (width: number) => string[] })
       | undefined;
@@ -107,10 +102,7 @@ describe("extension wiring", () => {
   });
 
   it("passes cached extension statuses into /statusline discovery after footer render", async () => {
-    const handlers = new Map<
-      string,
-      Array<(event: unknown, ctx: ExtensionContext) => void>
-    >();
+    const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => void>>();
     let footerFactory:
       | ((...args: unknown[]) => { render: (width: number) => string[] })
       | undefined;
@@ -155,14 +147,7 @@ describe("extension wiring", () => {
 
     expect(footer?.render(200).join("\n")).toContain("ready");
 
-    const commandCall = registerCommand.mock.calls.find(
-      ([name]) => name === "statusline",
-    );
-    const handler = (
-      commandCall?.[1] as {
-        handler: (args: string, ctx: ExtensionContext) => Promise<void>;
-      }
-    ).handler;
+    const { handler } = getRegisteredCommand(registerCommand.mock.calls, "statusline");
 
     await handler("", ctx);
 
@@ -187,10 +172,7 @@ describe("extension wiring", () => {
   });
 
   it("re-renders with updated extension statuses after onBranchChange fires", () => {
-    const handlers = new Map<
-      string,
-      Array<(event: unknown, ctx: ExtensionContext) => void>
-    >();
+    const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => void>>();
     let footerFactory:
       | ((...args: unknown[]) => { render: (width: number) => string[] })
       | undefined;
@@ -242,10 +224,7 @@ describe("extension wiring", () => {
   });
 
   it("does not leak cached extension statuses across sessions before the next footer render", async () => {
-    const handlers = new Map<
-      string,
-      Array<(event: unknown, ctx: ExtensionContext) => void>
-    >();
+    const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => void>>();
     let footerFactory:
       | ((...args: unknown[]) => { render: (width: number) => string[] })
       | undefined;
@@ -294,14 +273,7 @@ describe("extension wiring", () => {
 
     for (const h of handlers.get("session_start") ?? []) h({}, ctxB);
 
-    const commandCall = registerCommand.mock.calls.find(
-      ([name]) => name === "statusline",
-    );
-    const handler = (
-      commandCall?.[1] as {
-        handler: (args: string, ctx: ExtensionContext) => Promise<void>;
-      }
-    ).handler;
+    const { handler } = getRegisteredCommand(registerCommand.mock.calls, "statusline");
 
     await handler("", ctxB);
 
@@ -325,10 +297,7 @@ describe("extension wiring", () => {
   });
 
   it("re-renders the live footer when usage-core updates arrive after startup", () => {
-    const handlers = new Map<
-      string,
-      Array<(event: unknown, ctx: ExtensionContext) => void>
-    >();
+    const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => void>>();
     let footerFactory:
       | ((...args: unknown[]) => { render: (width: number) => string[] })
       | undefined;
@@ -393,10 +362,7 @@ describe("extension wiring", () => {
       "utf8",
     );
 
-    const handlers = new Map<
-      string,
-      Array<(event: unknown, ctx: ExtensionContext) => void>
-    >();
+    const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => void>>();
     let footerFactory:
       | ((...args: unknown[]) => { render: (width: number) => string[] })
       | undefined;
@@ -466,10 +432,7 @@ describe("extension wiring", () => {
   });
 
   it("invokes /statusline via ctx.ui.custom without overlay mode", async () => {
-    const handlers = new Map<
-      string,
-      Array<(event: unknown, ctx: ExtensionContext) => void>
-    >();
+    const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => void>>();
     const events = createBus();
     const registerCommand = vi.fn();
     const customMock = vi.fn(async (..._args: unknown[]) => null);
@@ -494,15 +457,7 @@ describe("extension wiring", () => {
 
     for (const h of handlers.get("session_start") ?? []) h({}, ctx);
 
-    const commandCall = registerCommand.mock.calls.find(
-      ([name]) => name === "statusline",
-    );
-    expect(commandCall).toBeDefined();
-    const handler = (
-      commandCall?.[1] as {
-        handler: (args: string, ctx: ExtensionContext) => Promise<void>;
-      }
-    ).handler;
+    const { handler } = getRegisteredCommand(registerCommand.mock.calls, "statusline");
 
     await handler("", ctx);
 
@@ -522,10 +477,7 @@ describe("extension wiring", () => {
     mkdirSync(join(globalHome, ".pi/agent"), { recursive: true });
     writeFileSync(join(project, ".pi/settings.json"), JSON.stringify({ y: 1 }), "utf8");
 
-    const handlers = new Map<
-      string,
-      Array<(event: unknown, ctx: ExtensionContext) => void>
-    >();
+    const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => void>>();
     const events = createBus();
     const registerCommand = vi.fn();
     const customMock = vi.fn();
@@ -552,43 +504,29 @@ describe("extension wiring", () => {
 
       for (const h of handlers.get("session_start") ?? []) h({}, ctx);
 
-      const commandCall = registerCommand.mock.calls.find(
-        ([name]) => name === "statusline",
-      );
-      const handler = (
-        commandCall?.[1] as {
-          handler: (args: string, ctx: ExtensionContext) => Promise<void>;
-        }
-      ).handler;
+      const { handler } = getRegisteredCommand(registerCommand.mock.calls, "statusline");
 
       let savedResult: unknown;
-      customMock.mockImplementationOnce(
-        async (factory: (...args: unknown[]) => unknown) => {
-          const component = (
-            factory as unknown as (
-              ...args: unknown[]
-            ) => { handleInput: (data: string) => void }
-          )(
-            { requestRender: () => {} },
-            { fg: (_c: string, t: string) => t },
-            {},
-            (result: unknown) => {
-              savedResult = result;
-            },
-          );
-          component.handleInput("\r");
-          return savedResult;
-        },
-      );
+      customMock.mockImplementationOnce(async (factory: (...args: unknown[]) => unknown) => {
+        const component = (
+          factory as unknown as (...args: unknown[]) => { handleInput: (data: string) => void }
+        )(
+          { requestRender: () => {} },
+          { fg: (_c: string, t: string) => t },
+          {},
+          (result: unknown) => {
+            savedResult = result;
+          },
+        );
+        component.handleInput("\r");
+        return savedResult;
+      });
 
       await handler("", ctx);
 
       const saved = JSON.parse(readFileSync(globalSettings, "utf8"));
       expect(saved.statusLine).toBeDefined();
-      expect(saved.statusLine.segments).toEqual([
-        "model-with-reasoning",
-        "current-dir",
-      ]);
+      expect(saved.statusLine.segments).toEqual(["model-with-reasoning", "current-dir"]);
     } finally {
       process.env.HOME = oldHome;
     }
@@ -605,10 +543,7 @@ describe("extension wiring", () => {
     const beforeContent = JSON.stringify({ y: 1 });
     writeFileSync(projectSettings, beforeContent, "utf8");
 
-    const handlers = new Map<
-      string,
-      Array<(event: unknown, ctx: ExtensionContext) => void>
-    >();
+    const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => void>>();
     const events = createBus();
     const registerCommand = vi.fn();
     const customMock = vi.fn();
@@ -635,31 +570,15 @@ describe("extension wiring", () => {
 
       for (const h of handlers.get("session_start") ?? []) h({}, ctx);
 
-      const commandCall = registerCommand.mock.calls.find(
-        ([name]) => name === "statusline",
-      );
-      const handler = (
-        commandCall?.[1] as {
-          handler: (args: string, ctx: ExtensionContext) => Promise<void>;
-        }
-      ).handler;
+      const { handler } = getRegisteredCommand(registerCommand.mock.calls, "statusline");
 
-      customMock.mockImplementationOnce(
-        async (factory: (...args: unknown[]) => unknown) => {
-          const component = (
-            factory as unknown as (
-              ...args: unknown[]
-            ) => { handleInput: (data: string) => void }
-          )(
-            { requestRender: () => {} },
-            { fg: (_c: string, t: string) => t },
-            {},
-            () => {},
-          );
-          component.handleInput("\x1b");
-          return null;
-        },
-      );
+      customMock.mockImplementationOnce(async (factory: (...args: unknown[]) => unknown) => {
+        const component = (
+          factory as unknown as (...args: unknown[]) => { handleInput: (data: string) => void }
+        )({ requestRender: () => {} }, { fg: (_c: string, t: string) => t }, {}, () => {});
+        component.handleInput("\x1b");
+        return null;
+      });
 
       await handler("", ctx);
 
@@ -704,36 +623,26 @@ describe("extension wiring", () => {
       expect(footerSpy.calls).toHaveLength(1);
       expect(renderWithFactory(footerSpy.calls[0])).toContain("GPT-5 [med]");
 
-      const commandCall = registerCommandCalls.find(([name]) => name === "statusline");
-      expect(commandCall).toBeDefined();
-      const handler = (
-        commandCall?.[1] as {
-          handler: (args: string, ctx: ExtensionContext) => Promise<void>;
-        }
-      ).handler;
+      const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
 
-      customMock.mockImplementationOnce(
-        async (factory: (...args: unknown[]) => unknown) => {
-          expect(footerSpy.calls).toHaveLength(2);
-          expect(renderWithFactory(footerSpy.calls[1])).toBe("");
+      customMock.mockImplementationOnce(async (factory: (...args: unknown[]) => unknown) => {
+        expect(footerSpy.calls).toHaveLength(2);
+        expect(renderWithFactory(footerSpy.calls[1])).toBe("");
 
-          let savedResult: unknown = null;
-          const component = (
-            factory as unknown as (
-              ...args: unknown[]
-            ) => { handleInput: (data: string) => void }
-          )(
-            { requestRender: () => {} },
-            { fg: (_c: string, t: string) => t },
-            {},
-            (result: unknown) => {
-              savedResult = result;
-            },
-          );
-          component.handleInput("\r");
-          return savedResult;
-        },
-      );
+        let savedResult: unknown = null;
+        const component = (
+          factory as unknown as (...args: unknown[]) => { handleInput: (data: string) => void }
+        )(
+          { requestRender: () => {} },
+          { fg: (_c: string, t: string) => t },
+          {},
+          (result: unknown) => {
+            savedResult = result;
+          },
+        );
+        component.handleInput("\r");
+        return savedResult;
+      });
 
       await handler("", ctx);
 
@@ -742,10 +651,7 @@ describe("extension wiring", () => {
 
       const saved = JSON.parse(readFileSync(globalSettings, "utf8"));
       expect(saved.statusLine).toBeDefined();
-      expect(saved.statusLine.segments).toEqual([
-        "model-with-reasoning",
-        "current-dir",
-      ]);
+      expect(saved.statusLine.segments).toEqual(["model-with-reasoning", "current-dir"]);
     } finally {
       process.env.HOME = oldHome;
     }
@@ -786,33 +692,18 @@ describe("extension wiring", () => {
       expect(footerSpy.calls).toHaveLength(1);
       expect(renderWithFactory(footerSpy.calls[0])).toContain("GPT-5 [med]");
 
-      const commandCall = registerCommandCalls.find(([name]) => name === "statusline");
-      expect(commandCall).toBeDefined();
-      const handler = (
-        commandCall?.[1] as {
-          handler: (args: string, ctx: ExtensionContext) => Promise<void>;
-        }
-      ).handler;
+      const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
 
-      customMock.mockImplementationOnce(
-        async (factory: (...args: unknown[]) => unknown) => {
-          expect(footerSpy.calls).toHaveLength(2);
-          expect(renderWithFactory(footerSpy.calls[1])).toBe("");
+      customMock.mockImplementationOnce(async (factory: (...args: unknown[]) => unknown) => {
+        expect(footerSpy.calls).toHaveLength(2);
+        expect(renderWithFactory(footerSpy.calls[1])).toBe("");
 
-          const component = (
-            factory as unknown as (
-              ...args: unknown[]
-            ) => { handleInput: (data: string) => void }
-          )(
-            { requestRender: () => {} },
-            { fg: (_c: string, t: string) => t },
-            {},
-            () => {},
-          );
-          component.handleInput("\x1b");
-          return null;
-        },
-      );
+        const component = (
+          factory as unknown as (...args: unknown[]) => { handleInput: (data: string) => void }
+        )({ requestRender: () => {} }, { fg: (_c: string, t: string) => t }, {}, () => {});
+        component.handleInput("\x1b");
+        return null;
+      });
 
       await handler("", ctx);
 
@@ -825,10 +716,7 @@ describe("extension wiring", () => {
   });
 
   it("restores live footer when ctx.ui.custom throws during /statusline", async () => {
-    const handlers = new Map<
-      string,
-      Array<(event: unknown, ctx: ExtensionContext) => void>
-    >();
+    const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => void>>();
     const events = createBus();
     const registerCommand = vi.fn();
     const customMock = vi.fn();
@@ -858,13 +746,7 @@ describe("extension wiring", () => {
     expect(footerSpy.calls).toHaveLength(1);
     expect(renderWithFactory(footerSpy.calls[0])).toContain("GPT-5 [med]");
 
-    const commandCall = registerCommand.mock.calls.find(([name]) => name === "statusline");
-    expect(commandCall).toBeDefined();
-    const handler = (
-      commandCall?.[1] as {
-        handler: (args: string, ctx: ExtensionContext) => Promise<void>;
-      }
-    ).handler;
+    const { handler } = getRegisteredCommand(registerCommand.mock.calls, "statusline");
 
     let customObservedFooterState = -1;
     customMock.mockImplementationOnce(async () => {
@@ -930,35 +812,22 @@ describe("/statusline theme adaptation", () => {
     });
     for (const h of handlers.get("session_start") ?? []) h({}, ctx);
 
-    const commandCall = registerCommandCalls.find(([name]) => name === "statusline");
-    expect(commandCall).toBeDefined();
-    const handler = (
-      commandCall?.[1] as {
-        handler: (args: string, ctx: ExtensionContext) => Promise<void>;
-      }
-    ).handler;
+    const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
 
     let receivedTheme: unknown;
-    customMock.mockImplementationOnce(
-      async (factory: (...args: unknown[]) => unknown) => {
-        const component = (
-          factory as unknown as (...args: unknown[]) => {
-            handleInput: (data: string) => void;
-            render: (width: number) => string[];
-          }
-        )(
-          { requestRender: () => {} },
-          piLikeTheme,
-          {},
-          (result: unknown) => {
-            receivedTheme = result;
-          },
-        );
-        component.render(200);
-        component.handleInput("\x1b");
-        return null;
-      },
-    );
+    customMock.mockImplementationOnce(async (factory: (...args: unknown[]) => unknown) => {
+      const component = (
+        factory as unknown as (...args: unknown[]) => {
+          handleInput: (data: string) => void;
+          render: (width: number) => string[];
+        }
+      )({ requestRender: () => {} }, piLikeTheme, {}, (result: unknown) => {
+        receivedTheme = result;
+      });
+      component.render(200);
+      component.handleInput("\x1b");
+      return null;
+    });
 
     await handler("", ctx);
 
@@ -983,39 +852,26 @@ describe("/statusline theme adaptation", () => {
     });
     for (const h of handlers.get("session_start") ?? []) h({}, ctx);
 
-    const commandCall = registerCommandCalls.find(([name]) => name === "statusline");
-    expect(commandCall).toBeDefined();
-    const handler = (
-      commandCall?.[1] as {
-        handler: (args: string, ctx: ExtensionContext) => Promise<void>;
-      }
-    ).handler;
+    const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
 
     let renderOutput: string[] = [];
     let didThrow = false;
-    customMock.mockImplementationOnce(
-      async (factory: (...args: unknown[]) => unknown) => {
-        const component = (
-          factory as unknown as (...args: unknown[]) => {
-            handleInput: (data: string) => void;
-            render: (width: number) => string[];
-          }
-        )(
-          { requestRender: () => {} },
-          incompleteTheme,
-          {},
-          () => {},
-        );
-        try {
-          renderOutput = component.render(200);
-        } catch (error) {
-          didThrow = true;
-          throw error;
+    customMock.mockImplementationOnce(async (factory: (...args: unknown[]) => unknown) => {
+      const component = (
+        factory as unknown as (...args: unknown[]) => {
+          handleInput: (data: string) => void;
+          render: (width: number) => string[];
         }
-        component.handleInput("\x1b");
-        return null;
-      },
-    );
+      )({ requestRender: () => {} }, incompleteTheme, {}, () => {});
+      try {
+        renderOutput = component.render(200);
+      } catch (error) {
+        didThrow = true;
+        throw error;
+      }
+      component.handleInput("\x1b");
+      return null;
+    });
 
     await expect(handler("", ctx)).resolves.toBeUndefined();
     expect(didThrow).toBe(false);
@@ -1036,38 +892,25 @@ describe("/statusline theme adaptation", () => {
     });
     for (const h of handlers.get("session_start") ?? []) h({}, ctx);
 
-    const commandCall = registerCommandCalls.find(([name]) => name === "statusline");
-    expect(commandCall).toBeDefined();
-    const handler = (
-      commandCall?.[1] as {
-        handler: (args: string, ctx: ExtensionContext) => Promise<void>;
-      }
-    ).handler;
+    const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
 
     let didThrow = false;
-    customMock.mockImplementationOnce(
-      async (factory: (...args: unknown[]) => unknown) => {
-        const component = (
-          factory as unknown as (...args: unknown[]) => {
-            handleInput: (data: string) => void;
-            render: (width: number) => string[];
-          }
-        )(
-          { requestRender: () => {} },
-          incompleteTheme,
-          {},
-          () => {},
-        );
-        try {
-          component.render(200);
-        } catch (error) {
-          didThrow = true;
-          throw error;
+    customMock.mockImplementationOnce(async (factory: (...args: unknown[]) => unknown) => {
+      const component = (
+        factory as unknown as (...args: unknown[]) => {
+          handleInput: (data: string) => void;
+          render: (width: number) => string[];
         }
-        component.handleInput("\x1b");
-        return null;
-      },
-    );
+      )({ requestRender: () => {} }, incompleteTheme, {}, () => {});
+      try {
+        component.render(200);
+      } catch (error) {
+        didThrow = true;
+        throw error;
+      }
+      component.handleInput("\x1b");
+      return null;
+    });
 
     await expect(handler("", ctx)).resolves.toBeUndefined();
     expect(didThrow).toBe(false);
@@ -1084,38 +927,25 @@ describe("/statusline theme adaptation", () => {
     });
     for (const h of handlers.get("session_start") ?? []) h({}, ctx);
 
-    const commandCall = registerCommandCalls.find(([name]) => name === "statusline");
-    expect(commandCall).toBeDefined();
-    const handler = (
-      commandCall?.[1] as {
-        handler: (args: string, ctx: ExtensionContext) => Promise<void>;
-      }
-    ).handler;
+    const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
 
     let didThrow = false;
-    customMock.mockImplementationOnce(
-      async (factory: (...args: unknown[]) => unknown) => {
-        const component = (
-          factory as unknown as (...args: unknown[]) => {
-            handleInput: (data: string) => void;
-            render: (width: number) => string[];
-          }
-        )(
-          { requestRender: () => {} },
-          null,
-          {},
-          () => {},
-        );
-        try {
-          component.render(200);
-        } catch (error) {
-          didThrow = true;
-          throw error;
+    customMock.mockImplementationOnce(async (factory: (...args: unknown[]) => unknown) => {
+      const component = (
+        factory as unknown as (...args: unknown[]) => {
+          handleInput: (data: string) => void;
+          render: (width: number) => string[];
         }
-        component.handleInput("\x1b");
-        return null;
-      },
-    );
+      )({ requestRender: () => {} }, null, {}, () => {});
+      try {
+        component.render(200);
+      } catch (error) {
+        didThrow = true;
+        throw error;
+      }
+      component.handleInput("\x1b");
+      return null;
+    });
 
     await expect(handler("", ctx)).resolves.toBeUndefined();
     expect(didThrow).toBe(false);

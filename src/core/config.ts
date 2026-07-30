@@ -113,10 +113,7 @@ export function normalizeExtensionSegments(input: unknown): ExtensionSegments {
   };
 }
 
-function readJsonObject(
-  path: string,
-  store: SettingsStore,
-): Record<string, unknown> | null {
+function readJsonObject(path: string, store: SettingsStore): Record<string, unknown> | null {
   const content = store.read(path);
   if (content === null) return null;
   try {
@@ -135,10 +132,7 @@ type SettingsFileState =
   | { exists: true; value: Record<string, unknown> }
   | { exists: true; malformed: true };
 
-function readSettingsFileState(
-  path: string,
-  store: SettingsStore,
-): SettingsFileState {
+function readSettingsFileState(path: string, store: SettingsStore): SettingsFileState {
   if (!store.exists(path)) return { exists: false, value: {} };
   const parsed = readJsonObject(path, store);
   if (parsed) return { exists: true, value: parsed };
@@ -173,8 +167,12 @@ function mergePiStatus(globalValue: unknown, projectValue: unknown): unknown {
   const gExt = g.extensionSegments;
   const pExt = p.extensionSegments;
   if (
-    gExt && typeof gExt === "object" && !Array.isArray(gExt) &&
-    pExt && typeof pExt === "object" && !Array.isArray(pExt)
+    gExt &&
+    typeof gExt === "object" &&
+    !Array.isArray(gExt) &&
+    pExt &&
+    typeof pExt === "object" &&
+    !Array.isArray(pExt)
   ) {
     merged.extensionSegments = {
       ...(gExt as Record<string, unknown>),
@@ -185,19 +183,13 @@ function mergePiStatus(globalValue: unknown, projectValue: unknown): unknown {
   return merged;
 }
 
-export function loadConfig(options?: {
-  cwd?: string;
-  store?: SettingsStore;
-}): ConfigLoadResult {
+export function loadConfig(options?: { cwd?: string; store?: SettingsStore }): ConfigLoadResult {
   const cwd = options?.cwd ?? process.cwd();
   const store = options?.store ?? defaultStore;
   const settingsPaths = getSettingsPaths(cwd);
   const globalSettings = readJsonObject(settingsPaths.global, store);
   const projectSettings = readJsonObject(settingsPaths.project, store);
-  const mergedPiStatus = mergePiStatus(
-    globalSettings?.statusLine,
-    projectSettings?.statusLine,
-  );
+  const mergedPiStatus = mergePiStatus(globalSettings?.statusLine, projectSettings?.statusLine);
   if (mergedPiStatus !== undefined) {
     return { config: normalizePiStatus(mergedPiStatus), source: "settings" };
   }
@@ -221,9 +213,7 @@ export function saveConfigToSettings(
   }
 
   const target: "project" | "global" =
-    projectState.exists && Object.hasOwn(projectState.value, "statusLine")
-      ? "project"
-      : "global";
+    projectState.exists && Object.hasOwn(projectState.value, "statusLine") ? "project" : "global";
   const path = target === "project" ? paths.project : paths.global;
 
   const targetState = readSettingsFileState(path, store);

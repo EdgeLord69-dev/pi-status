@@ -1,8 +1,4 @@
-import {
-  Key,
-  matchesKey,
-  type Component,
-} from "@earendil-works/pi-tui";
+import { Key, matchesKey, type Component } from "@earendil-works/pi-tui";
 import type { PiStatusConfig } from "../shared/types.ts";
 import type { FooterRenderInput } from "./render.ts";
 import type { StatusLineTheme } from "./theme.ts";
@@ -25,11 +21,7 @@ export function createStatusLineEditor(options: {
   requestRender: () => void;
   usageAvailable?: boolean;
 }): Component {
-  let state = initEditorState(
-    options.config,
-    options.discoveredStatuses,
-    options.usageAvailable,
-  );
+  let state = initEditorState(options.config, options.discoveredStatuses, options.usageAvailable);
 
   function dispatch(action: EditorAction): void {
     const result = editorReducer(state, action);
@@ -49,14 +41,10 @@ export function createStatusLineEditor(options: {
       if (matchesKey(data, Key.up)) return void dispatch({ type: "move_up" });
       if (matchesKey(data, Key.down)) return void dispatch({ type: "move_down" });
       if (matchesKey(data, Key.space)) return void dispatch({ type: "toggle" });
-      if (matchesKey(data, Key.left))
-        return void dispatch({ type: "reorder_left" });
-      if (matchesKey(data, Key.right))
-        return void dispatch({ type: "reorder_right" });
-      if (matchesKey(data, Key.backspace))
-        return void dispatch({ type: "backspace" });
-      if (/^[\x21-\x7E]$/.test(data))
-        return void dispatch({ type: "type_char", char: data });
+      if (matchesKey(data, Key.left)) return void dispatch({ type: "reorder_left" });
+      if (matchesKey(data, Key.right)) return void dispatch({ type: "reorder_right" });
+      if (matchesKey(data, Key.backspace)) return void dispatch({ type: "backspace" });
+      if (/^[\x21-\x7E]$/.test(data)) return void dispatch({ type: "type_char", char: data });
     },
     render(width: number): string[] {
       return renderEditor(state, options.previewInput, options.theme, width);
