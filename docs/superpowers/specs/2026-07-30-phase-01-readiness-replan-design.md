@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Revise the Phase 1 compatibility-foundation implementation plan so an agent can execute it safely from the current branch. The revised plan keeps the approved Phase 1 outcome: correct Pi lifecycle, configuration, and release compatibility without changing footer text, `/statusline` behavior in TUI mode, configuration schema, or persistence ownership.
+Revise the Phase 1 compatibility-foundation implementation plan so an agent can execute it safely from the current branch. The revised plan keeps the approved lifecycle and release outcomes while moving pi-status configuration out of Pi-owned `settings.json` files and into the extension-owned global file `<getAgentDir()>/extensions/statusline.json`. Footer text and `/statusline` behavior in TUI mode remain unchanged.
 
 The implementation baseline is exact `@earendil-works/pi-coding-agent@0.82.0` and `@earendil-works/pi-tui@0.82.0`. Runtime peer dependencies remain `"*"`.
 
@@ -13,20 +13,20 @@ The current plan is not ready to implement for these reasons:
 1. `pnpm typecheck` and all 301 tests pass, but Biome lint fails on 12 unsafe optional-chain expressions in `tests/index.test.ts`.
 2. The installed Biome version is 2.5.6 while `biome.json` names the 2.5.6 schema. Biome 2.5.6 still reports the same 12 lint failures.
 3. A repository-wide Biome format check reports 22 files that need formatting. The current plan does not list those mechanical changes, yet its final gate requires a clean format check and restricts the diff to listed files.
-4. Tests that replace `HOME` will stop isolating settings after production code adopts `getAgentDir()`. `PI_CODING_AGENT_DIR` takes precedence and is set in the agent environment, so those tests could access the user's real settings.
+4. Tests that replace `HOME` will stop isolating configuration after production code adopts `getAgentDir()`. `PI_CODING_AGENT_DIR` takes precedence and is set in the agent environment, so those tests could access the user's real configuration.
 5. The RPC lifecycle example checks only `setFooter` during session startup. It does not invoke `/statusline`, so it cannot prove that RPC avoids `ctx.ui.custom()`.
-6. The proposed `configDirName` test injection adds an unnecessary compatibility surface. Pi, Pi Atelier, and Pi Powerbar use the exported `CONFIG_DIR_NAME` directly.
+6. The current settings resolver couples pi-status to Pi-owned global and project files, including merge, ownership, and trust behavior that is unnecessary for a global extension-owned file.
 7. The current lockfile resolves Pi 0.82.1 through caret ranges, while the approved minimum development baseline is exact 0.82.0.
 
 ## Reference decisions
 
 The revised plan follows these patterns from the supplied repositories:
 
-- Pi exports `CONFIG_DIR_NAME` and `getAgentDir()` and documents `ctx.mode === "tui"` for component factories and custom terminal UI.
+- Pi exports `getAgentDir()`, which honors `PI_CODING_AGENT_DIR`, and documents `ctx.mode === "tui"` for component factories and custom terminal UI.
 - Pi exposes the current thinking level through both `ctx.thinkingLevel` and `pi.getThinkingLevel()`. The `thinking_level_select` event carries the selected value as `event.level`.
 - Pi reports `ctx.hasUI === true` in RPC mode, but `setFooter()` is unsupported and `custom()` returns `undefined`. TUI-only behavior must therefore use `ctx.mode`, not `ctx.hasUI`.
-- Pi Atelier gates its footer and menu with `ctx.mode === "tui"`, uses `ctx.isProjectTrusted()` before project configuration reads, and derives paths from `getAgentDir()` and `CONFIG_DIR_NAME`.
-- Pi Powerbar derives paths from the same two exports and reads the initial thinking level from `pi.getThinkingLevel()`, then uses `event.level` for thinking-level changes.
+- Pi Atelier and Pi Powerbar derive user-level extension paths from `getAgentDir()`. The dedicated pi-status file removes the need to inspect project trust or Pi's settings schema.
+- Pi Powerbar reads the initial thinking level from `pi.getThinkingLevel()`, then uses `event.level` for thinking-level changes.
 - Pi Atelier's package verifier uses `npm pack --dry-run --json` with Node built-ins. Phase 1 can reuse this small pattern with the pi-status allowlist.
 
 ## Revised task structure
@@ -60,29 +60,37 @@ The lifecycle tests must exercise:
 - RPC `/statusline` invocation without `custom()` or footer access.
 - Existing TUI editor restoration, session restart, and shutdown behavior.
 
-### Task 2: correct settings paths and trust
+### Task 2: move configuration into an extension-owned file
 
-Keep one synchronous settings resolver in `src/core/config.ts`.
+Keep one synchronous config resolver in `src/core/config.ts`.
 
 ```ts
-export function getSettingsPaths(
-  cwd: string = process.cwd(),
-  agentDir: string = getAgentDir(),
-): { global: string; project: string };
+export function getConfigPath(agentDir: string = getAgentDir()): string;
+export function loadConfig(options?: {
+  agentDir?: string;
+  store?: ConfigStore;
+}): PiStatusConfig;
+export function saveConfig(
+  config: PiStatusConfig,
+  options?: { agentDir?: string; store?: ConfigStore },
+): { path: string };
 ```
 
-`loadConfig()` and `saveConfigToSettings()` may accept `agentDir` for deterministic tests. They must use the exported `CONFIG_DIR_NAME` directly rather than adding a `configDirName` option.
+The only path is `<agentDir>/extensions/statusline.json`. The file contains `PiStatusConfig` directly, without a `statusLine` wrapper.
 
-`projectTrusted` defaults to `false` at the configuration boundary. A trusted session passes `ctx.isProjectTrusted()` explicitly. The invariants are:
+The invariants are:
 
-1. Global settings always use `<agentDir>/settings.json`.
-2. Trusted project settings use `<cwd>/<CONFIG_DIR_NAME>/settings.json` and preserve the existing merge and ownership rules.
-3. Untrusted project settings are never read, parsed, or selected for writes.
-4. A malformed trusted project settings file still blocks target selection.
-5. A malformed untrusted project settings file has no effect because production never opens it.
-6. Existing normalization and global write-error behavior remain unchanged.
+1. Pi-owned global and project `settings.json` files are never read or written.
+2. No project override, merge, ownership selection, trust check, or legacy fallback remains.
+3. A missing file loads a fresh copy of the defaults.
+4. Valid objects retain the existing normalization behavior.
+5. Malformed JSON or a non-object root loads defaults, but a save refuses to overwrite that malformed file.
+6. Saves create the `extensions` directory when needed and atomically replace `statusline.json`.
+7. Filesystem errors propagate, and runtime state changes only after a successful save.
 
-Tests that use the real filesystem must set `PI_CODING_AGENT_DIR` to a temporary directory and restore its prior value in `finally`. They must not rely on changing `HOME`. In-memory tests must record read paths so they can prove that the project file was not accessed.
+Remove `getSettingsPaths()`, `saveConfigToSettings()`, the settings merge and target-selection code, and the unused config-source result wrapper. Rename `SettingsStore` and its filesystem and memory implementations to `ConfigStore`, `FsConfigStore`, and `MemoryConfigStore`.
+
+Tests must assert the exact resolved path and direct JSON shape. They must also seed legacy global and project `settings.json` files and prove that neither is accessed. Real-filesystem tests must isolate `PI_CODING_AGENT_DIR` in a temporary directory and restore its prior value in `finally`; changing `HOME` is insufficient.
 
 ### Task 3: make release gates reproducible
 
@@ -101,15 +109,16 @@ The package verifier must require `src/index.ts`, `README.md`, `CHANGELOG.md`, a
 The remaining plan structure stays intact:
 
 - Inventory formatter and render utility compatibility exports without deleting them.
-- Update README and the Unreleased changelog section with host-derived paths, project trust behavior, lifecycle compatibility, and release gates.
+- Update README and the Unreleased changelog section with the extension-owned global config path, direct file shape, hard cutover from `settings.json`, lifecycle compatibility, and release gates.
+- Correct known-stale config API and ownership instructions in the existing Phase 2, 6, and 8 plans so they build on `saveConfig()` and the single global file.
 - Run focused lifecycle, configuration, runtime-state, formatter, render utility, and render tests.
 - Run the full Phase 1 gate and review the diff from the recorded `PHASE_BASE`.
 
-The final file review must permit Task 0's listed formatting changes but reject unrelated feature work, sidebar code, private renderer access, configuration migration, or compatibility-export deletion.
+The final file review must permit Task 0's listed formatting changes and the named downstream plan corrections but reject unrelated feature work, sidebar code, private renderer access, legacy migration machinery, or compatibility-export deletion.
 
 ## Error behavior
 
-Phase 1 preserves existing parse and normalization behavior. Trusted malformed files continue to produce the current safe write failures. Untrusted project files produce no parse warning or write failure because they are not opened.
+Phase 1 preserves existing normalization behavior. Missing or malformed extension config loads defaults. A later save refuses to overwrite malformed JSON or a non-object root, preventing silent data loss. The hard cutover means legacy `statusLine` values in global or project `settings.json` are ignored and left untouched.
 
 RPC and other non-TUI modes do not install, replace, restore, or clear custom footers. `/statusline` returns after a warning without opening its editor. TUI behavior remains unchanged.
 
@@ -121,18 +130,19 @@ The revised plan must require these checks in order:
 
 1. Task 0 baseline: Biome format check, lint, typecheck, and all tests.
 2. Focused lifecycle and runtime-state tests after Task 1.
-3. Focused configuration and extension tests after Task 2.
+3. Focused configuration and extension tests after Task 2, including exact path, direct schema, hard-cutover, malformed-file, atomic-save, reload, and editor-save coverage.
 4. Package and workflow-equivalent checks after Task 3.
 5. Compatibility utility tests after the inventory task.
 6. Documentation literal checks after README and changelog updates.
 7. Final Node version, format, lint, typecheck, full tests, combined check, dry-run pack, package verification, `git diff --check`, and phase diff review.
 
-Phase 1 is ready for Phase 2 only when every automated check passes on Node 24.15.0 or newer and the lifecycle/configuration matrix proves TUI, RPC, trusted-project, untrusted-project, restart, and shutdown behavior.
+Phase 1 is ready for Phase 2 only when every automated check passes on Node 24.15.0 or newer and the lifecycle/configuration matrix proves TUI, RPC, extension-owned path resolution, hard cutover, restart, and shutdown behavior.
 
 ## Non-goals
 
 - No footer layout or text changes.
-- No configuration schema migration.
+- No automatic or read-only migration from Pi's `settings.json`.
+- No project-specific statusline configuration.
 - No new footer segments, commands, telemetry, notifications, presets, workspace inspection, sidebar, or private renderer access.
 - No compatibility-export deletion.
-- No reusable configuration abstraction beyond the existing settings functions.
+- No generalized config backend or migration layer beyond the small file-store seam used for deterministic tests.
