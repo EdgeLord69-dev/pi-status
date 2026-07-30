@@ -5,8 +5,8 @@ import { createRuntimeStateMachine } from "./core/runtime-state.ts";
 import { createUsageRuntime } from "./core/usage-runtime.ts";
 import type { PiStatusConfig } from "./shared/types.ts";
 import { createStatusLineEditor } from "./tui/editor.ts";
-import { buildFooterLineFromResolved } from "./tui/render.ts";
-import { fromPiTheme, noTheme, type StatusLineTheme } from "./tui/theme.ts";
+import { buildFooterRowsFromResolved } from "./tui/render.ts";
+import { fromPiTheme, noColorRequested, noTheme, type StatusLineTheme } from "./tui/theme.ts";
 
 type FooterComponent = {
   render: (width: number) => string[];
@@ -90,7 +90,7 @@ export default function createExtension(pi: ExtensionAPI): void {
 
           const snap = runtimeState.snapshot();
           const activeCtx = snap.ctx ?? ctx;
-          const statusTheme = fromPiTheme(theme);
+          const statusTheme = noColorRequested() ? noTheme : fromPiTheme(theme);
           const snapshot = buildSnapshot({
             model: activeCtx.model,
             cwd: activeCtx.cwd,
@@ -104,18 +104,11 @@ export default function createExtension(pi: ExtensionAPI): void {
             usageState: usageRuntime.getState(),
             extensionStatuses: footerProviderState.extensionStatuses,
           });
-          const { segments, extensionStatusText } = resolveFooter(
-            snapshot,
-            snap.config,
-            statusTheme,
-          );
-          const line = buildFooterLineFromResolved(
-            segments,
-            extensionStatusText,
+          return buildFooterRowsFromResolved(
+            resolveFooter(snapshot, snap.config, statusTheme),
             statusTheme,
             width,
           );
-          return [line];
         },
       };
     };
@@ -145,7 +138,11 @@ export default function createExtension(pi: ExtensionAPI): void {
         result = await ctx.ui.custom<PiStatusConfig | null>((tui, theme, _keys, done) => {
           const editorSnap = runtimeState.snapshot();
           const activeCtx = editorSnap.ctx ?? ctx;
-          const menuTheme: StatusLineTheme = isLiveTheme(theme) ? fromPiTheme(theme) : noTheme;
+          const menuTheme: StatusLineTheme = noColorRequested()
+            ? noTheme
+            : isLiveTheme(theme)
+              ? fromPiTheme(theme)
+              : noTheme;
           const snapshot = buildSnapshot({
             model: activeCtx.model,
             cwd: activeCtx.cwd,

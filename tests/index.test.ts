@@ -26,6 +26,38 @@ import {
 } from "./helpers.ts";
 
 describe("extension wiring", () => {
+  it("uses noTheme for live footer and editor whenever NO_COLOR is present", async () => {
+    vi.stubEnv("NO_COLOR", "");
+    const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
+    let footerFactory: ((...args: unknown[]) => { render(width: number): string[] }) | undefined;
+    const custom = vi.fn(
+      async (factory: (...args: unknown[]) => { render(width: number): string[] }) => {
+        factory({ requestRender() {} }, { fg, bold }, {}, () => {}).render(100);
+        return null;
+      },
+    );
+    const fg = vi.fn((_color: string, text: string) => `<${text}>`);
+    const bold = vi.fn((text: string) => `**${text}**`);
+    createExtension(pi);
+    const ctx = createContext({
+      ui: {
+        ...createContext().ui,
+        custom: custom as unknown as ExtensionContext["ui"]["custom"],
+        setFooter: (value: unknown) => (footerFactory = value as never),
+      },
+    });
+    for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
+    footerFactory?.(
+      {},
+      { fg, bold },
+      { getGitBranch: () => null, getExtensionStatuses: () => new Map() },
+    ).render(100);
+    await getRegisteredCommand(registerCommandCalls, "statusline").handler("", ctx);
+
+    expect(fg).not.toHaveBeenCalled();
+    expect(bold).not.toHaveBeenCalled();
+  });
+
   it("installs footer and registers /statusline", () => {
     const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => void>>();
     let footerFactory:
@@ -365,7 +397,10 @@ describe("extension wiring", () => {
     mkdirSync(join(project, ".git"), { recursive: true });
     writeFileSync(
       configPath,
-      JSON.stringify({ segments: ["model"], extensionSegments: { hidden: [] } }),
+      JSON.stringify({
+        zones: { topLeft: ["model"], topRight: [], bottomLeft: [], bottomRight: [] },
+        extensionSegments: { hidden: [] },
+      }),
       "utf8",
     );
 
@@ -399,7 +434,10 @@ describe("extension wiring", () => {
 
     writeFileSync(
       configPath,
-      JSON.stringify({ segments: ["project-name"], extensionSegments: { hidden: [] } }),
+      JSON.stringify({
+        zones: { topLeft: ["project-name"], topRight: [], bottomLeft: [], bottomRight: [] },
+        extensionSegments: { hidden: [] },
+      }),
       "utf8",
     );
     for (const h of handlers.get("session_tree") ?? []) h({}, ctx);
@@ -474,7 +512,12 @@ describe("extension wiring", () => {
     expect(
       JSON.parse(readFileSync(join(agentDir, "extensions", "statusline.json"), "utf8")),
     ).toEqual({
-      segments: ["model-with-reasoning", "current-dir"],
+      zones: {
+        topLeft: ["model-with-reasoning"],
+        topRight: [],
+        bottomLeft: ["current-dir"],
+        bottomRight: [],
+      },
       extensionSegments: { hidden: [] },
     });
   });
@@ -482,7 +525,7 @@ describe("extension wiring", () => {
   it("does not persist /statusline result when user cancels", async () => {
     const path = join(agentDir, "extensions", "statusline.json");
     const beforeContent = JSON.stringify({
-      segments: ["model"],
+      zones: { topLeft: ["model"], topRight: [], bottomLeft: [], bottomRight: [] },
       extensionSegments: { hidden: [] },
     });
     mkdirSync(join(agentDir, "extensions"), { recursive: true });
@@ -510,7 +553,10 @@ describe("extension wiring", () => {
     mkdirSync(join(agentDir, "extensions"), { recursive: true });
     writeFileSync(
       path,
-      JSON.stringify({ segments: ["model"], extensionSegments: { hidden: [] } }),
+      JSON.stringify({
+        zones: { topLeft: ["model"], topRight: [], bottomLeft: [], bottomRight: [] },
+        extensionSegments: { hidden: [] },
+      }),
       "utf8",
     );
     const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
@@ -715,6 +761,7 @@ describe("extension wiring", () => {
 
 describe("/statusline theme adaptation", () => {
   it("wraps a Pi-like theme before creating the editor", async () => {
+    vi.stubEnv("NO_COLOR", undefined);
     const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
     const customMock = vi.fn();
     const fgCalls: Array<[string, string]> = [];

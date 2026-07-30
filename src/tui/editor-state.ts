@@ -1,11 +1,12 @@
-import type { PiStatusConfig, StatusLineSegmentId } from "../shared/types.ts";
-import { isUsageSegment } from "../shared/types.ts";
+import type {
+  PiStatusConfig,
+  StatusLineSegmentId,
+  StatusLineZone,
+  StatusLineZones,
+} from "../shared/types.ts";
+import { isUsageSegment, STATUS_LINE_ZONE_ORDER } from "../shared/types.ts";
 
-type SegmentMetadata = {
-  id: StatusLineSegmentId;
-  label: string;
-  description: string;
-};
+type SegmentMetadata = { id: StatusLineSegmentId; label: string; description: string };
 
 const SEGMENT_ORDER: readonly SegmentMetadata[] = [
   { id: "model", label: "Model", description: "Current model name" },
@@ -19,21 +20,13 @@ const SEGMENT_ORDER: readonly SegmentMetadata[] = [
     label: "Project Name",
     description: "Project name (omitted when unavailable)",
   },
-  {
-    id: "current-dir",
-    label: "Current Dir",
-    description: "Current working directory",
-  },
+  { id: "current-dir", label: "Current Dir", description: "Current working directory" },
   {
     id: "git-branch",
     label: "Git Branch",
     description: "Current Git branch (omitted when unavailable)",
   },
-  {
-    id: "run-state",
-    label: "Run State",
-    description: "Pi status (idle, queued, busy)",
-  },
+  { id: "run-state", label: "Run State", description: "Pi status (idle, queued, busy)" },
   {
     id: "context-remaining",
     label: "Context Remaining",
@@ -79,7 +72,8 @@ const SEGMENT_ORDER: readonly SegmentMetadata[] = [
 export const SEGMENT_METADATA = new Map(SEGMENT_ORDER.map((segment) => [segment.id, segment]));
 
 export interface EditorState {
-  enabledSegments: StatusLineSegmentId[];
+  zones: StatusLineZones;
+  activeZone: StatusLineZone;
   visibleSegments: readonly SegmentMetadata[];
   orderedStatuses: string[];
   shownStatuses: Set<string>;
@@ -90,6 +84,8 @@ export interface EditorState {
 export type EditorAction =
   | { type: "move_up" }
   | { type: "move_down" }
+  | { type: "next_zone" }
+  | { type: "previous_zone" }
   | { type: "toggle" }
   | { type: "reorder_left" }
   | { type: "reorder_right" }
@@ -105,14 +101,26 @@ export type EditorResult =
 export type SegmentInteractiveRow = { type: "segment"; id: StatusLineSegmentId };
 export type StatusInteractiveRow = { type: "status"; key: string };
 export type InteractiveRow = SegmentInteractiveRow | StatusInteractiveRow;
+export type SegmentAssignment = { zone: StatusLineZone; index: number };
 
 export function collectHiddenStatuses(input: {
   discoveredKeys: string[];
   shownKeys: Iterable<string>;
 }): string[] {
-  const discovered = [...input.discoveredKeys].sort((a, b) => a.localeCompare(b));
   const shown = new Set(input.shownKeys);
-  return discovered.filter((k) => !shown.has(k));
+  return [...input.discoveredKeys]
+    .sort((a, b) => a.localeCompare(b))
+    .filter((key) => !shown.has(key));
+}
+
+export function findSegmentAssignment(
+  zones: StatusLineZones,
+  id: StatusLineSegmentId,
+): SegmentAssignment | undefined {
+  for (const zone of STATUS_LINE_ZONE_ORDER) {
+    const index = zones[zone].indexOf(id);
+    if (index >= 0) return { zone, index };
+  }
 }
 
 function includesFuzzy(haystack: string, needle: string): boolean {
@@ -124,35 +132,44 @@ function includesFuzzy(haystack: string, needle: string): boolean {
   return j === n.length;
 }
 
+function cloneZones(zones: StatusLineZones): StatusLineZones {
+  return {
+    topLeft: [...zones.topLeft],
+    topRight: [...zones.topRight],
+    bottomLeft: [...zones.bottomLeft],
+    bottomRight: [...zones.bottomRight],
+  };
+}
+
+function assignedCount(zones: StatusLineZones): number {
+  return STATUS_LINE_ZONE_ORDER.reduce((count, zone) => count + zones[zone].length, 0);
+}
+
 export function isEnabledSegment(state: EditorState, id: StatusLineSegmentId): boolean {
-  return state.enabledSegments.includes(id);
+  return findSegmentAssignment(state.zones, id) !== undefined;
 }
 
 export function getInteractiveRows(state: EditorState): InteractiveRow[] {
-  const enabled = state.enabledSegments
-    .filter((id): id is StatusLineSegmentId =>
-      state.visibleSegments.some((segment) => segment.id === id),
-    )
-    .map((id) => ({ type: "segment" as const, id }));
-
-  const disabled = state.visibleSegments
+  const assigned = STATUS_LINE_ZONE_ORDER.flatMap((zone) =>
+    state.zones[zone]
+      .filter((id) => state.visibleSegments.some((segment) => segment.id === id))
+      .map((id) => ({ type: "segment" as const, id })),
+  );
+  const unassigned = state.visibleSegments
     .filter((segment) => !isEnabledSegment(state, segment.id))
     .map((segment) => ({ type: "segment" as const, id: segment.id }));
-
-  const statuses = state.orderedStatuses.map((key) => ({
-    type: "status" as const,
-    key,
-  }));
-
-  return [...enabled, ...disabled, ...statuses];
+  return [
+    ...assigned,
+    ...unassigned,
+    ...state.orderedStatuses.map((key) => ({ type: "status" as const, key })),
+  ];
 }
 
 function rowMatchesQuery(state: EditorState, row: InteractiveRow): boolean {
   if (!state.query) return true;
   if (row.type === "segment") {
     const meta = SEGMENT_METADATA.get(row.id);
-    if (!meta) return false;
-    return includesFuzzy(`${meta.label} ${meta.description}`, state.query);
+    return !!meta && includesFuzzy(`${meta.label} ${meta.description}`, state.query);
   }
   return includesFuzzy(`${row.key} Toggle visibility in the status line`, state.query);
 }
@@ -162,16 +179,17 @@ export function getFilteredRows(state: EditorState): InteractiveRow[] {
 }
 
 function clampIndex(state: EditorState, index: number): number {
-  const list = getFilteredRows(state);
-  if (list.length === 0) return 0;
-  if (index < 0) return 0;
-  if (index >= list.length) return list.length - 1;
-  return index;
+  const length = getFilteredRows(state).length;
+  return length === 0 ? 0 : Math.max(0, Math.min(index, length - 1));
+}
+
+function withClampedIndex(state: EditorState, index = state.selectedIndex): EditorState {
+  return { ...state, selectedIndex: clampIndex(state, index) };
 }
 
 function toConfig(state: EditorState): PiStatusConfig {
   return {
-    segments: state.enabledSegments,
+    zones: cloneZones(state.zones),
     extensionSegments: {
       hidden: collectHiddenStatuses({
         discoveredKeys: state.orderedStatuses,
@@ -187,122 +205,81 @@ export function initEditorState(
   usageAvailable = true,
 ): EditorState {
   const orderedStatuses = [...discoveredStatuses].sort((a, b) => a.localeCompare(b));
-  const visibleSegments = SEGMENT_ORDER.filter(
-    (segment) => usageAvailable || !isUsageSegment(segment.id),
-  );
-  const hiddenSet = new Set(config.extensionSegments.hidden);
-  const shownStatuses = new Set(orderedStatuses.filter((x) => !hiddenSet.has(x)));
-
   return {
-    enabledSegments: [...config.segments],
-    visibleSegments,
+    zones: cloneZones(config.zones),
+    activeZone: "topLeft",
+    visibleSegments: SEGMENT_ORDER.filter(
+      (segment) => usageAvailable || !isUsageSegment(segment.id),
+    ),
     orderedStatuses,
-    shownStatuses,
+    shownStatuses: new Set(
+      orderedStatuses.filter((key) => !config.extensionSegments.hidden.includes(key)),
+    ),
     selectedIndex: 0,
     query: "",
   };
 }
 
+function switchZone(state: EditorState, delta: number): EditorState {
+  const current = STATUS_LINE_ZONE_ORDER.indexOf(state.activeZone);
+  const activeZone =
+    STATUS_LINE_ZONE_ORDER[
+      (current + delta + STATUS_LINE_ZONE_ORDER.length) % STATUS_LINE_ZONE_ORDER.length
+    ];
+  return withClampedIndex({ ...state, activeZone });
+}
+
 export function editorReducer(state: EditorState, action: EditorAction): EditorResult {
-  switch (action.type) {
-    case "cancel":
-      return { type: "done", config: null };
-
-    case "save":
-      return { type: "done", config: toConfig(state) };
-
-    case "move_up": {
-      const next = clampIndex(state, state.selectedIndex - 1);
-      return { type: "next", state: { ...state, selectedIndex: next } };
-    }
-
-    case "move_down": {
-      const next = clampIndex(state, state.selectedIndex + 1);
-      return { type: "next", state: { ...state, selectedIndex: next } };
-    }
-
-    case "toggle": {
-      const list = getFilteredRows(state);
-      const idx = clampIndex(state, state.selectedIndex);
-      const current = list[idx];
-      if (!current) return { type: "next", state };
-
-      if (current.type === "segment") {
-        const enabled = isEnabledSegment(state, current.id);
-        const enabledSegments = enabled
-          ? state.enabledSegments.filter((x) => x !== current.id)
-          : [...state.enabledSegments, current.id];
-        const newState = { ...state, enabledSegments, selectedIndex: idx };
-        return {
-          type: "next",
-          state: {
-            ...newState,
-            selectedIndex: clampIndex(newState, idx),
-          },
-        };
-      }
-
-      // status toggle
-      const shownStatuses = new Set(state.shownStatuses);
-      if (shownStatuses.has(current.key)) shownStatuses.delete(current.key);
-      else shownStatuses.add(current.key);
-      return {
-        type: "next",
-        state: { ...state, shownStatuses, selectedIndex: idx },
-      };
-    }
-
-    case "reorder_left":
-    case "reorder_right": {
-      if (state.query) return { type: "next", state };
-      const list = getFilteredRows(state);
-      const idx = clampIndex(state, state.selectedIndex);
-      const current = list[idx];
-      if (current?.type !== "segment") return { type: "next", state };
-
-      const segIdx = state.enabledSegments.indexOf(current.id);
-      if (segIdx < 0) return { type: "next", state };
-
-      const delta = action.type === "reorder_left" ? -1 : 1;
-      const next = segIdx + delta;
-      if (next < 0 || next >= state.enabledSegments.length) return { type: "next", state };
-
-      const copy = [...state.enabledSegments];
-      const [item] = copy.splice(segIdx, 1);
-      copy.splice(next, 0, item);
-      const selectedIndex = clampIndex(
-        { ...state, enabledSegments: copy },
-        state.selectedIndex + delta,
-      );
-      return {
-        type: "next",
-        state: { ...state, enabledSegments: copy, selectedIndex },
-      };
-    }
-
-    case "type_char": {
-      const query = state.query + action.char;
-      const newState = { ...state, query };
-      return {
-        type: "next",
-        state: {
-          ...newState,
-          selectedIndex: clampIndex(newState, state.selectedIndex),
-        },
-      };
-    }
-
-    case "backspace": {
-      if (state.query.length === 0) return { type: "next", state };
-      const query = state.query.slice(0, -1);
-      const newState = { ...state, query };
-      return {
-        type: "next",
-        state: {
-          ...newState,
-          selectedIndex: clampIndex(newState, state.selectedIndex),
-        },
-      };
-    }
+  if (action.type === "cancel") return { type: "done", config: null };
+  if (action.type === "save") return { type: "done", config: toConfig(state) };
+  if (action.type === "next_zone") return { type: "next", state: switchZone(state, 1) };
+  if (action.type === "previous_zone") return { type: "next", state: switchZone(state, -1) };
+  if (action.type === "move_up")
+    return { type: "next", state: withClampedIndex(state, state.selectedIndex - 1) };
+  if (action.type === "move_down")
+    return { type: "next", state: withClampedIndex(state, state.selectedIndex + 1) };
+  if (action.type === "type_char")
+    return {
+      type: "next",
+      state: withClampedIndex({ ...state, query: state.query + action.char }),
+    };
+  if (action.type === "backspace") {
+    return {
+      type: "next",
+      state: state.query ? withClampedIndex({ ...state, query: state.query.slice(0, -1) }) : state,
+    };
   }
+
+  const current = getFilteredRows(state)[clampIndex(state, state.selectedIndex)];
+  if (!current) return { type: "next", state };
+  if (current.type === "status") {
+    if (action.type !== "toggle") return { type: "next", state };
+    const shownStatuses = new Set(state.shownStatuses);
+    if (shownStatuses.has(current.key)) shownStatuses.delete(current.key);
+    else shownStatuses.add(current.key);
+    return { type: "next", state: withClampedIndex({ ...state, shownStatuses }) };
+  }
+
+  const assignment = findSegmentAssignment(state.zones, current.id);
+  if (action.type === "toggle") {
+    if (assignment && assignedCount(state.zones) === 1) return { type: "next", state };
+    const zones = cloneZones(state.zones);
+    if (assignment) zones[assignment.zone].splice(assignment.index, 1);
+    else zones[state.activeZone].push(current.id);
+    return { type: "next", state: withClampedIndex({ ...state, zones }) };
+  }
+
+  if (state.query || !assignment || assignment.zone !== state.activeZone)
+    return { type: "next", state };
+  const delta = action.type === "reorder_left" ? -1 : 1;
+  const target = assignment.index + delta;
+  if (target < 0 || target >= state.zones[assignment.zone].length) return { type: "next", state };
+  const zones = cloneZones(state.zones);
+  const [item] = zones[assignment.zone].splice(assignment.index, 1);
+  zones[assignment.zone].splice(target, 0, item);
+  const reordered = { ...state, zones };
+  const selectedIndex = getFilteredRows(reordered).findIndex(
+    (row) => row.type === "segment" && row.id === current.id,
+  );
+  return { type: "next", state: withClampedIndex(reordered, selectedIndex) };
 }
