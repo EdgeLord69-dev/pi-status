@@ -4,9 +4,19 @@ All notable changes to `@pi-vault/pi-status` are documented in this file.
 
 ## Unreleased
 
+### Breaking Changes
+
+- Replaced the flat `FooterRenderInput` shape and removed `DEFAULT_SEGMENTS`, `buildFooterLine()`, and `buildFooterLineFromResolved()`. Persisted legacy `segments` configuration still migrates into the top-left zone.
+
+### Added
+
+- Added four-zone footer and `/statusline` editor layout controls for top-left, top-right, bottom-left, and bottom-right segment placement.
+
 ### Changed
 
-- Moved pi-status configuration from Pi's `settings.json` files to the global extension-owned `<Pi agent directory>/extensions/statusline.json` file with a direct JSON shape and no automatic legacy migration.
+- Moved pi-status configuration from Pi's `settings.json` files to the global extension-owned `<Pi agent directory>/extensions/statusline.json` file with a four-zone JSON shape.
+- Footer rows now fit independently at narrow widths, dropping lower-priority items before truncating the remaining content; visible extension statuses remain bottom-right.
+- Honor `NO_COLOR` by presence, including an empty value, for the footer and `/statusline` editor.
 
 ### Fixed
 
