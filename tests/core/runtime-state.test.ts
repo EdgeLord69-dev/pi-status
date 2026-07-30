@@ -4,7 +4,12 @@ import { createRuntimeStateMachine } from "../../src/core/runtime-state.ts";
 import type { PiStatusConfig } from "../../src/shared/types.ts";
 
 const defaultConfig: PiStatusConfig = {
-  segments: ["model-with-reasoning", "current-dir"],
+  zones: {
+    topLeft: ["model-with-reasoning"],
+    topRight: [],
+    bottomLeft: ["current-dir"],
+    bottomRight: [],
+  },
   extensionSegments: { hidden: [] },
 };
 
@@ -66,7 +71,7 @@ describe("RuntimeStateMachine", () => {
   it("updates config on config_reload", () => {
     const sm = createRuntimeStateMachine(defaultConfig, "medium");
     const newConfig: PiStatusConfig = {
-      segments: ["git-branch"],
+      zones: { topLeft: ["git-branch"], topRight: [], bottomLeft: [], bottomRight: [] },
       extensionSegments: { hidden: ["x"] },
     };
     sm.update({ type: "config_reload", config: newConfig });

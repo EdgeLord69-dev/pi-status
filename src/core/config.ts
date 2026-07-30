@@ -10,23 +10,33 @@ import {
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { dirname, join } from "node:path";
 import {
-  DEFAULT_SEGMENTS,
+  DEFAULT_ZONES,
   isKnownSegment,
   type ConfigStore,
   type ExtensionSegments,
   type PiStatusConfig,
   type StatusLineSegmentId,
+  type StatusLineZones,
 } from "../shared/types.ts";
 
 export const DEFAULT_CONFIG: PiStatusConfig = {
-  segments: [...DEFAULT_SEGMENTS],
+  zones: cloneZones(DEFAULT_ZONES),
   extensionSegments: { hidden: [] },
 };
 
 function cloneDefaultConfig(): PiStatusConfig {
   return {
-    segments: [...DEFAULT_CONFIG.segments],
+    zones: cloneZones(DEFAULT_CONFIG.zones),
     extensionSegments: { hidden: [...DEFAULT_CONFIG.extensionSegments.hidden] },
+  };
+}
+
+function cloneZones(zones: StatusLineZones): StatusLineZones {
+  return {
+    topLeft: [...zones.topLeft],
+    topRight: [...zones.topRight],
+    bottomLeft: [...zones.bottomLeft],
+    bottomRight: [...zones.bottomRight],
   };
 }
 
@@ -63,7 +73,7 @@ export function getConfigPath(agentDir = getAgentDir()): string {
 }
 
 export function normalizeSegments(input: unknown): StatusLineSegmentId[] {
-  if (!Array.isArray(input)) return [...DEFAULT_SEGMENTS];
+  if (!Array.isArray(input)) return [];
   const out: StatusLineSegmentId[] = [];
   const seen = new Set<StatusLineSegmentId>();
 
@@ -74,6 +84,29 @@ export function normalizeSegments(input: unknown): StatusLineSegmentId[] {
   }
 
   return out;
+}
+
+export function normalizeZones(input: unknown): StatusLineZones {
+  const zones =
+    input && typeof input === "object" && !Array.isArray(input)
+      ? (input as Partial<Record<keyof StatusLineZones, unknown>>)
+      : {};
+  const seen = new Set<StatusLineSegmentId>();
+  const normalizeZone = (value: unknown) =>
+    normalizeSegments(value).filter((id) => {
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+  const normalized: StatusLineZones = {
+    topLeft: normalizeZone(zones.topLeft),
+    topRight: normalizeZone(zones.topRight),
+    bottomLeft: normalizeZone(zones.bottomLeft),
+    bottomRight: normalizeZone(zones.bottomRight),
+  };
+  return Object.values(normalized).some((zone) => zone.length > 0)
+    ? normalized
+    : cloneZones(DEFAULT_ZONES);
 }
 
 function normalizeFilterValues(input: unknown): string[] {
@@ -107,9 +140,12 @@ function parseConfig(content: string): Record<string, unknown> | null {
 }
 
 function normalizeConfig(input: Record<string, unknown>): PiStatusConfig {
-  const segments = normalizeSegments(input.segments);
   return {
-    segments: segments.length > 0 ? segments : [...DEFAULT_SEGMENTS],
+    zones: Object.hasOwn(input, "zones")
+      ? normalizeZones(input.zones)
+      : Object.hasOwn(input, "segments") && Array.isArray(input.segments)
+        ? normalizeZones({ topLeft: input.segments })
+        : cloneZones(DEFAULT_ZONES),
     extensionSegments: normalizeExtensionSegments(input.extensionSegments),
   };
 }
@@ -133,7 +169,7 @@ export function saveConfig(
     throw new Error(`Refusing to overwrite malformed or non-object config: ${path}`);
   }
   const next: PiStatusConfig = {
-    segments: [...config.segments],
+    zones: cloneZones(config.zones),
     extensionSegments: { hidden: [...config.extensionSegments.hidden] },
   };
   store.write(path, `${JSON.stringify(next, null, 2)}\n`);

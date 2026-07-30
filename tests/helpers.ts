@@ -1,15 +1,16 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { ConfigStore } from "../src/shared/types.ts";
-import { DEFAULT_SEGMENTS, type FooterRenderInput } from "../src/tui/render.ts";
+import { DEFAULT_ZONES } from "../src/shared/types.ts";
+import type { FooterRenderInput } from "../src/tui/render.ts";
 
 export function withDefaults(
-  input: Omit<FooterRenderInput, "extensionSegments" | "segments"> & {
-    segments?: FooterRenderInput["segments"];
+  input: Omit<FooterRenderInput, "extensionSegments" | "zones"> & {
+    zones?: FooterRenderInput["zones"];
   },
 ): FooterRenderInput {
   return {
     ...input,
-    segments: input.segments ?? [...DEFAULT_SEGMENTS],
+    zones: input.zones ?? structuredClone(DEFAULT_ZONES),
     extensionSegments: { hidden: [] },
   };
 }

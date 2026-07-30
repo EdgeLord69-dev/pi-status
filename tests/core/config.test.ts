@@ -12,13 +12,19 @@ import {
   loadConfig,
   normalizeExtensionSegments,
   normalizeSegments,
+  normalizeZones,
   saveConfig,
 } from "../../src/core/config.ts";
-import { type ConfigStore, DEFAULT_SEGMENTS, type PiStatusConfig } from "../../src/shared/types.ts";
+import {
+  type ConfigStore,
+  DEFAULT_ZONES,
+  STATUS_LINE_ZONE_ORDER,
+  type PiStatusConfig,
+} from "../../src/shared/types.ts";
 import { MemoryConfigStore } from "../helpers.ts";
 
 const config: PiStatusConfig = {
-  segments: ["git-branch"],
+  zones: { topLeft: ["git-branch"], topRight: [], bottomLeft: [], bottomRight: [] },
   extensionSegments: { hidden: ["alpha"] },
 };
 
@@ -37,6 +43,30 @@ describe("config — normalization", () => {
     ).toEqual(["model", "current-dir", "git-branch", "project-name"]);
   });
 
+  it("keeps normalizeSegments as a legacy seam that returns empty for non-arrays", () => {
+    expect(normalizeSegments(undefined)).toEqual([]);
+  });
+
+  it("normalizes zones in display order with one shared seen set", () => {
+    expect(
+      normalizeZones({
+        topLeft: ["model", "model"],
+        topRight: ["model", "git-branch"],
+        bottomLeft: ["unknown", "current-dir"],
+        bottomRight: "not-an-array",
+      }),
+    ).toEqual({
+      topLeft: ["model"],
+      topRight: ["git-branch"],
+      bottomLeft: ["current-dir"],
+      bottomRight: [],
+    });
+  });
+
+  it("uses the four fixed display zones", () => {
+    expect(STATUS_LINE_ZONE_ORDER).toEqual(["topLeft", "topRight", "bottomLeft", "bottomRight"]);
+  });
+
   it("normalizes extension segments: dedupes, rejects empty and non-strings", () => {
     expect(normalizeExtensionSegments(undefined)).toEqual({ hidden: [] });
     expect(normalizeExtensionSegments({ hidden: ["a", "a", "", 1] })).toEqual({ hidden: ["a"] });
@@ -44,6 +74,60 @@ describe("config — normalization", () => {
 });
 
 describe("config — direct extension file", () => {
+  it("migrates a legacy segments array into the top-left zone", () => {
+    const store = new MemoryConfigStore();
+    const path = getConfigPath("/agent");
+    store.seed(path, JSON.stringify({ segments: ["git-branch"] }));
+
+    expect(loadConfig({ agentDir: "/agent", store })).toMatchObject({
+      zones: {
+        topLeft: ["git-branch"],
+        topRight: [],
+        bottomLeft: [],
+        bottomRight: [],
+      },
+    });
+  });
+
+  it("uses an own zones value in preference to legacy segments", () => {
+    const store = new MemoryConfigStore();
+    const path = getConfigPath("/agent");
+    store.seed(
+      path,
+      JSON.stringify({
+        zones: { topLeft: [], topRight: ["git-branch"] },
+        segments: ["model"],
+      }),
+    );
+
+    expect(loadConfig({ agentDir: "/agent", store }).zones).toEqual({
+      topLeft: [],
+      topRight: ["git-branch"],
+      bottomLeft: [],
+      bottomRight: [],
+    });
+  });
+
+  it("does not fall back to legacy segments when an own zones value is malformed", () => {
+    const store = new MemoryConfigStore();
+    store.seed(
+      getConfigPath("/agent"),
+      JSON.stringify({ zones: { topLeft: "bad" }, segments: ["model"] }),
+    );
+
+    expect(loadConfig({ agentDir: "/agent", store }).zones).toEqual(DEFAULT_ZONES);
+  });
+
+  it("uses defaults for a missing, malformed, or wholly empty layout", () => {
+    const store = new MemoryConfigStore();
+    const path = getConfigPath("/agent");
+    store.seed(path, JSON.stringify({ segments: "model" }));
+    expect(loadConfig({ agentDir: "/agent", store }).zones).toEqual(DEFAULT_ZONES);
+
+    store.seed(path, JSON.stringify({ zones: { topLeft: [], bottomRight: [] } }));
+    expect(loadConfig({ agentDir: "/agent", store }).zones).toEqual(DEFAULT_ZONES);
+  });
+
   it("uses the exact extension config path", () => {
     expect(getConfigPath("/agent")).toBe(join("/agent", "extensions", "statusline.json"));
   });
@@ -62,7 +146,7 @@ describe("config — direct extension file", () => {
     );
 
     expect(loadConfig({ agentDir, store })).toEqual({
-      segments: DEFAULT_SEGMENTS,
+      zones: DEFAULT_ZONES,
       extensionSegments: { hidden: [] },
     });
     expect(store.accessPaths).toEqual([path]);
@@ -92,7 +176,7 @@ describe("config — direct extension file", () => {
       store.seed(getConfigPath("/agent"), content);
 
       expect(loadConfig({ agentDir: "/agent", store })).toEqual({
-        segments: DEFAULT_SEGMENTS,
+        zones: DEFAULT_ZONES,
         extensionSegments: { hidden: [] },
       });
     },
@@ -106,6 +190,28 @@ describe("config — direct extension file", () => {
     expect(JSON.parse(store.read(path) as string)).toEqual(config);
     expect(store.accessPaths).toEqual([path, path, path]);
     expect(store.accessPaths.some((accessed) => accessed.includes("settings.json"))).toBe(false);
+  });
+
+  it("saves only zones and extensionSegments", () => {
+    const store = new MemoryConfigStore();
+    const path = getConfigPath("/agent");
+    const dirtyConfig = { ...config, segments: ["model"], unknown: true } as PiStatusConfig & {
+      segments: string[];
+      unknown: boolean;
+    };
+
+    saveConfig(dirtyConfig, { agentDir: "/agent", store });
+
+    expect(JSON.parse(store.read(path) as string)).toEqual(config);
+  });
+
+  it("deep-clones default zones", () => {
+    const store = new MemoryConfigStore();
+    const first = loadConfig({ agentDir: "/agent", store });
+    first.zones.topLeft.length = 0;
+    first.zones.bottomLeft.push("model");
+
+    expect(loadConfig({ agentDir: "/agent", store }).zones).toEqual(DEFAULT_ZONES);
   });
 
   it.each(["{ bad", "null", "[]"])(
@@ -155,7 +261,7 @@ describe("config — filesystem", () => {
     vi.stubEnv("PI_CODING_AGENT_DIR", agentDir);
     const path = join(agentDir, "extensions", "statusline.json");
 
-    expect(loadConfig()).toEqual({ segments: DEFAULT_SEGMENTS, extensionSegments: { hidden: [] } });
+    expect(loadConfig()).toEqual({ zones: DEFAULT_ZONES, extensionSegments: { hidden: [] } });
     vi.mocked(mkdtempSync).mockClear();
     expect(saveConfig(config)).toEqual({ path });
     expect(loadConfig()).toEqual(config);

@@ -17,11 +17,11 @@ afterEach(() => {
 describe("/statusline persistence", () => {
   it("uses the saved editor result without reloading config", async () => {
     const initial: PiStatusConfig = {
-      segments: ["model"],
+      zones: { topLeft: ["model"], topRight: [], bottomLeft: [], bottomRight: [] },
       extensionSegments: { hidden: [] },
     };
     const saved: PiStatusConfig = {
-      segments: ["current-dir"],
+      zones: { topLeft: ["current-dir"], topRight: [], bottomLeft: [], bottomRight: [] },
       extensionSegments: { hidden: [] },
     };
     const loadConfig = vi.fn(() => initial);

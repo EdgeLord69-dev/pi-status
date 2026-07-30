@@ -36,7 +36,7 @@ function input(overrides?: Partial<FooterRenderInput>): FooterRenderInput {
     cwd: "/Users/test/project",
     thinkingLevel: "medium",
     runState: "idle",
-    segments: [],
+    zones: { topLeft: [], topRight: [], bottomLeft: [], bottomRight: [] },
     extensionSegments: { hidden: [] },
     ...overrides,
   };

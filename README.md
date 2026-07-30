@@ -10,18 +10,9 @@ Replace Pi's default footer with a compact, configurable status line that shows 
 Default footer:
 
 ```text
-model-with-reasoning · current-dir
+model-with-reasoning
+current-dir
 ```
-
-## Screenshots
-
-Default status line rendering:
-
-![Status line UI](docs/assets/statusline-ui.png)
-
-Interactive configuration editor (`/statusline`):
-
-![Status line configuration](docs/assets/statusline-configuration.png)
 
 ## Install, Upgrade, And Reload
 
@@ -50,8 +41,9 @@ Usage-limit segments depend on `pi-usage`. `/statusline` can show those segment 
 Once installed, the footer updates automatically.
 
 - Run `/statusline` inside Pi to open the interactive editor.
+- Use `Tab` and `Shift+Tab` to select the TL, TR, BL, or BR zone.
 - Toggle segments on or off with `Space`.
-- Reorder enabled segments with `Left` and `Right`.
+- Reorder segments in the active zone with `Left` and `Right`.
 - Search the segment list by typing.
 - Preview the footer before saving.
 - Hide individual extension status keys from the "Extension statuses" section.
@@ -80,40 +72,60 @@ You can compose the footer from these segment IDs:
 
 `five-hour-limit` and `weekly-limit` depend on standalone [`@pi-vault/pi-usage`](https://www.npmjs.com/package/@pi-vault/pi-usage). `/statusline` shows those segments after `pi-usage` responds, and the live footer omits them until compatible live limit window data is available.
 
-## Extension Status Behavior
+## Footer Layout And Extension Statuses
 
-Extension statuses are no longer configured as a normal footer segment.
+The footer has four ordered zones: TL (top-left), TR (top-right), BL
+(bottom-left), and BR (bottom-right). Top zones render on the first row and
+bottom zones on the second; left zones are left-aligned and right zones are
+right-aligned. The two rows fit independently at narrow widths: lower-priority
+items drop as needed, then the remaining line is truncated.
 
-- Status text reported by other Pi extensions is appended automatically when it is visible.
+Extension statuses are not normal footer segments. Visible statuses are fixed
+in the bottom-right zone and drop before configured segments when space is
+tight.
+
 - `/statusline` lets you hide individual status keys.
 - Hidden keys stay hidden through persisted settings.
 - If no visible extension statuses remain, nothing extra is appended to the footer.
 
 ## Common Examples
 
-Keep it minimal:
+Each example below is a value for the `"zones"` field in `statusline.json`.
 
-```text
-model-with-reasoning · current-dir
+Keep the default layout:
+
+```json
+{
+  "topLeft": ["model-with-reasoning"],
+  "topRight": [],
+  "bottomLeft": ["current-dir"],
+  "bottomRight": []
+}
 ```
 
-Show more session detail:
+Show more session detail on the top row:
 
-```text
-model · run-state · git-branch · context-used · context-remaining · session-id
+```json
+{
+  "topLeft": ["model", "run-state", "git-branch"],
+  "topRight": ["context-used", "context-remaining", "session-id"],
+  "bottomLeft": [],
+  "bottomRight": []
+}
 ```
 
 Usage-aware footer:
 
-```text
-model-with-reasoning · current-dir · five-hour-limit · weekly-limit
+```json
+{
+  "topLeft": ["model-with-reasoning"],
+  "topRight": [],
+  "bottomLeft": ["current-dir"],
+  "bottomRight": ["five-hour-limit", "weekly-limit"]
+}
 ```
 
-If another extension reports status text, that text appears after your configured segments automatically, for example:
-
-```text
-model-with-reasoning · current-dir · alpha: ready
-```
+If another extension reports status text, it appears in the bottom-right zone.
 
 ## Configuration Behavior
 
@@ -127,10 +139,23 @@ The file contains the statusline config directly:
 
 ```json
 {
-  "segments": ["model-with-reasoning", "current-dir"],
+  "zones": {
+    "topLeft": ["model-with-reasoning"],
+    "topRight": [],
+    "bottomLeft": ["current-dir"],
+    "bottomRight": []
+  },
   "extensionSegments": { "hidden": [] }
 }
 ```
+
+A legacy direct config with a `"segments"` array still loads by placing those
+segments in TL. The first save from `/statusline` rewrites it to the `zones`
+shape. Missing, malformed, invalid, or wholly empty layouts fall back to the
+default layout; when `zones` is present, it takes precedence over `segments`.
+
+Set `NO_COLOR` (even to an empty string) to disable color in both the footer
+and `/statusline`; its presence, not its value, is what matters.
 
 There are no project-specific overrides. pi-status no longer reads or writes
 Pi's global or project `settings.json`. Existing `statusLine` values in those
@@ -146,7 +171,7 @@ If you are upgrading from `0.2.x`, note these compatibility changes:
 - Extension status visibility now comes from per-key hidden status settings instead of a dedicated `extension-statuses` segment.
 - Configuration now has a hard cutover to the global extension-owned `extensions/statusline.json` file; Pi `settings.json` values are ignored and not migrated automatically.
 - The extension requires Node.js `>=24.15.0`.
-- The tested Pi host baseline is now `@earendil-works/pi-coding-agent@0.82.0` and `@earendil-works/pi-tui@0.82.0`.
+- The tested Pi host baseline is now `@earendil-works/pi-coding-agent@0.82.0` and `@earendil-works/pi-tui@0.82.1`.
 
 ## Development And Verification
 

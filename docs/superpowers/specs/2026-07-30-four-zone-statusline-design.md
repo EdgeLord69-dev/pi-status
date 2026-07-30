@@ -27,6 +27,7 @@ It will not copy powerbar's dynamic event bus, segment registry, settings depend
 - Configurable separators, placement, progress-bar styles, or per-segment priorities.
 - A widget, sidebar, split pane, private Pi renderer integration, timer, or settings watcher.
 - Changes to segment formatter output or extension-status filtering semantics.
+- Preserving the published flat source-render utilities; this phase intentionally replaces those exports with zoned contracts and records the source-level break in the Unreleased changelog.
 
 ## Configuration Contract
 
@@ -95,7 +96,7 @@ The footer uses Pi's public `setFooter` component and returns one or two strings
 For each row:
 
 1. Resolve the left and right zone arrays independently.
-2. Join items within each side with the existing dim ` · ` separator.
+2. Join items within each side with the existing dim `·` separator.
 3. Fit both sides against the available width using Phase 2's exhaustive drop tiers.
 4. Preserve order within each zone. For equal-tier removal only, treat the row's candidate order as left-zone items followed by right-zone items and remove the later candidate first; never use that flattened order for rendering.
 5. With both sides present, insert `max(1, width - leftWidth - rightWidth)` spaces between them. With only the right side present, prefix `max(0, width - rightWidth)` spaces. A left-only row needs no trailing padding.
@@ -106,6 +107,8 @@ Rows fit independently. Overflow in one row cannot remove content from the other
 If `bottomLeft`, `bottomRight`, and visible extension status text are all empty, return only the top row. If the bottom row has content, return both rows; an intentionally empty top row remains an empty first string so bottom-zone content does not move upward.
 
 `NO_COLOR` remains implemented at the theme boundary. It removes only pi-status-owned ANSI styling and does not rewrite externally supplied extension-status text.
+
+The implementation targets the current lockfile without dependency edits: `@earendil-works/pi-coding-agent@0.82.0` and `@earendil-works/pi-tui@0.82.1` from the existing caret ranges. Existing screenshots remain unchanged; documentation updates describe the new behavior without claiming refreshed image assets.
 
 ## Editor Design
 

@@ -15,7 +15,7 @@ export { collectHiddenStatuses };
 export function createStatusLineEditor(options: {
   config: PiStatusConfig;
   discoveredStatuses: string[];
-  previewInput: Omit<FooterRenderInput, "segments" | "extensionSegments">;
+  previewInput: Omit<FooterRenderInput, "zones" | "extensionSegments">;
   theme: StatusLineTheme;
   done: (result: PiStatusConfig | null) => void;
   requestRender: () => void;
@@ -38,6 +38,8 @@ export function createStatusLineEditor(options: {
     handleInput(data: string): void {
       if (matchesKey(data, Key.escape)) return void dispatch({ type: "cancel" });
       if (matchesKey(data, Key.enter)) return void dispatch({ type: "save" });
+      if (matchesKey(data, "shift+tab")) return void dispatch({ type: "previous_zone" });
+      if (matchesKey(data, Key.tab)) return void dispatch({ type: "next_zone" });
       if (matchesKey(data, Key.up)) return void dispatch({ type: "move_up" });
       if (matchesKey(data, Key.down)) return void dispatch({ type: "move_down" });
       if (matchesKey(data, Key.space)) return void dispatch({ type: "toggle" });
