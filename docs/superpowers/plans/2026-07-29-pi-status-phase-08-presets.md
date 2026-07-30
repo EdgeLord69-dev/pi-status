@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add exactly three named, display-only presets—`minimal`, `balanced`, and `telemetry`—that preview and atomically save complete four-zone layouts through the same ownership-aware path as the `/statusline` editor.
+**Goal:** Add exactly three named, display-only presets—`minimal`, `balanced`, and `telemetry`—that preview and atomically save complete four-zone layouts through the same global config path as the `/statusline` editor.
 
 **Usable result:** A TUI user can run `/statusline preset`, choose one of three presets, inspect every top/bottom and left/right assignment, confirm it, and persist the full layout. Cancelling or a failed write changes nothing. Presets never mutate model, thinking, tools, notifications, session, or workspace state.
 
-**Architecture:** Keep three immutable `StatusLineZones` values in one pure module and preset interaction in one focused TUI action module. Extend the existing typed `/statusline` router instead of registering another command. `src/index.ts` passes the same ownership-aware layout save closure used by the editor. Persist expanded zones, never a preset name.
+**Architecture:** Keep three immutable `StatusLineZones` values in one pure module and preset interaction in one focused TUI action module. Extend the existing typed `/statusline` router instead of registering another command. `src/index.ts` passes the same global layout save closure used by the editor. Persist expanded zones, never a preset name.
 
 **Tech Stack:** TypeScript, Pi 0.82.0 public command-context UI APIs, Phase 2 four-zone configuration/renderer, the existing extension config writer, Vitest.
 
@@ -161,7 +161,7 @@ Behavior:
 5. After confirmation, await `saveLayout(zones)`. Only after success call `setConfig` and notify `Applied ${name} display preset.`
 6. A rejected save follows the existing nonfatal command error boundary, retains prior config, and never claims success.
 
-`src/index.ts` wires the existing ownership-aware save operation:
+`src/index.ts` wires the existing global config save operation:
 
 ```ts
 async saveLayout(zones) {
@@ -251,7 +251,7 @@ pnpm vitest run tests/core/display-presets.test.ts tests/tui/command-router.test
 Expected: new parser/action/wiring cases fail.
 
 - [ ] Implement the typed router variant and focused action. Reuse `displayPreset()`/`displayPresetPreview()`; do not duplicate preset literals or argument parsing.
-- [ ] Wire `saveLayout` to the same ownership-aware operation used by the editor. Await persistence before updating runtime. Let the established command boundary report write errors once.
+- [ ] Wire `saveLayout` to the same global config operation used by the editor. Await persistence before updating runtime. Let the established command boundary report write errors once.
 - [ ] Re-run the focused command; expect all selected tests to pass.
 - [ ] Commit:
 

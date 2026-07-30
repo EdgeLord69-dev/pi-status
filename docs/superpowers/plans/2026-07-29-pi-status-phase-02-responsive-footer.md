@@ -170,7 +170,7 @@ printf 'Phase 2 base: %s\n' "$PHASE_BASE"
 
 Expected: one full commit SHA from completed Phase 1. Keep this value for final review. Because Tasks 1–3 replace one cross-cutting runtime type, do not commit their temporary red intermediate states; make the first implementation commit only after Task 3's complete focused suite and typecheck pass.
 
-## Task 1: Specify and implement four-zone settings normalization
+## Task 1: Specify and implement four-zone config normalization
 
 **Files:**
 - Modify: `src/shared/types.ts`
@@ -328,7 +328,7 @@ Omit `src/tui/render-utils.ts`, its test, or any listed file that remained uncha
 - Modify: `README.md`
 - Modify: `CHANGELOG.md`
 
-- [ ] Add a concise four-zone settings example using `zones`, the minimal new-install default, zone names, one/two-row behavior, right alignment, responsive drops, extension statuses fixed to bottom-right, and editor keys.
+- [ ] Add a concise four-zone config example using `zones`, the minimal new-install default, zone names, one/two-row behavior, right alignment, responsive drops, extension statuses fixed to bottom-right, and editor keys.
 - [ ] Document legacy `segments` loading from the direct extension config into top-left, no blank migration row, first-save migration to `zones`, first-win duplicate normalization, fully empty fallback, and `NO_COLOR` semantics.
 - [ ] Update screenshots/examples that claim one flat row. Do not claim powerbar compatibility, dynamic segments, configurable placement for extension statuses, widgets, or sidebar support.
 - [ ] Add an `Unreleased` changelog entry covering four zones, responsive two-row rendering, editor placement, and legacy migration.
@@ -358,7 +358,7 @@ Expected: `v24.15.0` or newer.
 pnpm vitest run tests/core/config.test.ts tests/core/resolve-footer.test.ts tests/tui/layout.test.ts tests/tui/render-utils.test.ts tests/tui/render.test.ts tests/tui/theme.test.ts tests/tui/editor-state.test.ts tests/tui/editor-render.test.ts tests/tui/editor.test.ts tests/index.test.ts
 ```
 
-Expected: all migration/ownership, zone uniqueness, one/two-row, alignment, responsive, ANSI/`NO_COLOR`, editor, save failure, session reload, and lifecycle cases pass.
+Expected: all direct migration/config, zone uniqueness, one/two-row, alignment, responsive, ANSI/`NO_COLOR`, editor, save failure, session reload, and lifecycle cases pass.
 
 - [ ] Run the repository gate:
 
@@ -378,7 +378,7 @@ Expected: every command exits 0; package output includes `src/tui/layout.ts` and
 - [ ] Inspect final scope and stale flat-layout references:
 
 ```bash
-rg -n "config\.segments|input\.segments|DEFAULT_SEGMENTS|statusLine\.segments" src tests README.md CHANGELOG.md
+rg -n "config\.segments|input\.segments|DEFAULT_SEGMENTS|\"segments\"" src tests README.md CHANGELOG.md
 rg -n "setWidget|split-pane|sidebar|TUI\.render|pi-powerbar" src tests
 
 git diff --check
@@ -386,7 +386,7 @@ git diff --stat "$PHASE_BASE"..HEAD
 git status --short
 ```
 
-Expected: the first search finds only deliberate README/tests for legacy settings input; the second finds no implementation; no unrelated/generated files or whitespace errors exist. Do not add or commit `.superpowers/` browser artifacts.
+Expected: the first search finds only deliberate README/tests for legacy direct extension-config input; the second finds no implementation; no unrelated/generated files or whitespace errors exist. Do not add or commit `.superpowers/` browser artifacts.
 
 ### Phase 2 completion gate
 

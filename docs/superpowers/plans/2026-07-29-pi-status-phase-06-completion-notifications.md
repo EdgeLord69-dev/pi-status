@@ -17,7 +17,7 @@
 - Phases 1–5 are complete, including the global extension-owned config file, Phase 2 four-zone migration, compatibility lifecycle, and `/statusline` argument router.
 - The authoritative completion signal is Pi's public `agent_settled` event. Do not infer completion from `agent_end`, `turn_end`, assistant text, or tool completion.
 - The installed `@pi-vault/pi-questionnaire` v0.2.1 public contract emits `pi-vault:questionnaire:status` with `{ active: true, label: string }` immediately before waiting and `{ active: false }` in `finally`. Listen through Pi's public event bus using the literal event name, without importing or depending on the package. Notify only on a false-to-true interval, ignore `label`, rearm after false, and ignore malformed payloads.
-- Configuration remains backward compatible: absent `completionNotifications` means `false`, and project/session configuration cannot override this global preference.
+- Configuration remains backward compatible: absent `completionNotifications` means `false`; no project or session configuration exists.
 - TUI and RPC sessions may both receive lifecycle events, but native desktop notifications and the command's TUI controls are TUI-only.
 
 ## Non-goals
@@ -221,7 +221,7 @@ it.each([
 });
 ```
 
-Preserve explicit regression cases for empty/editor, `session`, `tools`, and generic unknown input. Add command-handler tests for query/on/off, invalid usage, global ownership, immediate update, and failed-write rollback.
+Preserve explicit regression cases for empty/editor, `session`, `tools`, and generic unknown input. Add command-handler tests for query/on/off, invalid usage, global config persistence, immediate update, and failed-write rollback.
 - [ ] Add failing lifecycle tests proving: `agent_start` or `turn_start` rearms settlement; one notification on `agent_settled`; none on `agent_end`/`turn_end`; one per `{ active: false }` to `{ active: true, label }` questionnaire interval; duplicate true, missing-label true, malformed payloads, and label content are ignored; disabled means none; RPC means none; session replacement calls `reset`; shutdown calls `dispose`; stale callbacks after either boundary do nothing.
 - [ ] Run `pnpm vitest run tests/tui/command-router.test.ts tests/index.test.ts`; expect the new cases to fail.
 - [ ] Add `NotificationCommandAction` and the `notifications` variant to the existing router. Parse the exact token grammar from Public design before falling through to generic unknown input. Do not create a second command registration or accept aliases.
