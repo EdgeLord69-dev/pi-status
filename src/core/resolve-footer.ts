@@ -1,14 +1,14 @@
 import {
   formatExtensionStatuses,
   formatSegment,
-  type FooterRenderColor,
   type FooterRenderInput,
   type ModelLike,
+  type ResolvedFooterZones,
   type ResolvedSegment,
   type RunState,
   type ThemeLike,
 } from "../tui/render.ts";
-import type { PiStatusConfig } from "../shared/types.ts";
+import type { PiStatusConfig, StatusLineSegmentId } from "../shared/types.ts";
 
 export type SnapshotInput = {
   model?: ModelLike;
@@ -65,7 +65,7 @@ function deriveRunState(isIdle: boolean, hasPendingMessages: boolean): RunState 
 
 export function buildSnapshot(
   input: SnapshotInput,
-): Omit<FooterRenderInput, "segments" | "extensionSegments"> {
+): Omit<FooterRenderInput, "zones" | "extensionSegments"> {
   return {
     model: input.model,
     cwd: input.cwd,
@@ -81,22 +81,36 @@ export function buildSnapshot(
 }
 
 export function resolveFooter(
-  snapshot: Omit<FooterRenderInput, "segments" | "extensionSegments">,
+  snapshot: Omit<FooterRenderInput, "zones" | "extensionSegments">,
   config: PiStatusConfig,
   theme: ThemeLike,
-): { segments: ResolvedSegment[]; extensionStatusText: string | null } {
+): ResolvedFooterZones {
   const input: FooterRenderInput = {
     ...snapshot,
-    segments: config.segments,
+    zones: config.zones,
     extensionSegments: config.extensionSegments,
   };
 
-  const segments = input.segments
-    .map((id) => formatSegment(id, input, theme))
-    .filter((x): x is [string, FooterRenderColor | null] => x !== null)
-    .map(([text, color]) => ({ text, color }));
+  const resolveZone = (ids: readonly StatusLineSegmentId[]): ResolvedSegment[] =>
+    ids
+      .map((key) => {
+        const segment = formatSegment(key, input, theme);
+        const resolved: ResolvedSegment | null = segment
+          ? { key, text: segment[0], color: segment[1] }
+          : null;
+        return resolved;
+      })
+      .filter((segment): segment is ResolvedSegment => segment !== null);
 
+  const zones: ResolvedFooterZones = {
+    topLeft: resolveZone(input.zones.topLeft),
+    topRight: resolveZone(input.zones.topRight),
+    bottomLeft: resolveZone(input.zones.bottomLeft),
+    bottomRight: resolveZone(input.zones.bottomRight),
+  };
   const extensionStatusText = formatExtensionStatuses(input, theme);
-
-  return { segments, extensionStatusText };
+  if (extensionStatusText) {
+    zones.bottomRight.push({ key: "extension-status", text: extensionStatusText, color: null });
+  }
+  return zones;
 }

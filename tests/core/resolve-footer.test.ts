@@ -197,68 +197,88 @@ describe("buildSnapshot", () => {
 });
 
 describe("resolveFooter", () => {
-  it("resolves configured segments into text/color pairs with no extension statuses", () => {
+  it("resolves configured zones into keyed text/color pairs", () => {
     const snapshot = buildSnapshot(makeInput());
     const config = {
-      segments: ["run-state" as const],
+      zones: { topLeft: ["run-state" as const], topRight: [], bottomLeft: [], bottomRight: [] },
       extensionSegments: { hidden: [] },
     };
     const result = resolveFooter(snapshot, config, identityTheme);
-    expect(result.segments).toEqual([{ text: "idle", color: "dim" }]);
-    expect(result.extensionStatusText).toBeNull();
+    expect(result.topLeft).toEqual([{ key: "run-state", text: "idle", color: "dim" }]);
+    expect(result.topRight).toEqual([]);
+    expect(result.bottomLeft).toEqual([]);
+    expect(result.bottomRight).toEqual([]);
   });
 
   it("drops null segments (model undefined)", () => {
     const snapshot = buildSnapshot(makeInput({ model: undefined }));
     const config = {
-      segments: ["model" as const, "run-state" as const],
+      zones: {
+        topLeft: ["model" as const, "run-state" as const],
+        topRight: [],
+        bottomLeft: [],
+        bottomRight: [],
+      },
       extensionSegments: { hidden: [] },
     };
     const result = resolveFooter(snapshot, config, identityTheme);
-    expect(result.segments).toEqual([{ text: "idle", color: "dim" }]);
+    expect(result.topLeft).toEqual([{ key: "run-state", text: "idle", color: "dim" }]);
   });
 
-  it("preserves segment order from config", () => {
+  it("preserves identity and order within each configured zone", () => {
     const snapshot = buildSnapshot(makeInput({ gitBranch: "main" }));
     const config = {
-      segments: ["git-branch" as const, "run-state" as const],
+      zones: {
+        topLeft: ["git-branch" as const, "run-state" as const],
+        topRight: [],
+        bottomLeft: ["current-dir" as const],
+        bottomRight: [],
+      },
       extensionSegments: { hidden: [] },
     };
     const result = resolveFooter(snapshot, config, identityTheme);
-    expect(result.segments[0]).toEqual({ text: "main", color: "warning" });
-    expect(result.segments[1]).toEqual({ text: "idle", color: "dim" });
+    expect(result.topLeft).toEqual([
+      { key: "git-branch", text: "main", color: "warning" },
+      { key: "run-state", text: "idle", color: "dim" },
+    ]);
+    expect(result.bottomLeft[0]?.key).toBe("current-dir");
   });
 
   it("returns empty segments when all resolve to null", () => {
     const snapshot = buildSnapshot(makeInput({ model: undefined, gitBranch: null }));
     const config = {
-      segments: ["model" as const, "git-branch" as const],
+      zones: {
+        topLeft: ["model" as const, "git-branch" as const],
+        topRight: [],
+        bottomLeft: [],
+        bottomRight: [],
+      },
       extensionSegments: { hidden: [] },
     };
     const result = resolveFooter(snapshot, config, identityTheme);
-    expect(result.segments).toEqual([]);
+    expect(result.topLeft).toEqual([]);
   });
 
-  it("handles empty segments array", () => {
+  it("handles empty zones", () => {
     const snapshot = buildSnapshot(makeInput());
     const config = {
-      segments: [] as Parameters<typeof resolveFooter>[1]["segments"],
+      zones: { topLeft: [], topRight: [], bottomLeft: [], bottomRight: [] },
       extensionSegments: { hidden: [] },
     };
     const result = resolveFooter(snapshot, config, identityTheme);
-    expect(result.segments).toEqual([]);
+    expect(result).toEqual({ topLeft: [], topRight: [], bottomLeft: [], bottomRight: [] });
   });
 
-  it("includes extension status text", () => {
+  it("appends one keyed extension status to bottom right", () => {
     const snapshot = buildSnapshot(
       makeInput({ extensionStatuses: new Map([["pi-usage", "5h: 60%"]]) }),
     );
     const config = {
-      segments: ["run-state" as const],
+      zones: { topLeft: ["run-state" as const], topRight: [], bottomLeft: [], bottomRight: [] },
       extensionSegments: { hidden: [] },
     };
     const result = resolveFooter(snapshot, config, identityTheme);
-    expect(result.extensionStatusText).toBe("5h: 60%");
+    expect(result.bottomRight).toEqual([{ key: "extension-status", text: "5h: 60%", color: null }]);
   });
 
   it("filters hidden extension statuses", () => {
@@ -271,20 +291,20 @@ describe("resolveFooter", () => {
       }),
     );
     const config = {
-      segments: ["run-state" as const],
+      zones: { topLeft: ["run-state" as const], topRight: [], bottomLeft: [], bottomRight: [] },
       extensionSegments: { hidden: ["pi-usage"] },
     };
     const result = resolveFooter(snapshot, config, identityTheme);
-    expect(result.extensionStatusText).toBe("ok");
+    expect(result.bottomRight).toEqual([{ key: "extension-status", text: "ok", color: null }]);
   });
 
-  it("returns null extensionStatusText when no extension statuses", () => {
+  it("omits extension status when no extension statuses", () => {
     const snapshot = buildSnapshot(makeInput());
     const config = {
-      segments: ["run-state" as const],
+      zones: { topLeft: ["run-state" as const], topRight: [], bottomLeft: [], bottomRight: [] },
       extensionSegments: { hidden: [] },
     };
     const result = resolveFooter(snapshot, config, identityTheme);
-    expect(result.extensionStatusText).toBeNull();
+    expect(result.bottomRight).toEqual([]);
   });
 });

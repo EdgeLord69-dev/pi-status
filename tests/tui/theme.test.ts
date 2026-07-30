@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fromPiTheme, noTheme } from "../../src/tui/theme.ts";
+import { fromPiTheme, noColorRequested, noTheme } from "../../src/tui/theme.ts";
 
 function makeSpyTheme() {
   return {
@@ -34,6 +34,14 @@ describe("noTheme", () => {
 
   it("returns the original text from rainbow", () => {
     expect(noTheme.rainbow("hi")).toBe("hi");
+  });
+});
+
+describe("noColorRequested", () => {
+  it("uses presence rather than truthiness", () => {
+    expect(noColorRequested({ NO_COLOR: "" })).toBe(true);
+    expect(noColorRequested({ NO_COLOR: "0" })).toBe(true);
+    expect(noColorRequested({})).toBe(false);
   });
 });
 

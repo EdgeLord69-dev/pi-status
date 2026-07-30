@@ -72,6 +72,10 @@ export const noTheme: StatusLineTheme = {
   rainbow: (text) => text,
 };
 
+export function noColorRequested(env: object = process.env): boolean {
+  return Object.hasOwn(env, "NO_COLOR");
+}
+
 export function fromPiTheme(theme: unknown): StatusLineTheme {
   if (!isPiThemeLike(theme)) return noTheme;
   return {

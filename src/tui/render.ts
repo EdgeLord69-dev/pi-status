@@ -1,11 +1,8 @@
-import { truncateToWidth } from "@earendil-works/pi-tui";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { segmentFormatters } from "./formatters.ts";
+import { fitFooterRow } from "./layout.ts";
 import { normalizeThinkingLevel, thinkingLevelColor } from "./render-utils.ts";
-import {
-  DEFAULT_SEGMENTS,
-  type ExtensionSegments,
-  type StatusLineSegmentId,
-} from "../shared/types.ts";
+import type { ExtensionSegments, StatusLineSegmentId, StatusLineZones } from "../shared/types.ts";
 
 export type FooterRenderColor =
   | "accent"
@@ -24,10 +21,23 @@ export type ThemeLike = {
   rainbow: (text: string) => string;
 };
 
-export interface ResolvedSegment {
-  text: string;
-  color: FooterRenderColor | null;
+export type FooterLayoutKey = StatusLineSegmentId | "extension-status";
+
+export interface FooterLayoutItem {
+  readonly key: FooterLayoutKey;
+  readonly text: string;
 }
+
+export interface ResolvedSegment extends FooterLayoutItem {
+  readonly color: FooterRenderColor | null;
+}
+
+export type ResolvedFooterZones = {
+  topLeft: ResolvedSegment[];
+  topRight: ResolvedSegment[];
+  bottomLeft: ResolvedSegment[];
+  bottomRight: ResolvedSegment[];
+};
 
 export type ModelLike = {
   id?: string;
@@ -65,10 +75,8 @@ export type FooterRenderInput = {
   };
   extensionStatuses?: ReadonlyMap<string, string>;
   extensionSegments: ExtensionSegments;
-  segments: StatusLineSegmentId[];
+  zones: StatusLineZones;
 };
-
-export { DEFAULT_SEGMENTS };
 
 export {
   abbreviateHomeDir,
@@ -149,25 +157,70 @@ export function formatSegment(
   return segmentFormatters.get(id)?.(input, theme) ?? null;
 }
 
-export function buildFooterLine(input: FooterRenderInput, theme: ThemeLike, width: number): string {
-  const segments = input.segments
-    .map((id) => formatSegment(id, input, theme))
-    .filter((x): x is [string, FooterRenderColor | null] => x !== null)
-    .map(([text, color]) => ({ text, color }));
-
-  const extensionStatusText = formatExtensionStatuses(input, theme);
-
-  return buildFooterLineFromResolved(segments, extensionStatusText, theme, width);
+function resolveZone(
+  ids: readonly StatusLineSegmentId[],
+  input: FooterRenderInput,
+  theme: ThemeLike,
+): ResolvedSegment[] {
+  return ids
+    .map((key) => {
+      const segment = formatSegment(key, input, theme);
+      const resolved: ResolvedSegment | null = segment
+        ? { key, text: segment[0], color: segment[1] }
+        : null;
+      return resolved;
+    })
+    .filter((segment): segment is ResolvedSegment => segment !== null);
 }
 
-export function buildFooterLineFromResolved(
-  segments: ResolvedSegment[],
-  extensionStatusText: string | null,
+function renderRow(
+  left: readonly ResolvedSegment[],
+  right: readonly ResolvedSegment[],
   theme: ThemeLike,
   width: number,
-): string {
-  const parts = segments.map(({ text, color }) => (color ? theme.fg(color, text) : text));
-  if (extensionStatusText) parts.push(extensionStatusText);
-  const line = parts.join(theme.fg("dim", " · "));
+): string | null {
+  const fitted = fitFooterRow(left, right, width, " · ", visibleWidth);
+  if (fitted.left.length === 0 && fitted.right.length === 0) return null;
+  const renderSide = (items: readonly ResolvedSegment[]) =>
+    items
+      .map(({ text, color }) => (color ? theme.fg(color, text) : text))
+      .join(theme.fg("dim", " · "));
+  const leftText = renderSide(fitted.left);
+  const rightText = renderSide(fitted.right);
+  const line =
+    leftText && rightText
+      ? `${leftText}${" ".repeat(Math.max(1, width - visibleWidth(leftText) - visibleWidth(rightText)))}${rightText}`
+      : rightText
+        ? `${" ".repeat(Math.max(0, width - visibleWidth(rightText)))}${rightText}`
+        : leftText;
   return truncateToWidth(line, width);
+}
+
+export function buildFooterRows(
+  input: FooterRenderInput,
+  theme: ThemeLike,
+  width: number,
+): string[] {
+  const zones: ResolvedFooterZones = {
+    topLeft: resolveZone(input.zones.topLeft, input, theme),
+    topRight: resolveZone(input.zones.topRight, input, theme),
+    bottomLeft: resolveZone(input.zones.bottomLeft, input, theme),
+    bottomRight: resolveZone(input.zones.bottomRight, input, theme),
+  };
+  const extensionStatusText = formatExtensionStatuses(input, theme);
+  if (extensionStatusText) {
+    zones.bottomRight.push({ key: "extension-status", text: extensionStatusText, color: null });
+  }
+  return buildFooterRowsFromResolved(zones, theme, width);
+}
+
+export function buildFooterRowsFromResolved(
+  zones: ResolvedFooterZones,
+  theme: ThemeLike,
+  width: number,
+): string[] {
+  return [
+    renderRow(zones.topLeft, zones.topRight, theme, width),
+    renderRow(zones.bottomLeft, zones.bottomRight, theme, width),
+  ].filter((row): row is string => row !== null);
 }

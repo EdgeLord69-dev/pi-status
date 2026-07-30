@@ -4,17 +4,16 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import {
-  buildFooterLine,
-  buildFooterLineFromResolved,
+  buildFooterRows,
+  buildFooterRowsFromResolved,
   findProjectRootLabel,
   formatCompactNumber,
   formatModelWithReasoning,
   formatSegment,
   type FooterRenderInput,
-  type ResolvedSegment,
+  type ResolvedFooterZones,
   type ThemeLike,
 } from "../../src/tui/render.ts";
-import { withDefaults } from "../helpers.ts";
 
 /** Theme that passes text through unchanged — isolates formatting logic from color application. */
 const identityTheme: ThemeLike = { fg: (_c, t) => t, rainbow: (t) => t };
@@ -28,7 +27,12 @@ function segmentInput(overrides?: Partial<FooterRenderInput>): FooterRenderInput
     cwd: "/Users/test/project",
     thinkingLevel: "medium",
     runState: "idle",
-    segments: [],
+    zones: {
+      topLeft: ["model-with-reasoning"],
+      topRight: [],
+      bottomLeft: ["current-dir"],
+      bottomRight: [],
+    },
     extensionSegments: { hidden: [] },
     ...overrides,
   };
@@ -72,22 +76,22 @@ describe("render", () => {
     mkdirSync(join(root, ".pi"), { recursive: true });
     writeFileSync(join(root, ".pi/settings.json"), "{}", "utf8");
 
-    const line = buildFooterLine(
-      withDefaults({
+    const rows = buildFooterRows(
+      segmentInput({
         cwd: nested,
         thinkingLevel: "medium",
         runState: "idle",
-        segments: ["project-name"],
+        zones: { topLeft: ["project-name"], topRight: [], bottomLeft: [], bottomRight: [] },
       }),
       { fg: (_c, t) => t, rainbow: (t) => t },
       200,
     );
-    expect(line).toBe("repo2");
+    expect(rows).toEqual(["repo2"]);
   });
 
   it("keeps default unchanged", () => {
-    const line = buildFooterLine(
-      withDefaults({
+    const rows = buildFooterRows(
+      segmentInput({
         model: { id: "gpt-5", name: "GPT-5", reasoning: true },
         cwd: "/Users/test/project",
         thinkingLevel: "medium",
@@ -96,17 +100,23 @@ describe("render", () => {
       { fg: (_c, t) => t, rainbow: (t) => t },
       200,
     );
-    expect(line).toContain("GPT-5 [med]");
-    expect(line).toContain("/Users/test/project");
+    expect(rows).toHaveLength(2);
+    expect(rows.join("\n")).toContain("GPT-5 [med]");
+    expect(rows.join("\n")).toContain("/Users/test/project");
   });
 
   it("renders compatibility windows for MiniMax too", () => {
-    const line = buildFooterLine(
-      withDefaults({
+    const rows = buildFooterRows(
+      segmentInput({
         cwd: "/Users/test/project",
         thinkingLevel: "medium",
         runState: "idle",
-        segments: ["five-hour-limit", "weekly-limit"],
+        zones: {
+          topLeft: ["five-hour-limit", "weekly-limit"],
+          topRight: [],
+          bottomLeft: [],
+          bottomRight: [],
+        },
         usageState: {
           compatibility: {
             currentLiveProviderSnapshot: {
@@ -122,8 +132,8 @@ describe("render", () => {
       { fg: (_c, t) => t, rainbow: (t) => t },
       200,
     );
-    expect(line).toContain("5h 60% left");
-    expect(line).toContain("wk 80% left");
+    expect(rows.join("\n")).toContain("5h 60% left");
+    expect(rows.join("\n")).toContain("wk 80% left");
   });
 });
 
@@ -860,149 +870,69 @@ describe("formatSegment — weekly-limit", () => {
   });
 });
 
-describe("buildFooterLine — extension statuses", () => {
-  it("appends extension statuses after segment parts", () => {
-    const line = buildFooterLine(
-      {
-        ...segmentInput({
-          segments: ["run-state"],
-          extensionStatuses: new Map([
-            ["alpha", "running"],
-            ["beta", "paused"],
-          ]),
-          extensionSegments: { hidden: [] },
-        }),
-      },
-      identityTheme,
+describe("buildFooterRows", () => {
+  it("keeps extension statuses in bottom right and applies colors per item", () => {
+    const rows = buildFooterRows(
+      segmentInput({
+        zones: { topLeft: ["run-state"], topRight: [], bottomLeft: [], bottomRight: [] },
+        extensionStatuses: new Map([["alpha", "alpha: running"]]),
+      }),
+      markerTheme,
       200,
     );
-    expect(line).toContain("idle");
-    expect(line).toContain("running");
-    expect(line).toContain("paused");
+    expect(rows[0]).toBe("[dim:idle]");
+    expect(rows[1]?.trim()).toBe("running");
+    const extensionRow = rows[1];
+    if (extensionRow === undefined) throw new Error("expected extension footer row");
+    expect(visibleWidth(extensionRow)).toBe(200);
   });
 
-  it("respects the hidden filter", () => {
-    const line = buildFooterLine(
+  it("renders top and bottom rows independently with right alignment", () => {
+    const zones: ResolvedFooterZones = {
+      topLeft: [{ key: "model", text: "left", color: "accent" as const }],
+      topRight: [{ key: "git-branch", text: "right", color: "warning" as const }],
+      bottomLeft: [],
+      bottomRight: [{ key: "extension-status", text: "status", color: null }],
+    };
+    expect(buildFooterRowsFromResolved(zones, identityTheme, 10)).toEqual([
+      "left right",
+      "    status",
+    ]);
+  });
+
+  it("omits empty rows and supports a one-row migration layout", () => {
+    const rows = buildFooterRowsFromResolved(
       {
-        ...segmentInput({
-          segments: ["run-state"],
-          extensionStatuses: new Map([
-            ["alpha", "running"],
-            ["beta", "paused"],
-          ]),
-          extensionSegments: { hidden: ["alpha"] },
-        }),
+        topLeft: [],
+        topRight: [],
+        bottomLeft: [{ key: "current-dir", text: "dir", color: null }],
+        bottomRight: [],
       },
       identityTheme,
-      200,
+      20,
     );
-    expect(line).not.toContain("running");
-    expect(line).toContain("paused");
+    expect(rows).toEqual(["dir"]);
   });
 
-  it("shows only non-hidden statuses", () => {
-    const line = buildFooterLine(
+  it("fits rows independently and truncates the final ANSI row once", () => {
+    const rows = buildFooterRowsFromResolved(
       {
-        ...segmentInput({
-          segments: ["run-state"],
-          extensionStatuses: new Map([
-            ["alpha", "running"],
-            ["beta", "paused"],
-          ]),
-          extensionSegments: { hidden: ["beta"] },
-        }),
+        topLeft: [
+          { key: "model", text: "one", color: "accent" },
+          { key: "run-state", text: "two", color: "dim" },
+        ],
+        topRight: [],
+        bottomLeft: [{ key: "current-dir", text: "\u001b[31mabcdefgh\u001b[0m", color: null }],
+        bottomRight: [],
       },
-      identityTheme,
-      200,
+      markerTheme,
+      5,
     );
-    expect(line).toContain("running");
-    expect(line).not.toContain("paused");
-  });
-
-  it("omits extension statuses when none exist", () => {
-    const line = buildFooterLine(
-      {
-        ...segmentInput({
-          segments: ["run-state"],
-          extensionStatuses: new Map(),
-        }),
-      },
-      identityTheme,
-      200,
-    );
-    expect(line).toBe("idle");
-  });
-
-  it("omits extension statuses when all are hidden", () => {
-    const line = buildFooterLine(
-      {
-        ...segmentInput({
-          segments: ["run-state"],
-          extensionStatuses: new Map([["alpha", "running"]]),
-          extensionSegments: { hidden: ["alpha"] },
-        }),
-      },
-      identityTheme,
-      200,
-    );
-    expect(line).toBe("idle");
-  });
-
-  it("strips key prefix from status values", () => {
-    const line = buildFooterLine(
-      {
-        ...segmentInput({
-          segments: [],
-          extensionStatuses: new Map([["alpha", "alpha: running"]]),
-          extensionSegments: { hidden: [] },
-        }),
-      },
-      identityTheme,
-      200,
-    );
-    expect(line).toBe("running");
-  });
-});
-
-describe("buildFooterLineFromResolved", () => {
-  it("joins segments with dim separator and applies colors", () => {
-    const segments: ResolvedSegment[] = [
-      { text: "idle", color: "dim" },
-      { text: "main", color: "warning" },
-    ];
-    const line = buildFooterLineFromResolved(segments, null, markerTheme, 200);
-    expect(line).toBe("[dim:idle][dim: · ][warning:main]");
-  });
-
-  it("appends extensionStatusText after segments", () => {
-    const segments: ResolvedSegment[] = [{ text: "idle", color: "dim" }];
-    const line = buildFooterLineFromResolved(segments, "5h: 60%", identityTheme, 200);
-    expect(line).toBe("idle · 5h: 60%");
-  });
-
-  it("omits separator when extensionStatusText is null", () => {
-    const segments: ResolvedSegment[] = [{ text: "idle", color: "dim" }];
-    const line = buildFooterLineFromResolved(segments, null, identityTheme, 200);
-    expect(line).toBe("idle");
-  });
-
-  it("returns empty string for empty segments and no extension text", () => {
-    const line = buildFooterLineFromResolved([], null, identityTheme, 200);
-    expect(line).toBe("");
-  });
-
-  it("truncates to width", () => {
-    const segments: ResolvedSegment[] = [
-      { text: "abcdef", color: null },
-      { text: "ghijkl", color: null },
-    ];
-    const line = buildFooterLineFromResolved(segments, null, identityTheme, 5);
-    expect(visibleWidth(line)).toBeLessThanOrEqual(5);
-  });
-
-  it("renders null-color segments without theme.fg", () => {
-    const segments: ResolvedSegment[] = [{ text: "plain", color: null }];
-    const line = buildFooterLineFromResolved(segments, null, markerTheme, 200);
-    expect(line).toBe("plain");
+    expect(rows).toHaveLength(2);
+    const [topRow, bottomRow] = rows;
+    if (topRow === undefined || bottomRow === undefined)
+      throw new Error("expected two footer rows");
+    expect(visibleWidth(topRow)).toBeLessThanOrEqual(5);
+    expect(visibleWidth(bottomRow)).toBeLessThanOrEqual(5);
   });
 });
