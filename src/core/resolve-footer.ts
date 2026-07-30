@@ -8,7 +8,12 @@ import {
   type RunState,
   type ThemeLike,
 } from "../tui/render.ts";
-import type { PiStatusConfig, StatusLineSegmentId } from "../shared/types.ts";
+import type {
+  AccessType,
+  PiStatusConfig,
+  SessionMetrics,
+  StatusLineSegmentId,
+} from "../shared/types.ts";
 
 export type SnapshotInput = {
   model?: ModelLike;
@@ -22,39 +27,76 @@ export type SnapshotInput = {
     contextWindow?: number;
     percent?: number | null;
   };
-  branch: unknown[];
+  entries: readonly unknown[];
+  accessType: AccessType | undefined;
   sessionId: string;
   usageState?: FooterRenderInput["usageState"];
   extensionStatuses: ReadonlyMap<string, string>;
 };
 
-function aggregateBranchTotals(branch: unknown[]): {
-  input: number;
-  output: number;
-  totalTokens: number;
-} {
-  const totals = { input: 0, output: 0, totalTokens: 0 };
+function finiteNonNegative(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
 
-  for (const entry of branch ?? []) {
-    if (!entry || typeof entry !== "object") continue;
-    if ((entry as { type?: unknown }).type !== "message") continue;
-    const message = (
-      entry as {
-        message?: {
-          role?: unknown;
-          usage?: { input?: number; output?: number; totalTokens?: number };
-        };
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object";
+}
+
+function aggregateSessionMetrics(entries: readonly unknown[]): SessionMetrics {
+  const metrics: SessionMetrics = {
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    latestCacheHitPercent: undefined,
+    costUsd: undefined,
+  };
+
+  for (const entry of entries) {
+    if (!isRecord(entry)) continue;
+    const type = entry.type;
+    const message = type === "message" && isRecord(entry.message) ? entry.message : undefined;
+    const role = message?.role;
+    const usage =
+      message?.usage ??
+      (type === "branch_summary" || type === "compaction" ? entry.usage : undefined);
+    if (!isRecord(usage)) continue;
+    if (
+      type !== "branch_summary" &&
+      type !== "compaction" &&
+      role !== "assistant" &&
+      role !== "toolResult"
+    ) {
+      continue;
+    }
+
+    const input = finiteNonNegative(usage.input);
+    const output = finiteNonNegative(usage.output);
+    const totalTokens = finiteNonNegative(usage.totalTokens);
+    const cacheRead = finiteNonNegative(usage.cacheRead);
+    const cacheWrite = finiteNonNegative(usage.cacheWrite);
+    metrics.inputTokens += input ?? 0;
+    metrics.outputTokens += output ?? 0;
+    metrics.totalTokens += totalTokens ?? 0;
+    metrics.cacheReadTokens += cacheRead ?? 0;
+    metrics.cacheWriteTokens += cacheWrite ?? 0;
+
+    const cost = isRecord(usage.cost) ? finiteNonNegative(usage.cost.total) : undefined;
+    if (cost !== undefined) metrics.costUsd = (metrics.costUsd ?? 0) + cost;
+
+    if (role === "assistant") {
+      if (input === undefined || cacheRead === undefined || cacheWrite === undefined) {
+        metrics.latestCacheHitPercent = undefined;
+      } else {
+        const promptTokens = input + cacheRead + cacheWrite;
+        metrics.latestCacheHitPercent =
+          promptTokens > 0 ? (cacheRead / promptTokens) * 100 : undefined;
       }
-    ).message;
-    if (message?.role !== "assistant") continue;
-    const usage = message.usage;
-    if (!usage) continue;
-    if (typeof usage.input === "number") totals.input += usage.input;
-    if (typeof usage.output === "number") totals.output += usage.output;
-    if (typeof usage.totalTokens === "number") totals.totalTokens += usage.totalTokens;
+    }
   }
 
-  return totals;
+  return metrics;
 }
 
 function deriveRunState(isIdle: boolean, hasPendingMessages: boolean): RunState {
@@ -66,6 +108,7 @@ function deriveRunState(isIdle: boolean, hasPendingMessages: boolean): RunState 
 export function buildSnapshot(
   input: SnapshotInput,
 ): Omit<FooterRenderInput, "zones" | "extensionSegments"> {
+  const sessionMetrics = aggregateSessionMetrics(input.entries);
   return {
     model: input.model,
     cwd: input.cwd,
@@ -73,7 +116,13 @@ export function buildSnapshot(
     gitBranch: input.gitBranch,
     runState: deriveRunState(input.isIdle, input.hasPendingMessages),
     contextUsage: input.contextUsage,
-    branchTotals: aggregateBranchTotals(input.branch),
+    branchTotals: {
+      input: sessionMetrics.inputTokens,
+      output: sessionMetrics.outputTokens,
+      totalTokens: sessionMetrics.totalTokens,
+    },
+    sessionMetrics,
+    accessType: input.accessType,
     sessionId: input.sessionId,
     usageState: input.usageState,
     extensionStatuses: input.extensionStatuses,
