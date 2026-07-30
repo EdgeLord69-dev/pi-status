@@ -117,6 +117,13 @@ describe("telemetry segments", () => {
     expect(
       formatSegment(
         "session-cost",
+        input({ sessionMetrics: { ...metrics, costUsd: 0 } }),
+        identityTheme,
+      ),
+    ).toEqual(["Cost: $0.0000", "dim"]);
+    expect(
+      formatSegment(
+        "session-cost",
         input({ sessionMetrics: { ...metrics, costUsd: undefined } }),
         identityTheme,
       ),

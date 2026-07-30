@@ -130,6 +130,24 @@ describe("editor zones", () => {
 });
 
 describe("editor zone actions", () => {
+  it("toggles and reorders a telemetry segment through the generic editor actions", () => {
+    let state = initEditorState(
+      config({ zones: zones({ topLeft: ["model"], bottomLeft: [] }) }),
+      [],
+    );
+    let index = getFilteredRows(state).findIndex(
+      (row) => row.type === "segment" && row.id === "session-cost",
+    );
+    state = next({ ...state, selectedIndex: index }, { type: "toggle" });
+    expect(state.zones.topLeft).toEqual(["model", "session-cost"]);
+
+    index = getFilteredRows(state).findIndex(
+      (row) => row.type === "segment" && row.id === "session-cost",
+    );
+    state = next({ ...state, selectedIndex: index }, { type: "reorder_left" });
+    expect(state.zones.topLeft).toEqual(["session-cost", "model"]);
+  });
+
   it("moves a selected segment into the active zone without duplicates", () => {
     let state = initEditorState(config(), []);
     state = next(state, { type: "next_zone" });

@@ -73,6 +73,10 @@ describe("buildSnapshot", () => {
     const entries = [
       {
         type: "message",
+        message: { role: "user", usage: usage({ input: 999, totalTokens: 999 }) },
+      },
+      {
+        type: "message",
         message: {
           role: "assistant",
           usage: usage({
@@ -175,7 +179,36 @@ describe("buildSnapshot", () => {
     });
   });
 
-  it("uses only the latest valid assistant prompt for cache hit", () => {
+  it("keeps the latest cache hit through non-assistant and usage-less entries", () => {
+    const entries = [
+      {
+        type: "message",
+        message: {
+          role: "assistant",
+          usage: { input: 100, cacheRead: 300, cacheWrite: 100 },
+        },
+      },
+      {
+        type: "message",
+        message: {
+          role: "toolResult",
+          usage: { input: 1, cacheRead: 999, cacheWrite: 1 },
+        },
+      },
+      {
+        type: "branch_summary",
+        usage: { input: 1, cacheRead: 1 },
+      },
+      {
+        type: "compaction",
+        usage: { input: 1, cacheRead: 1 },
+      },
+      { type: "message", message: { role: "assistant" } },
+    ];
+    expect(buildSnapshot(makeInput({ entries })).sessionMetrics?.latestCacheHitPercent).toBe(60);
+  });
+
+  it("clears the latest cache hit for malformed assistant prompt usage", () => {
     const entries = [
       {
         type: "message",
@@ -185,8 +218,23 @@ describe("buildSnapshot", () => {
         },
       },
       {
-        type: "branch_summary",
-        usage: { input: 1, cacheRead: 1 },
+        type: "message",
+        message: { role: "assistant", usage: { input: 10, cacheRead: 5 } },
+      },
+    ];
+    expect(
+      buildSnapshot(makeInput({ entries })).sessionMetrics?.latestCacheHitPercent,
+    ).toBeUndefined();
+  });
+
+  it("clears the latest cache hit for a zero-token assistant prompt", () => {
+    const entries = [
+      {
+        type: "message",
+        message: {
+          role: "assistant",
+          usage: { input: 100, cacheRead: 100, cacheWrite: 0 },
+        },
       },
       {
         type: "message",
