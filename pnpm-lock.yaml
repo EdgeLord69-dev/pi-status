@@ -10,17 +10,17 @@ importers:
     dependencies:
       '@pi-vault/pi-usage':
         specifier: ^0.7.0
-        version: 0.7.0(@earendil-works/pi-coding-agent@0.82.0(ws@8.21.0)(zod@4.4.3))(@earendil-works/pi-tui@0.82.0)
+        version: 0.7.0(@earendil-works/pi-coding-agent@0.82.0(ws@8.21.0)(zod@4.4.3))(@earendil-works/pi-tui@0.82.1)
     devDependencies:
       '@biomejs/biome':
-        specifier: 2.5.6
+        specifier: ^2.5.6
         version: 2.5.6
       '@earendil-works/pi-coding-agent':
-        specifier: 0.82.0
+        specifier: ^0.82.0
         version: 0.82.0(ws@8.21.0)(zod@4.4.3)
       '@earendil-works/pi-tui':
-        specifier: 0.82.0
-        version: 0.82.0
+        specifier: ^0.82.0
+        version: 0.82.1
       '@types/node':
         specifier: ^26.1.0
         version: 26.1.2
@@ -217,10 +217,6 @@ packages:
     resolution: {integrity: sha512-Qnqgn9zhJFQ2HZ8R4iNuGhyCk93XX6+eUw9i+TjTuo47amzCy93ft3bB6yaUCleCrNO58dJDHYSGNHv/GAPWKg==}
     engines: {node: '>=22.19.0'}
     hasBin: true
-
-  '@earendil-works/pi-tui@0.82.0':
-    resolution: {integrity: sha512-9IDjQOXne7t9l2s2YcjnIBxsVNVPE7qScVSB3YmFlXsBW4pfo2gOElTxggV84KrRiGqABnlFPBWbf0k54hszHQ==}
-    engines: {node: '>=22.19.0'}
 
   '@earendil-works/pi-tui@0.82.1':
     resolution: {integrity: sha512-9yN8hALfKaxZq7n54EMxqhFCWnMi6LHkraMJ/1YjHiATq75XrI6XDMVppn9EDtiK7Fks8hUe1SDXUTrIvwRWfQ==}
@@ -1460,11 +1456,6 @@ snapshots:
       - ws
       - zod
 
-  '@earendil-works/pi-tui@0.82.0':
-    dependencies:
-      get-east-asian-width: 1.6.0
-      marked: 18.0.5
-
   '@earendil-works/pi-tui@0.82.1':
     dependencies:
       get-east-asian-width: 1.6.0
@@ -1570,10 +1561,10 @@ snapshots:
 
   '@oxc-project/types@0.132.0': {}
 
-  '@pi-vault/pi-usage@0.7.0(@earendil-works/pi-coding-agent@0.82.0(ws@8.21.0)(zod@4.4.3))(@earendil-works/pi-tui@0.82.0)':
+  '@pi-vault/pi-usage@0.7.0(@earendil-works/pi-coding-agent@0.82.0(ws@8.21.0)(zod@4.4.3))(@earendil-works/pi-tui@0.82.1)':
     dependencies:
       '@earendil-works/pi-coding-agent': 0.82.0(ws@8.21.0)(zod@4.4.3)
-      '@earendil-works/pi-tui': 0.82.0
+      '@earendil-works/pi-tui': 0.82.1
 
   '@protobufjs/aspromise@1.1.2': {}
 
