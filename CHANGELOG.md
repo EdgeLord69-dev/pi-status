@@ -24,7 +24,7 @@ All notable changes to `@pi-vault/pi-status` are documented in this file.
 
 ### Compatibility
 
-- Set the minimum Pi agent/TUI development baseline to 0.82.0 while retaining caret development ranges and wildcard runtime peer ranges.
+- Set the development baseline to Pi agent 0.82.0 and TUI 0.82.1 while retaining caret development ranges and wildcard runtime peer ranges.
 - Standardized local and CI checks on Node.js 24.15.0+, formatting, linting, type checking, tests, and package-content verification.
 
 ### Internal

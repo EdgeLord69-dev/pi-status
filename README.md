@@ -90,6 +90,8 @@ tight.
 
 ## Common Examples
 
+Each example below is a value for the `"zones"` field in `statusline.json`.
+
 Keep the default layout:
 
 ```json
@@ -169,7 +171,7 @@ If you are upgrading from `0.2.x`, note these compatibility changes:
 - Extension status visibility now comes from per-key hidden status settings instead of a dedicated `extension-statuses` segment.
 - Configuration now has a hard cutover to the global extension-owned `extensions/statusline.json` file; Pi `settings.json` values are ignored and not migrated automatically.
 - The extension requires Node.js `>=24.15.0`.
-- The tested Pi host baseline is now `@earendil-works/pi-coding-agent@0.82.0` and `@earendil-works/pi-tui@0.82.0`.
+- The tested Pi host baseline is now `@earendil-works/pi-coding-agent@0.82.0` and `@earendil-works/pi-tui@0.82.1`.
 
 ## Development And Verification
 
