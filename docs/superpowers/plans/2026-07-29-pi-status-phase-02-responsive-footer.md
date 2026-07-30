@@ -4,20 +4,20 @@
 
 **Goal:** Replace the flat one-row statusline with a backward-compatible four-zone layout (`topLeft`, `topRight`, `bottomLeft`, `bottomRight`), render one or two independently responsive rows, and extend the existing editor to place and reorder segments by zone.
 
-**Usable result:** Existing `statusLine.segments` settings still render as one top-left row. New installations show model/reasoning at top-left and current directory at bottom-left. Users can place each segment in one zone, preview the real two-row layout, and save all zones atomically. Right zones align to the terminal edge, low-priority items drop before important items, tiny widths remain bounded, and `NO_COLOR` removes pi-status-owned styling.
+**Usable result:** Legacy direct `segments` in the global extension-owned config file still render as one top-left row. New installations show model/reasoning at top-left and current directory at bottom-left. Users can place each segment in one zone, preview the real two-row layout, and save all zones atomically. Right zones align to the terminal edge, low-priority items drop before important items, tiny widths remain bounded, and `NO_COLOR` removes pi-status-owned styling.
 
-**Architecture:** Keep the current formatter registry, runtime snapshot, footer lifecycle, and extension-status filtering. Configuration normalizes one selected layout source into four ordered arrays. Resolution preserves zone identity and appends one automatic extension-status item to `bottomRight`. A small pure fitter handles each row's left and right candidates together; `src/tui/render.ts` composes the surviving sides. The existing reducer/editor gains zone tabs and operates directly on the four arrays. No powerbar event bus, widget, watcher, cache, timer, or private Pi renderer is introduced.
+**Architecture:** Keep the current formatter registry, runtime snapshot, footer lifecycle, and extension-status filtering. The one extension-owned config object normalizes a layout into four ordered arrays. Resolution preserves zone identity and appends one automatic extension-status item to `bottomRight`. A small pure fitter handles each row's left and right candidates together; `src/tui/render.ts` composes the surviving sides. The existing reducer/editor gains zone tabs and operates directly on the four arrays. No powerbar event bus, widget, watcher, cache, timer, or private Pi renderer is introduced.
 
-**Tech Stack:** TypeScript, Pi/TUI 0.82.0 public APIs, `@earendil-works/pi-tui` ANSI-aware width helpers, Vitest, existing settings store and formatter registry.
+**Tech Stack:** TypeScript, Pi/TUI 0.82.0 public APIs, `@earendil-works/pi-tui` ANSI-aware width helpers, Vitest, the extension-owned config file, and formatter registry.
 
 ---
 
 ## Source contract and assumptions
 
 - Approved design: [`docs/superpowers/specs/2026-07-30-four-zone-statusline-design.md`](../specs/2026-07-30-four-zone-statusline-design.md). It is authoritative for this phase's layout, migration, editor, rendering, and downstream preset/Workspace Pulse contracts.
-- Phase 1 is complete, including trusted project/global settings ownership, Pi/TUI 0.82.0 development baselines, wildcard peers, and Node `>=24.15.0`.
-- Legacy `statusLine.segments` is read-only compatibility input. Runtime state and every successful save use `zones` only.
-- Layout ownership is selected as a whole before `extensionSegments` is merged. Project `statusLine` owns layout only when it has its own `zones` or `segments` key; otherwise global owns layout. Within the selected source, an own `zones` key wins over `segments`, even when malformed.
+- Phase 1 is complete, including the global extension-owned `extensions/statusline.json`, Pi/TUI 0.82.0 development baselines, wildcard peers, and Node `>=24.15.0`.
+- Legacy direct `segments` is read-only compatibility input inside that file. Runtime state and every successful `saveConfig()` use `zones` only.
+- Within the one direct config object, an own `zones` key wins over `segments`, even when malformed. `extensionSegments` is normalized from the same object; there is no source merge or layout ownership selection.
 - Zone normalization order is `topLeft`, `topRight`, `bottomLeft`, `bottomRight`; first valid occurrence wins across all zones. Missing/malformed arrays are empty, not inherited. A fully empty result becomes `DEFAULT_ZONES`.
 - Automatic extension statuses remain filtered/formatted exactly as today and are one low-priority item fixed at `bottomRight`.
 - Each row fits independently. Equal-tier ties drop the later candidate in row candidate order (`left` items followed by `right` items), while rendering keeps each zone's own order.
@@ -66,7 +66,7 @@ export const DEFAULT_ZONES: StatusLineZones = {
 };
 ```
 
-Remove `DEFAULT_SEGMENTS` after all production/tests use `DEFAULT_ZONES`. Do not retain a derived `config.segments` compatibility field; compatibility belongs only at settings input.
+Remove `DEFAULT_SEGMENTS` after all production/tests use `DEFAULT_ZONES`. Do not retain a derived `config.segments` compatibility field; compatibility belongs only at direct config input.
 
 ### Resolved layout and fitting
 
@@ -178,7 +178,7 @@ Expected: one full commit SHA from completed Phase 1. Keep this value for final 
 - Modify: `tests/core/config.test.ts`
 - Modify later in this phase: every current `PiStatusConfig.segments` consumer
 
-- [ ] Add failing config tests for the exact new default; legacy global/project arrays migrating only to `topLeft`; zones beating legacy segments in the same selected source; project layout ownership when project owns either layout key; global layout retention when project owns only `extensionSegments`; no per-zone inheritance; malformed/non-array values; unknown IDs; non-strings; intra-zone and cross-zone duplicates with TL/TR/BL/BR first-win precedence; fully empty fallback; unrelated-key preservation; trusted/untrusted ownership from Phase 1; and save output containing `zones` but no `segments`.
+- [ ] Add failing config tests for the exact new default; direct legacy `segments` migrating only to `topLeft`; `zones` beating legacy `segments` in the same file; no source merge or per-zone inheritance; malformed/non-array values; unknown IDs; non-strings; intra-zone and cross-zone duplicates with TL/TR/BL/BR first-win precedence; fully empty fallback; unrelated-key preservation; and save output containing `zones` but no `segments`.
 
 Use explicit fixtures such as:
 
@@ -205,8 +205,8 @@ pnpm vitest run tests/core/config.test.ts
 Expected: fail because zone types/normalization do not exist.
 
 - [ ] Implement `STATUS_LINE_ZONE_ORDER`, `StatusLineZone`, `StatusLineZones`, `DEFAULT_ZONES`, and `PiStatusConfig.zones`. Export `normalizeZones(input: unknown): StatusLineZones` beside the existing `normalizeSegments(input)` test seam; normalize with one shared `seen` set in zone-order. Clone defaults/arrays at every returned boundary.
-- [ ] In config merge logic, detect layout ownership with `Object.hasOwn(rawStatusLine, "zones") || Object.hasOwn(rawStatusLine, "segments")`; select project or global once, then select `zones` over `segments` by own-key presence. Merge only `extensionSegments` property-wise as before. Do not spread global and project zone objects.
-- [ ] Keep legacy arrays out of returned runtime config. `saveConfigToSettings` writes the normalized `PiStatusConfig` object, so replacing `statusLine` removes obsolete `segments` while preserving unrelated top-level settings and atomic-write behavior.
+- [ ] In `normalizePiStatus`, select `zones` over `segments` by own-key presence. Do not merge layout sources. `saveConfig()` writes normalized `PiStatusConfig` directly, so the first successful save removes obsolete `segments` while preserving current normalized config fields and atomic-write behavior.
+- [ ] Keep legacy arrays out of returned runtime config.
 - [ ] Re-run `tests/core/config.test.ts`; expect all config cases to pass. Do not run or commit the full suite yet: unchanged consumers still intentionally reference the old field until Tasks 2–3.
 
 ## Task 2: Specify and implement independent two-row fitting/rendering
@@ -329,7 +329,7 @@ Omit `src/tui/render-utils.ts`, its test, or any listed file that remained uncha
 - Modify: `CHANGELOG.md`
 
 - [ ] Add a concise four-zone settings example using `zones`, the minimal new-install default, zone names, one/two-row behavior, right alignment, responsive drops, extension statuses fixed to bottom-right, and editor keys.
-- [ ] Document legacy `segments` loading into top-left, no blank migration row, first-save migration to `zones`, layout ownership as a whole, first-win duplicate normalization, fully empty fallback, and `NO_COLOR` semantics.
+- [ ] Document legacy `segments` loading from the direct extension config into top-left, no blank migration row, first-save migration to `zones`, first-win duplicate normalization, fully empty fallback, and `NO_COLOR` semantics.
 - [ ] Update screenshots/examples that claim one flat row. Do not claim powerbar compatibility, dynamic segments, configurable placement for extension statuses, widgets, or sidebar support.
 - [ ] Add an `Unreleased` changelog entry covering four zones, responsive two-row rendering, editor placement, and legacy migration.
 - [ ] Verify and commit:
@@ -374,7 +374,7 @@ pnpm pack:verify
 
 Expected: every command exits 0; package output includes `src/tui/layout.ts` and changed runtime source and excludes tests, `.superpowers/`, planning docs, workflows, local settings, and generated tarballs.
 
-- [ ] Manually verify in a temporary settings setup: no config, legacy global, legacy project, four-zone global, four-zone project, right-only top, bottom-only content, visible extension statuses, narrow resize, editor moves/reorders, cancel, successful save, failed save, and `NO_COLOR=1`. Confirm session replacement reloads the new layout and shutdown leaves no stale footer.
+- [ ] Manually verify in a temporary extension-config setup: no config, legacy direct `segments`, direct four-zone config, right-only top, bottom-only content, visible extension statuses, narrow resize, editor moves/reorders, cancel, successful save, failed save, and `NO_COLOR=1`. Confirm session replacement reloads the new layout and shutdown leaves no stale footer.
 - [ ] Inspect final scope and stale flat-layout references:
 
 ```bash
@@ -390,4 +390,4 @@ Expected: the first search finds only deliberate README/tests for legacy setting
 
 ### Phase 2 completion gate
 
-Phase 2 is complete only when runtime config uses four unique ordered zones; legacy arrays migrate to top-left without a blank second row; project/global layout ownership and extension-status merging match the approved contract; saves atomically remove legacy `segments`; each row independently fits both sides with exhaustive priorities and ANSI-safe truncation; right alignment and `NO_COLOR` are exact; extension statuses remain filtered and fixed to bottom-right; the editor supports zone cycling, assignment/move/removal/final-item protection/per-zone reorder and real preview; existing lifecycle behavior is unchanged; docs/package checks pass; and the branch contains the coherent feature and docs commits above (or equivalently scoped commits). Phase 3 may begin only after this gate.
+Phase 2 is complete only when runtime config uses four unique ordered zones; direct legacy arrays migrate to top-left without a blank second row; the one extension config object and extension-status normalization match the approved contract; saves atomically remove legacy `segments`; each row independently fits both sides with exhaustive priorities and ANSI-safe truncation; right alignment and `NO_COLOR` are exact; extension statuses remain filtered and fixed to bottom-right; the editor supports zone cycling, assignment/move/removal/final-item protection/per-zone reorder and real preview; existing lifecycle behavior is unchanged; docs/package checks pass; and the branch contains the coherent feature and docs commits above (or equivalently scoped commits). Phase 3 may begin only after this gate.

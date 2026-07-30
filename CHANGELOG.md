@@ -2,6 +2,25 @@
 
 All notable changes to `@pi-vault/pi-status` are documented in this file.
 
+## Unreleased
+
+### Changed
+
+- Moved pi-status configuration from Pi's `settings.json` files to the global extension-owned `<Pi agent directory>/extensions/statusline.json` file with a direct JSON shape and no automatic legacy migration.
+
+### Fixed
+
+- Restricted custom footer/editor APIs to TUI mode and synchronized reasoning display with Pi's current and selected thinking levels.
+
+### Compatibility
+
+- Set the tested Pi agent/TUI development baseline to exact 0.82.0 while retaining wildcard runtime peer ranges.
+- Standardized local and CI checks on Node.js 24.15.0+, formatting, linting, type checking, tests, and package-content verification.
+
+### Internal
+
+- Renamed the settings-store test seam for the extension-owned config file and added explicit tarball allowlist verification.
+
 ## 0.3.0 - 2026-06-23
 
 ### Added
