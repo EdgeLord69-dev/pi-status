@@ -35,7 +35,12 @@ class FsConfigStore implements ConfigStore {
     return existsSync(path);
   }
   read(path: string): string | null {
-    return readFileSync(path, "utf8");
+    try {
+      return readFileSync(path, "utf8");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw error;
+    }
   }
   write(path: string, data: string): void {
     const parent = dirname(path);
@@ -112,8 +117,9 @@ function normalizeConfig(input: Record<string, unknown>): PiStatusConfig {
 export function loadConfig(options?: { agentDir?: string; store?: ConfigStore }): PiStatusConfig {
   const path = getConfigPath(options?.agentDir);
   const store = options?.store ?? defaultStore;
-  if (!store.exists(path)) return cloneDefaultConfig();
-  const parsed = parseConfig(store.read(path) ?? "");
+  const content = store.read(path);
+  if (content === null) return cloneDefaultConfig();
+  const parsed = parseConfig(content);
   return parsed ? normalizeConfig(parsed) : cloneDefaultConfig();
 }
 

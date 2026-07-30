@@ -14,7 +14,7 @@ import {
   normalizeSegments,
   saveConfig,
 } from "../../src/core/config.ts";
-import { DEFAULT_SEGMENTS, type PiStatusConfig } from "../../src/shared/types.ts";
+import { type ConfigStore, DEFAULT_SEGMENTS, type PiStatusConfig } from "../../src/shared/types.ts";
 import { MemoryConfigStore } from "../helpers.ts";
 
 const config: PiStatusConfig = {
@@ -81,7 +81,8 @@ describe("config — direct extension file", () => {
     );
 
     expect(loadConfig({ agentDir: "/agent", store })).toEqual(config);
-    expect(store.accessPaths).toEqual([path, path]);
+    expect(store.existsPaths).toEqual([]);
+    expect(store.readPaths).toEqual([path]);
   });
 
   it.each(["{ bad", "null", "[]"])(
@@ -122,11 +123,13 @@ describe("config — direct extension file", () => {
   );
 
   it("propagates storage read and write failures", () => {
-    const readStore = new MemoryConfigStore();
-    readStore.read = () => {
-      throw new Error("read failed");
+    const readStore: ConfigStore = {
+      exists: () => false,
+      read: () => {
+        throw new Error("read failed");
+      },
+      write: () => {},
     };
-    readStore.seed(getConfigPath("/agent"), "{}");
     expect(() => loadConfig({ agentDir: "/agent", store: readStore })).toThrow("read failed");
 
     const writeStore = new MemoryConfigStore();
