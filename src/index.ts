@@ -177,7 +177,7 @@ export default function createExtension(pi: ExtensionAPI): void {
 
       try {
         saveConfig(result);
-        runtimeState.update({ type: "config_reload", config: loadConfig() });
+        runtimeState.update({ type: "config_reload", config: result });
       } catch {
         ctx.ui.notify("Failed to save statusline config", "warning");
       }
