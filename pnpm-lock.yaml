@@ -10,17 +10,17 @@ importers:
     dependencies:
       '@pi-vault/pi-usage':
         specifier: ^0.7.0
-        version: 0.7.0(@earendil-works/pi-coding-agent@0.82.1(ws@8.21.0)(zod@4.4.3))(@earendil-works/pi-tui@0.82.1)
+        version: 0.7.0(@earendil-works/pi-coding-agent@0.82.0(ws@8.21.0)(zod@4.4.3))(@earendil-works/pi-tui@0.82.0)
     devDependencies:
       '@biomejs/biome':
         specifier: 2.5.6
         version: 2.5.6
       '@earendil-works/pi-coding-agent':
-        specifier: ^0.82.0
-        version: 0.82.1(ws@8.21.0)(zod@4.4.3)
+        specifier: 0.82.0
+        version: 0.82.0(ws@8.21.0)(zod@4.4.3)
       '@earendil-works/pi-tui':
-        specifier: ^0.82.0
-        version: 0.82.1
+        specifier: 0.82.0
+        version: 0.82.0
       '@types/node':
         specifier: ^26.1.0
         version: 26.1.2
@@ -213,10 +213,14 @@ packages:
     engines: {node: '>=22.19.0'}
     hasBin: true
 
-  '@earendil-works/pi-coding-agent@0.82.1':
-    resolution: {integrity: sha512-zbkAhoIuDPMF3pKuja0ajZabrMWU29FUMV9A/XMXT/XC1yXs5xt6t6t13GogQFsDrDqbFP4DkZQO1w8rWRAzYA==}
+  '@earendil-works/pi-coding-agent@0.82.0':
+    resolution: {integrity: sha512-Qnqgn9zhJFQ2HZ8R4iNuGhyCk93XX6+eUw9i+TjTuo47amzCy93ft3bB6yaUCleCrNO58dJDHYSGNHv/GAPWKg==}
     engines: {node: '>=22.19.0'}
     hasBin: true
+
+  '@earendil-works/pi-tui@0.82.0':
+    resolution: {integrity: sha512-9IDjQOXne7t9l2s2YcjnIBxsVNVPE7qScVSB3YmFlXsBW4pfo2gOElTxggV84KrRiGqABnlFPBWbf0k54hszHQ==}
+    engines: {node: '>=22.19.0'}
 
   '@earendil-works/pi-tui@0.82.1':
     resolution: {integrity: sha512-9yN8hALfKaxZq7n54EMxqhFCWnMi6LHkraMJ/1YjHiATq75XrI6XDMVppn9EDtiK7Fks8hUe1SDXUTrIvwRWfQ==}
@@ -531,9 +535,6 @@ packages:
 
   '@types/estree@1.0.9':
     resolution: {integrity: sha512-GhdPgy1el4/ImP05X05Uw4cw2/M93BCUmnEvWZNStlCzEKME4Fkk+YpoA5OiHNQmoS7Cafb8Xa3Pya8m1Qrzeg==}
-
-  '@types/node@26.0.0':
-    resolution: {integrity: sha512-vf2YFi1iY9lHGwNJMs01biZFbKJkrZR1T6/MlzjhJLPdntOHLhTrDSnSVcdtvjihi4VQNlrFRIxLsDBlQpAipA==}
 
   '@types/node@26.1.2':
     resolution: {integrity: sha512-Vu4a5UFA9rIIFJ7rB/Vaafh9lrCQszopTCx6KjFboXTGQbPNasehVR5TEiithSDGyd1DEiUByggTZsg8jukeIg==}
@@ -1429,7 +1430,7 @@ snapshots:
       - ws
       - zod
 
-  '@earendil-works/pi-coding-agent@0.82.1(ws@8.21.0)(zod@4.4.3)':
+  '@earendil-works/pi-coding-agent@0.82.0(ws@8.21.0)(zod@4.4.3)':
     dependencies:
       '@earendil-works/pi-agent-core': 0.82.1(ws@8.21.0)(zod@4.4.3)
       '@earendil-works/pi-ai': 0.82.1(ws@8.21.0)(zod@4.4.3)
@@ -1458,6 +1459,11 @@ snapshots:
       - utf-8-validate
       - ws
       - zod
+
+  '@earendil-works/pi-tui@0.82.0':
+    dependencies:
+      get-east-asian-width: 1.6.0
+      marked: 18.0.5
 
   '@earendil-works/pi-tui@0.82.1':
     dependencies:
@@ -1564,10 +1570,10 @@ snapshots:
 
   '@oxc-project/types@0.132.0': {}
 
-  '@pi-vault/pi-usage@0.7.0(@earendil-works/pi-coding-agent@0.82.1(ws@8.21.0)(zod@4.4.3))(@earendil-works/pi-tui@0.82.1)':
+  '@pi-vault/pi-usage@0.7.0(@earendil-works/pi-coding-agent@0.82.0(ws@8.21.0)(zod@4.4.3))(@earendil-works/pi-tui@0.82.0)':
     dependencies:
-      '@earendil-works/pi-coding-agent': 0.82.1(ws@8.21.0)(zod@4.4.3)
-      '@earendil-works/pi-tui': 0.82.1
+      '@earendil-works/pi-coding-agent': 0.82.0(ws@8.21.0)(zod@4.4.3)
+      '@earendil-works/pi-tui': 0.82.0
 
   '@protobufjs/aspromise@1.1.2': {}
 
@@ -1713,10 +1719,6 @@ snapshots:
   '@types/deep-eql@4.0.2': {}
 
   '@types/estree@1.0.9': {}
-
-  '@types/node@26.0.0':
-    dependencies:
-      undici-types: 8.3.0
 
   '@types/node@26.1.2':
     dependencies:
@@ -2062,7 +2064,7 @@ snapshots:
       '@protobufjs/path': 1.1.2
       '@protobufjs/pool': 1.1.0
       '@protobufjs/utf8': 1.1.1
-      '@types/node': 26.0.0
+      '@types/node': 26.1.2
       long: 5.3.2
 
   retry@0.12.0: {}

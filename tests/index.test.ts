@@ -458,7 +458,9 @@ describe("extension wiring", () => {
 
     customMock.mockImplementationOnce(async (factory: (...args: unknown[]) => unknown) => {
       let savedResult: unknown;
-      const component = (factory as (...args: unknown[]) => { handleInput: (data: string) => void })(
+      const component = (
+        factory as (...args: unknown[]) => { handleInput: (data: string) => void }
+      )(
         { requestRender: () => {} },
         { fg: (_c: string, text: string) => text },
         {},
@@ -469,7 +471,9 @@ describe("extension wiring", () => {
     });
 
     await getRegisteredCommand(registerCommandCalls, "statusline").handler("", ctx);
-    expect(JSON.parse(readFileSync(join(agentDir, "extensions", "statusline.json"), "utf8"))).toEqual({
+    expect(
+      JSON.parse(readFileSync(join(agentDir, "extensions", "statusline.json"), "utf8")),
+    ).toEqual({
       segments: ["model-with-reasoning", "current-dir"],
       extensionSegments: { hidden: [] },
     });
@@ -477,7 +481,10 @@ describe("extension wiring", () => {
 
   it("does not persist /statusline result when user cancels", async () => {
     const path = join(agentDir, "extensions", "statusline.json");
-    const beforeContent = JSON.stringify({ segments: ["model"], extensionSegments: { hidden: [] } });
+    const beforeContent = JSON.stringify({
+      segments: ["model"],
+      extensionSegments: { hidden: [] },
+    });
     mkdirSync(join(agentDir, "extensions"), { recursive: true });
     writeFileSync(path, beforeContent, "utf8");
     const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
@@ -487,12 +494,9 @@ describe("extension wiring", () => {
     for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
 
     customMock.mockImplementationOnce(async (factory: (...args: unknown[]) => unknown) => {
-      const component = (factory as (...args: unknown[]) => { handleInput: (data: string) => void })(
-        { requestRender: () => {} },
-        { fg: (_c: string, text: string) => text },
-        {},
-        () => {},
-      );
+      const component = (
+        factory as (...args: unknown[]) => { handleInput: (data: string) => void }
+      )({ requestRender: () => {} }, { fg: (_c: string, text: string) => text }, {}, () => {});
       component.handleInput("\x1b");
       return null;
     });
@@ -504,7 +508,11 @@ describe("extension wiring", () => {
   it("keeps the prior runtime config when saving malformed config fails", async () => {
     const path = join(agentDir, "extensions", "statusline.json");
     mkdirSync(join(agentDir, "extensions"), { recursive: true });
-    writeFileSync(path, JSON.stringify({ segments: ["model"], extensionSegments: { hidden: [] } }), "utf8");
+    writeFileSync(
+      path,
+      JSON.stringify({ segments: ["model"], extensionSegments: { hidden: [] } }),
+      "utf8",
+    );
     const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
     const customMock = vi.fn();
     const notify = vi.fn();
@@ -518,7 +526,9 @@ describe("extension wiring", () => {
 
     customMock.mockImplementationOnce(async (factory: (...args: unknown[]) => unknown) => {
       let savedResult: unknown;
-      const component = (factory as (...args: unknown[]) => { handleInput: (data: string) => void })(
+      const component = (
+        factory as (...args: unknown[]) => { handleInput: (data: string) => void }
+      )(
         { requestRender: () => {} },
         { fg: (_c: string, text: string) => text },
         {},
@@ -547,7 +557,9 @@ describe("extension wiring", () => {
     customMock.mockImplementationOnce(async (factory: (...args: unknown[]) => unknown) => {
       expect(renderWithFactory(footerSpy.calls[1])).toBe("");
       let savedResult: unknown;
-      const component = (factory as (...args: unknown[]) => { handleInput: (data: string) => void })(
+      const component = (
+        factory as (...args: unknown[]) => { handleInput: (data: string) => void }
+      )(
         { requestRender: () => {} },
         { fg: (_c: string, text: string) => text },
         {},
@@ -573,12 +585,9 @@ describe("extension wiring", () => {
 
     customMock.mockImplementationOnce(async (factory: (...args: unknown[]) => unknown) => {
       expect(renderWithFactory(footerSpy.calls[1])).toBe("");
-      const component = (factory as (...args: unknown[]) => { handleInput: (data: string) => void })(
-        { requestRender: () => {} },
-        { fg: (_c: string, text: string) => text },
-        {},
-        () => {},
-      );
+      const component = (
+        factory as (...args: unknown[]) => { handleInput: (data: string) => void }
+      )({ requestRender: () => {} }, { fg: (_c: string, text: string) => text }, {}, () => {});
       component.handleInput("\x1b");
       return null;
     });

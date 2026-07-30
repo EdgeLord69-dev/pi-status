@@ -21,11 +21,13 @@
   ],
   "scripts": {
     "format": "biome format --write .",
+    "format:check": "biome format .",
     "lint": "biome lint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "check": "biome lint . && tsc --noEmit && vitest run",
-    "pack:dry-run": "pnpm pack --dry-run"
+    "pack:dry-run": "pnpm pack --dry-run",
+    "pack:verify": "node scripts/verify-pack.mjs",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm pack:verify"
   },
   "pi": {
     "extensions": [
@@ -47,8 +49,8 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.6",
-    "@earendil-works/pi-coding-agent": "^0.82.0",
-    "@earendil-works/pi-tui": "^0.82.0",
+    "@earendil-works/pi-coding-agent": "0.82.0",
+    "@earendil-works/pi-tui": "0.82.0",
     "@types/node": "^26.1.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.10"

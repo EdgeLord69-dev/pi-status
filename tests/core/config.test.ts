@@ -17,7 +17,10 @@ import {
 import { DEFAULT_SEGMENTS, type PiStatusConfig } from "../../src/shared/types.ts";
 import { MemoryConfigStore } from "../helpers.ts";
 
-const config: PiStatusConfig = { segments: ["git-branch"], extensionSegments: { hidden: ["alpha"] } };
+const config: PiStatusConfig = {
+  segments: ["git-branch"],
+  extensionSegments: { hidden: ["alpha"] },
+};
 
 describe("config — normalization", () => {
   it("normalizes segments: dedupes, rejects unknowns and non-strings", () => {
@@ -49,7 +52,10 @@ describe("config — direct extension file", () => {
     const store = new MemoryConfigStore();
     const agentDir = "/agent-root";
     const path = getConfigPath(agentDir);
-    store.seed("/agent-root/settings.json", JSON.stringify({ statusLine: { segments: ["model"] } }));
+    store.seed(
+      "/agent-root/settings.json",
+      JSON.stringify({ statusLine: { segments: ["model"] } }),
+    );
     store.seed(
       "/work/repo/.pi/settings.json",
       JSON.stringify({ statusLine: { segments: ["git-branch"] } }),
@@ -78,15 +84,18 @@ describe("config — direct extension file", () => {
     expect(store.accessPaths).toEqual([path, path]);
   });
 
-  it.each(["{ bad", "null", "[]"])("returns a fresh default for malformed or non-object config: %s", (content) => {
-    const store = new MemoryConfigStore();
-    store.seed(getConfigPath("/agent"), content);
+  it.each(["{ bad", "null", "[]"])(
+    "returns a fresh default for malformed or non-object config: %s",
+    (content) => {
+      const store = new MemoryConfigStore();
+      store.seed(getConfigPath("/agent"), content);
 
-    expect(loadConfig({ agentDir: "/agent", store })).toEqual({
-      segments: DEFAULT_SEGMENTS,
-      extensionSegments: { hidden: [] },
-    });
-  });
+      expect(loadConfig({ agentDir: "/agent", store })).toEqual({
+        segments: DEFAULT_SEGMENTS,
+        extensionSegments: { hidden: [] },
+      });
+    },
+  );
 
   it("saves the direct config schema without accessing legacy settings", () => {
     const store = new MemoryConfigStore();
@@ -98,16 +107,19 @@ describe("config — direct extension file", () => {
     expect(store.accessPaths.some((accessed) => accessed.includes("settings.json"))).toBe(false);
   });
 
-  it.each(["{ bad", "null", "[]"])("refuses to overwrite malformed or non-object config: %s", (content) => {
-    const store = new MemoryConfigStore();
-    const path = getConfigPath("/agent");
-    store.seed(path, content);
+  it.each(["{ bad", "null", "[]"])(
+    "refuses to overwrite malformed or non-object config: %s",
+    (content) => {
+      const store = new MemoryConfigStore();
+      const path = getConfigPath("/agent");
+      store.seed(path, content);
 
-    expect(() => saveConfig(config, { agentDir: "/agent", store })).toThrow(
-      /refusing to overwrite malformed or non-object config/i,
-    );
-    expect(store.writePaths).toEqual([]);
-  });
+      expect(() => saveConfig(config, { agentDir: "/agent", store })).toThrow(
+        /refusing to overwrite malformed or non-object config/i,
+      );
+      expect(store.writePaths).toEqual([]);
+    },
+  );
 
   it("propagates storage read and write failures", () => {
     const readStore = new MemoryConfigStore();
