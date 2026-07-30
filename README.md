@@ -69,8 +69,15 @@ You can compose the footer from these segment IDs:
 - `session-id`
 - `five-hour-limit`
 - `weekly-limit`
+- `cache-read-tokens`
+- `cache-write-tokens`
+- `cache-hit`
+- `session-cost`
+- `access-type`
 
 `five-hour-limit` and `weekly-limit` depend on standalone [`@pi-vault/pi-usage`](https://www.npmjs.com/package/@pi-vault/pi-usage). `/statusline` shows those segments after `pi-usage` responds, and the live footer omits them until compatible live limit window data is available.
+
+The five telemetry segments are opt-in; none are enabled by default. Session token totals include assistant, tool-result, branch-summary, and compaction usage from all session entries. `cache-hit` reflects only the latest assistant prompt, `access-type` is `subscription` for OAuth or `kimi-coding` models and `metered` otherwise, and `session-cost` is best-effort telemetry rather than billing-grade data.
 
 ## Footer Layout And Extension Statuses
 
