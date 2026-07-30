@@ -14,37 +14,37 @@ function stubCtx(cwd = "/test"): ExtensionContext {
 
 describe("RuntimeStateMachine", () => {
   it("returns initial snapshot with only durable state fields", () => {
-    const sm = createRuntimeStateMachine(defaultConfig);
+    const sm = createRuntimeStateMachine(defaultConfig, "high");
     const s = sm.snapshot();
     expect(s.ctx).toBeUndefined();
     expect(s.config).toEqual(defaultConfig);
-    expect(s.thinkingLevel).toBe("medium");
+    expect(s.thinkingLevel).toBe("high");
     expect(Object.keys(s).sort()).toEqual(["config", "ctx", "thinkingLevel"]);
   });
 
   it("stores ctx on session_start", () => {
-    const sm = createRuntimeStateMachine(defaultConfig);
+    const sm = createRuntimeStateMachine(defaultConfig, "medium");
     const ctx = stubCtx("/project");
     sm.update({ type: "session_start", ctx });
     expect(sm.snapshot().ctx).toBe(ctx);
   });
 
   it("stores ctx on session_tree", () => {
-    const sm = createRuntimeStateMachine(defaultConfig);
+    const sm = createRuntimeStateMachine(defaultConfig, "medium");
     const ctx = stubCtx("/other");
     sm.update({ type: "session_tree", ctx });
     expect(sm.snapshot().ctx).toBe(ctx);
   });
 
   it("stores ctx on model_select", () => {
-    const sm = createRuntimeStateMachine(defaultConfig);
+    const sm = createRuntimeStateMachine(defaultConfig, "medium");
     const ctx = stubCtx();
     sm.update({ type: "model_select", ctx });
     expect(sm.snapshot().ctx).toBe(ctx);
   });
 
   it("stores ctx and level on thinking_level_changed", () => {
-    const sm = createRuntimeStateMachine(defaultConfig);
+    const sm = createRuntimeStateMachine(defaultConfig, "medium");
     const ctx = stubCtx();
     sm.update({ type: "thinking_level_changed", ctx, level: "high" });
     const s = sm.snapshot();
@@ -53,7 +53,7 @@ describe("RuntimeStateMachine", () => {
   });
 
   it("clears ctx on session_shutdown but preserves config and thinkingLevel", () => {
-    const sm = createRuntimeStateMachine(defaultConfig);
+    const sm = createRuntimeStateMachine(defaultConfig, "medium");
     sm.update({ type: "session_start", ctx: stubCtx() });
     sm.update({ type: "thinking_level_changed", ctx: stubCtx(), level: "high" });
     sm.update({ type: "session_shutdown" });
@@ -64,7 +64,7 @@ describe("RuntimeStateMachine", () => {
   });
 
   it("updates config on config_reload", () => {
-    const sm = createRuntimeStateMachine(defaultConfig);
+    const sm = createRuntimeStateMachine(defaultConfig, "medium");
     const newConfig: PiStatusConfig = {
       segments: ["git-branch"],
       extensionSegments: { hidden: ["x"] },
@@ -74,7 +74,7 @@ describe("RuntimeStateMachine", () => {
   });
 
   it("fires onInvalidate on every update", () => {
-    const sm = createRuntimeStateMachine(defaultConfig);
+    const sm = createRuntimeStateMachine(defaultConfig, "medium");
     const cb = vi.fn();
     sm.onInvalidate(cb);
     sm.update({ type: "thinking_level_changed", ctx: stubCtx(), level: "low" });
@@ -84,7 +84,7 @@ describe("RuntimeStateMachine", () => {
   });
 
   it("does not fire after onInvalidate(undefined)", () => {
-    const sm = createRuntimeStateMachine(defaultConfig);
+    const sm = createRuntimeStateMachine(defaultConfig, "medium");
     const cb = vi.fn();
     sm.onInvalidate(cb);
     sm.onInvalidate(undefined);
@@ -93,7 +93,7 @@ describe("RuntimeStateMachine", () => {
   });
 
   it("dispose removes listener", () => {
-    const sm = createRuntimeStateMachine(defaultConfig);
+    const sm = createRuntimeStateMachine(defaultConfig, "medium");
     const cb = vi.fn();
     sm.onInvalidate(cb);
     sm.dispose();

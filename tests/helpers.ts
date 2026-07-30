@@ -41,6 +41,7 @@ export function createContext(overrides?: Partial<ExtensionContext>): ExtensionC
       theme: {} as never,
       getAllThemes: () => [],
     },
+    mode: "tui",
     hasUI: true,
     cwd: "/Users/test/project",
     sessionManager: {
@@ -91,7 +92,7 @@ export function createBus() {
   };
 }
 
-export function buildPiWithHandlers() {
+export function buildPiWithHandlers(options: { thinkingLevel?: string } = {}) {
   const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => void>>();
   const events = createBus();
   const registerCommand = {
@@ -106,7 +107,7 @@ export function buildPiWithHandlers() {
       handlers.set(event, [...(handlers.get(event) ?? []), handler]);
     },
     registerCommand: registerCommand.fn.bind(registerCommand),
-    getThinkingLevel: () => "medium",
+    getThinkingLevel: () => options.thinkingLevel ?? "medium",
   } as unknown as ExtensionAPI;
   return { pi, handlers, registerCommandCalls: registerCommand.calls };
 }

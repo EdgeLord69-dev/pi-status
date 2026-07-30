@@ -764,6 +764,51 @@ describe("extension wiring", () => {
     expect(renderWithFactory(footerSpy.calls[2])).toContain("GPT-5 [med]");
   });
 
+  it("uses the host thinking level initially and event level over a stale getter", () => {
+    const { pi, handlers } = buildPiWithHandlers({ thinkingLevel: "high" });
+    const footerSpy = buildSetFooterSpy();
+
+    createExtension(pi);
+
+    const ctx = createContext({
+      ui: { ...createContext().ui, setFooter: footerSpy.setFooter },
+    });
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+    expect(renderWithFactory(footerSpy.calls[0])).toContain("GPT-5 [high]");
+
+    for (const h of handlers.get("thinking_level_select") ?? []) h({ level: "low" }, ctx);
+    expect(renderWithFactory(footerSpy.calls[0])).toContain("GPT-5 [low]");
+  });
+
+  it("skips footer APIs for RPC contexts with a UI", async () => {
+    const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
+    const footerSpy = buildSetFooterSpy();
+    const custom = vi.fn();
+    const notify = vi.fn();
+
+    createExtension(pi);
+
+    const ctx = createContext({
+      mode: "rpc",
+      ui: {
+        ...createContext().ui,
+        setFooter: footerSpy.setFooter,
+        custom,
+        notify,
+      },
+    });
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+
+    const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
+    await handler("", ctx);
+
+    for (const h of handlers.get("session_shutdown") ?? []) h({}, ctx);
+
+    expect(footerSpy.calls).toEqual([]);
+    expect(custom).not.toHaveBeenCalled();
+    expect(notify).toHaveBeenCalledWith("/statusline requires interactive UI", "warning");
+  });
+
   it("session_shutdown clears the footer and session_start reinstalls it", () => {
     const { pi, handlers } = buildPiWithHandlers();
     const footerSpy = buildSetFooterSpy();
