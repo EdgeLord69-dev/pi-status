@@ -13,6 +13,7 @@ All notable changes to `@pi-vault/pi-status` are documented in this file.
 - Added four-zone footer and `/statusline` editor layout controls for top-left, top-right, bottom-left, and bottom-right segment placement.
 - Added opt-in `cache-read-tokens`, `cache-write-tokens`, `cache-hit`, `session-cost`, and `access-type` footer segments.
 - Added `/statusline session` with current-session details, rename, and confirmed compaction actions.
+- Added searchable centered-overlay `/statusline tools` controls with immediate session-scoped changes and an at-least-one-active safeguard.
 
 ### Changed
 
@@ -34,6 +35,7 @@ All notable changes to `@pi-vault/pi-status` are documented in this file.
 
 - Renamed the settings-store test seam for the extension-owned config file and added explicit tarball allowlist verification.
 - Routed session actions through Pi's public command-context APIs without adding pi-status persistence.
+- Reused Pi's public live tool APIs and TUI SettingsList without adding persistence or a second settings framework.
 
 ## 0.3.0 - 2026-06-23
 

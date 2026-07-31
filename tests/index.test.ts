@@ -2,7 +2,11 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import {
+  initTheme,
+  type ExtensionAPI,
+  type ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
 import createExtension from "../src/index.ts";
 
 let agentDir: string;
@@ -970,6 +974,58 @@ describe("extension wiring", () => {
 
     expect(select).not.toHaveBeenCalled();
     expect(notify).toHaveBeenCalledWith("/statusline session requires interactive TUI", "warning");
+  });
+
+  it("routes /statusline tools to the tool controls overlay", async () => {
+    const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
+    Object.assign(pi, {
+      getAllTools: () => [
+        { name: "read", description: "Read files" },
+        { name: "write", description: "Write files" },
+        { name: "bash", description: "Run shell commands" },
+      ],
+      getActiveTools: () => ["read", "write"],
+      setActiveTools: vi.fn(),
+    });
+    let preview = "";
+    const custom = vi.fn(
+      async (factory: (...args: unknown[]) => { render: (width: number) => string[] }) => {
+        preview = factory({ requestRender: () => {} }, {}, {}, () => {})
+          .render(100)
+          .join("\n");
+        return null;
+      },
+    );
+
+    createExtension(pi);
+    initTheme("dark", false);
+
+    const ctx = createContext({
+      ui: {
+        ...createContext().ui,
+        custom: custom as unknown as ExtensionContext["ui"]["custom"],
+      },
+    });
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+
+    const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
+    await handler("tools", ctx);
+
+    expect(custom).toHaveBeenCalledTimes(1);
+    const callArgs = custom.mock.calls[0] as unknown[];
+    expect(typeof callArgs[0]).toBe("function");
+    expect(callArgs[1]).toEqual({
+      overlay: true,
+      overlayOptions: {
+        anchor: "center",
+        width: "70%",
+        minWidth: 32,
+        maxHeight: "80%",
+        margin: 1,
+      },
+    });
+    expect(preview).toContain("read");
+    expect(preview).toContain("write");
   });
 });
 

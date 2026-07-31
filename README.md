@@ -41,6 +41,7 @@ Usage-limit segments depend on `pi-usage`. `/statusline` can show those segment 
 Once installed, the footer updates automatically.
 
 - Run `/statusline` inside Pi to open the interactive editor.
+- Run `/statusline tools` to search and toggle Pi's currently available tools in a centered overlay. Valid changes apply to the session immediately, and the control will not disable the final active tool.
 - Run `/statusline session` to view the current session name, ID, file, directory, and model.
 - From the session menu, rename the current session or compact it after an explicit confirmation.
 - Use `Tab` and `Shift+Tab` to select the TL, TR, BL, or BR zone.
@@ -84,6 +85,18 @@ The five telemetry segments are opt-in; none are enabled by default. Session tok
 ## Session Actions
 
 `/statusline session` uses Pi's current-session APIs. Renaming updates the current Pi session name, and compaction starts only after you confirm the prompt. These actions do not add pi-status settings or change the behavior of plain `/statusline`.
+
+## Tool Controls
+
+`/statusline tools` opens a centered searchable overlay that lists every tool Pi currently knows about, regardless of source. Each row shows the tool name and its current enabled/disabled state. Press `Enter` or `Space` to toggle a tool. Type to filter by name. Press `Esc` to close the overlay; changes made before closing remain active for the session.
+
+- Rows include extension-provided tools alongside Pi's built-in tools.
+- Valid changes apply to the session immediately and are session-scoped; they do not persist.
+- Stale or unknown tool names (removed by another extension) are ignored during reconciliation.
+- The final valid active tool cannot be disabled; the control restores the row and warns instead.
+- An externally empty host active set stays empty until a row is explicitly enabled.
+- No tool choices are persisted and no second settings framework is added.
+- Plain `/statusline` (no argument) continues to open the footer segment editor.
 
 ## Footer Layout And Extension Statuses
 

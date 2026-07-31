@@ -6,6 +6,7 @@ import { createUsageRuntime } from "./core/usage-runtime.ts";
 import type { AccessType, PiStatusConfig } from "./shared/types.ts";
 import { createStatusLineEditor } from "./tui/editor.ts";
 import { parseStatusLineCommand } from "./tui/command-router.ts";
+import { openToolControls } from "./tui/tool-controls.ts";
 import { handleSessionActions } from "./tui/session-actions.ts";
 import { buildFooterRowsFromResolved } from "./tui/render.ts";
 import { fromPiTheme, noColorRequested, noTheme, type StatusLineTheme } from "./tui/theme.ts";
@@ -134,6 +135,10 @@ export default function createExtension(pi: ExtensionAPI): void {
     description: "Configure statusline segments and extension-status visibility",
     handler: async (args, ctx) => {
       const command = parseStatusLineCommand(args);
+      if (command.kind === "tools") {
+        await openToolControls(pi, ctx);
+        return;
+      }
       if (command.kind === "session") {
         await handleSessionActions(pi, ctx);
         return;
