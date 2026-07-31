@@ -15,10 +15,6 @@ All notable changes to `@pi-vault/pi-status` are documented in this file.
 - Added `/statusline session` with current-session details, rename, and confirmed compaction actions.
 - Added searchable centered-overlay `/statusline tools` controls with immediate session-scoped changes and an at-least-one-active safeguard.
 
-### Internal
-
-- Reused Pi's public live tool APIs and TUI SettingsList without adding persistence or a second settings framework.
-
 ### Changed
 
 - Moved pi-status configuration from Pi's `settings.json` files to the global extension-owned `<Pi agent directory>/extensions/statusline.json` file with a four-zone JSON shape.
@@ -39,6 +35,7 @@ All notable changes to `@pi-vault/pi-status` are documented in this file.
 
 - Renamed the settings-store test seam for the extension-owned config file and added explicit tarball allowlist verification.
 - Routed session actions through Pi's public command-context APIs without adding pi-status persistence.
+- Reused Pi's public live tool APIs and TUI SettingsList without adding persistence or a second settings framework.
 
 ## 0.3.0 - 2026-06-23
 

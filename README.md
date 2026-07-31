@@ -88,7 +88,7 @@ The five telemetry segments are opt-in; none are enabled by default. Session tok
 
 ## Tool Controls
 
-`/statusline tools` opens a centered searchable overlay that lists every tool Pi currently knows about, regardless of source. Each row shows the tool name and its current enabled/disabled state. Press `Enter` or `Space` to toggle a tool. Type to filter by name. Press `Esc` to cancel without changing anything.
+`/statusline tools` opens a centered searchable overlay that lists every tool Pi currently knows about, regardless of source. Each row shows the tool name and its current enabled/disabled state. Press `Enter` or `Space` to toggle a tool. Type to filter by name. Press `Esc` to close the overlay; changes made before closing remain active for the session.
 
 - Rows include extension-provided tools alongside Pi's built-in tools.
 - Valid changes apply to the session immediately and are session-scoped; they do not persist.
