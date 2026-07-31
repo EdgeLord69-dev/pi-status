@@ -1,5 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { estimateTokens } from "@earendil-works/pi-coding-agent";
 import { loadConfig, saveConfig } from "./core/config.ts";
+import { createActivityRuntime } from "./core/activity-runtime.ts";
 import type { SpawnNotificationProcess } from "./core/completion-notifier.ts";
 import { buildSnapshot, resolveFooter } from "./core/resolve-footer.ts";
 import { createNotificationsWiring } from "./core/notifications-wiring.ts";
@@ -57,11 +59,19 @@ function getAccessType(ctx: ExtensionContext): AccessType | undefined {
     : "metered";
 }
 
+function isActiveTuiSession(
+  ctx: ExtensionContext,
+  manager: ExtensionContext["sessionManager"] | undefined,
+): boolean {
+  return ctx.mode === "tui" && manager !== undefined && ctx.sessionManager === manager;
+}
+
 export default function createExtension(pi: ExtensionAPI): void {
   const runtimeState = createRuntimeStateMachine(loadConfig(), "off");
   let activeTuiSessionManager: ExtensionContext["sessionManager"] | undefined;
 
   const usageRuntime = createUsageRuntime(pi);
+  const activityRuntime = createActivityRuntime();
   const footerProviderState: FooterProviderState = {
     gitBranch: null,
     extensionStatuses: new Map(),
@@ -103,6 +113,7 @@ export default function createExtension(pi: ExtensionAPI): void {
       const requestRender = () => tui.requestRender?.();
       runtimeState.onInvalidate(requestRender);
       usageRuntime.setOnChange(requestRender);
+      activityRuntime.setOnChange(requestRender);
       const unsubscribe = footerData.onBranchChange?.(() => {
         refreshFooterProviderState(footerData);
         requestRender();
@@ -113,6 +124,7 @@ export default function createExtension(pi: ExtensionAPI): void {
           unsubscribe?.();
           runtimeState.onInvalidate(undefined);
           usageRuntime.setOnChange(undefined);
+          activityRuntime.setOnChange(undefined);
         },
         invalidate() {
           requestRender();
@@ -136,6 +148,7 @@ export default function createExtension(pi: ExtensionAPI): void {
             sessionId: activeCtx.sessionManager.getSessionId(),
             usageState: usageRuntime.getState(),
             extensionStatuses: footerProviderState.extensionStatuses,
+            activity: activityRuntime.snapshot(),
           });
           return buildFooterRowsFromResolved(
             resolveFooter(snapshot, snap.config, statusTheme),
@@ -246,6 +259,7 @@ export default function createExtension(pi: ExtensionAPI): void {
             sessionId: activeCtx.sessionManager.getSessionId(),
             usageState: usageRuntime.getState(),
             extensionStatuses: footerProviderState.extensionStatuses,
+            activity: activityRuntime.snapshot(),
           });
           return createStatusLineEditor({
             config: editorSnap.config,
@@ -274,6 +288,8 @@ export default function createExtension(pi: ExtensionAPI): void {
 
   pi.on("session_start", (_event, ctx) => {
     resetFooterProviderState();
+    activityRuntime.reset();
+    activityRuntime.setOnChange(undefined);
     usageRuntime.requestCurrent();
     runtimeState.update({ type: "session_start", ctx });
     activeTuiSessionManager = ctx.mode === "tui" ? ctx.sessionManager : undefined;
@@ -289,6 +305,8 @@ export default function createExtension(pi: ExtensionAPI): void {
 
   pi.on("session_tree", (_event, ctx) => {
     resetFooterProviderState();
+    activityRuntime.reset();
+    activityRuntime.setOnChange(undefined);
     runtimeState.update({ type: "session_tree", ctx });
     activeTuiSessionManager = ctx.mode === "tui" ? ctx.sessionManager : undefined;
     runtimeState.update({
@@ -315,14 +333,66 @@ export default function createExtension(pi: ExtensionAPI): void {
 
   pi.on("agent_start", (_event, ctx) => {
     notifications.notifyRunStarted(ctx);
+    if (isActiveTuiSession(ctx, activeTuiSessionManager)) {
+      activityRuntime.startRun();
+    }
   });
 
-  pi.on("turn_start", (_event, ctx) => {
+  pi.on("turn_start", (event, ctx) => {
     notifications.notifyRunStarted(ctx);
+    if (isActiveTuiSession(ctx, activeTuiSessionManager)) {
+      activityRuntime.startTurn(event.turnIndex, event.timestamp);
+    }
+  });
+
+  pi.on("turn_end", (event, ctx) => {
+    if (isActiveTuiSession(ctx, activeTuiSessionManager)) {
+      activityRuntime.finishTurn(event.timestamp);
+    }
+  });
+
+  pi.on("before_provider_request", (_event, ctx) => {
+    if (isActiveTuiSession(ctx, activeTuiSessionManager)) {
+      activityRuntime.startResponse();
+    }
+  });
+
+  pi.on("message_update", (event, ctx) => {
+    if (isActiveTuiSession(ctx, activeTuiSessionManager)) {
+      if (event.message?.role === "assistant") {
+        const estimated = estimateTokens(event.message);
+        if (Number.isFinite(estimated) && estimated > 0) {
+          activityRuntime.updateResponseEstimate(estimated);
+        }
+      }
+    }
+  });
+
+  pi.on("message_end", (event, ctx) => {
+    if (isActiveTuiSession(ctx, activeTuiSessionManager)) {
+      if (event.message?.role === "assistant") {
+        activityRuntime.finishResponse(event.message.usage?.output);
+      }
+    }
+  });
+
+  pi.on("tool_execution_start", (event, ctx) => {
+    if (isActiveTuiSession(ctx, activeTuiSessionManager)) {
+      activityRuntime.startTool(event.toolCallId, event.toolName);
+    }
+  });
+
+  pi.on("tool_execution_end", (event, ctx) => {
+    if (isActiveTuiSession(ctx, activeTuiSessionManager)) {
+      activityRuntime.finishTool(event.toolCallId, event.isError);
+    }
   });
 
   pi.on("agent_settled", (_event, ctx) => {
     notifications.notifyAgentSettled(ctx);
+    if (isActiveTuiSession(ctx, activeTuiSessionManager)) {
+      activityRuntime.finishRun();
+    }
   });
 
   pi.on("session_shutdown", (_event, ctx) => {
@@ -332,6 +402,8 @@ export default function createExtension(pi: ExtensionAPI): void {
       (ctx.mode === "tui" && ctx.sessionManager === activeTuiSessionManager)
     ) {
       notifications.dispose();
+      activityRuntime.reset();
+      activityRuntime.setOnChange(undefined);
       activeTuiSessionManager = undefined;
     }
     runtimeState.update({ type: "session_shutdown" });

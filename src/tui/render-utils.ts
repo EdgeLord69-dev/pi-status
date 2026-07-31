@@ -11,6 +11,16 @@ export function formatCompactNumber(value: number): string {
   return `${short}${unit}`;
 }
 
+export function formatCompactDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return "<1s";
+  if (ms < 1000) return `${Math.max(0, Math.trunc(ms))}ms`;
+  const totalSeconds = Math.floor(ms / 1000);
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}m ${seconds}s`;
+}
+
 export function abbreviateHomeDir(cwd: string, home = homedir()): string {
   if (!home) return cwd;
   if (cwd === home) return "~";
