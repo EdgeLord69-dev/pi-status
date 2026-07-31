@@ -4,7 +4,7 @@
 
 **Goal:** Add `/statusline session`, showing current-session details and offering session rename and explicitly confirmed compaction through Pi's public APIs.
 
-**Architecture:** Introduce one small `src/tui/command-router.ts` that preserves the empty command as the existing editor and adds a `session` route. Keep session behavior in focused `src/tui/session-actions.ts`; use Pi's native `select`, `input`, and `confirm` methods, rename through `pi.setSessionName()`, and trigger fire-and-forget `ctx.compact()` callbacks without adding configuration or persistence.
+**Architecture:** Introduce one small `src/tui/command-router.ts` that preserves the empty command as the existing editor and adds a `session` route. Keep session behavior in focused `src/tui/session-actions.ts`; use Pi's native `select`, `input`, and `confirm` methods, rename through `pi.setSessionName()`, and trigger fire-and-forget `ctx.compact()` callbacks without adding configuration or persistence. Catch synchronous host/UI failures at the action boundary and report callback failures through native notifications.
 
 **Tech Stack:** TypeScript 6, Pi extension API `@earendil-works/pi-coding-agent@0.82.0`, Vitest 4, Biome, pnpm.
 
@@ -19,8 +19,10 @@ In interactive Pi, `/statusline session` opens a compact action menu whose title
 - Phases 1–3 are complete and green. Phase 1 established `ctx.mode === "tui"` as the custom-TUI guard.
 - Pi already owns model selection and thinking-level controls, so this phase does not duplicate them. The new router recognizes only the empty editor command, `session`, and unknown input; later phases extend the same union and parser.
 - The command handler receives `ExtensionCommandContext`. `ctx.compact()` is fire-and-forget and must not be awaited.
+- Pi's public action methods can throw when the extension runtime is inactive; metadata lookup, prompts, rename, and compaction initiation must become warning notifications rather than uncaught command failures.
 - Pi owns session-name persistence via session entries. “Session-scoped” means this phase must not add a pi-status setting, file, cache, or cross-session default.
-- `pi.getSessionName()` may be absent, `ctx.sessionManager.getSessionFile()` may be `undefined`, and `ctx.model` may be absent. Render explicit fallback text rather than throwing.
+- `pi.getSessionName()` may return `undefined`, `ctx.sessionManager.getSessionFile()` may be `undefined`, and `ctx.model` may be absent. Render explicit fallback text rather than throwing. When a model exists, display `${provider}/${id}` so model IDs are unambiguous.
+- Pi invalidates its footer after `compaction_end`; do not add a `session_compact` listener or a second push-based runtime for this pull-based footer.
 
 ## Explicit Non-Goals
 
@@ -53,6 +55,7 @@ Reference symbols and paths, not generated declaration line numbers.
 - `tests/tui/command-router.test.ts` — prove exact and whitespace-normalized session routing while preserving the empty route.
 
 **Modify:**
+
 - `src/index.ts` — wire the parsed `session` route to `handleSessionActions(pi, ctx)`.
 - `tests/helpers.ts` — add controllable session-name getters/setters and session-file support to the existing Pi/context mocks.
 - `tests/index.test.ts` — prove `/statusline session` is wired and plain `/statusline` still opens the editor.
@@ -75,12 +78,13 @@ Expected: one full commit SHA from the completed Phase 3 branch. Keep this shell
 ### Task 1: Add the Session Action Module Test-First
 
 **Files:**
+
 - Create: `tests/tui/session-actions.test.ts`
 - Create: `src/tui/session-actions.ts`
 
 - [ ] **Step 1: Write focused failing tests for details and rename**
 
-Create `tests/tui/session-actions.test.ts` with typed mocks based on `tests/helpers.ts`. The core assertions must be:
+Create `tests/tui/session-actions.test.ts` with typed local mocks. The core assertions must be:
 
 ```ts
 import { describe, expect, it, vi } from "vitest";
@@ -97,7 +101,7 @@ function commandContext(overrides: Record<string, unknown> = {}) {
   return {
     mode: "tui",
     cwd: "/work/pi-status",
-    model: { id: "claude-sonnet-4" },
+    model: { provider: "anthropic", id: "claude-sonnet-4" },
     sessionManager: {
       getSessionId: () => "session-123",
       getSessionFile: () => "/tmp/session-123.jsonl",
@@ -192,12 +196,41 @@ it("compacts only after explicit confirmation", async () => {
   expect(compact).toHaveBeenCalledOnce();
   const options = compact.mock.calls[0]?.[0] as {
     onComplete: () => void;
-    onError: (error: Error) => void;
   };
   options.onComplete();
   expect(ctx.ui.notify).toHaveBeenCalledWith("Session compacted", "info");
+});
+
+it("reports a compaction callback failure without throwing", async () => {
+  const compact = vi.fn();
+  const ctx = commandContext({ compact });
+  vi.mocked(ctx.ui.select).mockResolvedValue("Compact session");
+  vi.mocked(ctx.ui.confirm).mockResolvedValue(true);
+
+  await handleSessionActions(extensionApi(), ctx);
+
+  const options = compact.mock.calls[0]?.[0] as {
+    onError: (error: Error) => void;
+  };
   options.onError(new Error("compact failed"));
   expect(ctx.ui.notify).toHaveBeenCalledWith("compact failed", "warning");
+});
+
+it("reports a synchronous compaction-start failure", async () => {
+  const ctx = commandContext({
+    compact: vi.fn(() => {
+      throw new Error("compact unavailable");
+    }),
+  });
+  vi.mocked(ctx.ui.select).mockResolvedValue("Compact session");
+  vi.mocked(ctx.ui.confirm).mockResolvedValue(true);
+
+  await handleSessionActions(extensionApi(), ctx);
+
+  expect(ctx.ui.notify).toHaveBeenCalledWith(
+    "Session action failed: compact unavailable",
+    "warning",
+  );
 });
 
 it("does not compact when confirmation is declined", async () => {
@@ -268,51 +301,50 @@ export async function handleSessionActions(
   ctx: ExtensionCommandContext,
 ): Promise<void> {
   if (ctx.mode !== "tui") {
-    ctx.ui.notify(
-      "/statusline session requires interactive TUI",
-      "warning",
-    );
+    ctx.ui.notify("/statusline session requires interactive TUI", "warning");
     return;
   }
 
-  const id = ctx.sessionManager.getSessionId();
-  const action = await ctx.ui.select(
-    formatSessionDetails({
-      name: pi.getSessionName(),
-      id,
-      file: ctx.sessionManager.getSessionFile(),
-      cwd: ctx.cwd,
-      model: ctx.model?.id,
-    }),
-    ["Rename session", "Compact session", "Close"],
-  );
+  try {
+    const id = ctx.sessionManager.getSessionId();
+    const action = await ctx.ui.select(
+      formatSessionDetails({
+        name: pi.getSessionName(),
+        id,
+        file: ctx.sessionManager.getSessionFile(),
+        cwd: ctx.cwd,
+        model: ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined,
+      }),
+      ["Rename session", "Compact session", "Close"],
+    );
 
-  if (action === "Rename session") {
-    const name = (await ctx.ui.input("Rename session", "Session name"))?.trim();
-    if (!name) return;
-    try {
+    if (action === "Rename session") {
+      const name = (
+        await ctx.ui.input("Rename session", "Session name")
+      )?.trim();
+      if (!name) return;
       pi.setSessionName(name);
       ctx.ui.notify(`Session renamed to ${name}`, "info");
-    } catch (error) {
-      ctx.ui.notify(
-        error instanceof Error ? error.message : "Failed to rename session",
-        "warning",
-      );
+      return;
     }
-    return;
+
+    if (action !== "Compact session") return;
+    const confirmed = await ctx.ui.confirm(
+      "Compact session?",
+      `Pi will summarize older context for session ${id}. Continue?`,
+    );
+    if (!confirmed) return;
+
+    ctx.compact({
+      onComplete: () => ctx.ui.notify("Session compacted", "info"),
+      onError: (error) => ctx.ui.notify(error.message, "warning"),
+    });
+  } catch (error) {
+    ctx.ui.notify(
+      `Session action failed: ${error instanceof Error ? error.message : String(error)}`,
+      "warning",
+    );
   }
-
-  if (action !== "Compact session") return;
-  const confirmed = await ctx.ui.confirm(
-    "Compact session?",
-    `Pi will summarize older context for session ${id}. Continue?`,
-  );
-  if (!confirmed) return;
-
-  ctx.compact({
-    onComplete: () => ctx.ui.notify("Session compacted", "info"),
-    onError: (error) => ctx.ui.notify(error.message, "warning"),
-  });
 }
 ```
 
@@ -320,7 +352,27 @@ Do not add a loop, custom component, persistence callback, or `await` before `ct
 
 - [ ] **Step 5: Add the rename failure assertion**
 
-Add one test where `setSessionName` throws `new Error("rename failed")`; expect `ctx.ui.notify("rename failed", "warning")` and no uncaught rejection.
+Append this test where `setSessionName` throws `new Error("rename failed")`; expect the warning and no uncaught rejection:
+
+```ts
+it("reports a rename failure without throwing", async () => {
+  const ctx = commandContext();
+  vi.mocked(ctx.ui.select).mockResolvedValue("Rename session");
+  vi.mocked(ctx.ui.input).mockResolvedValue("Release work");
+  const pi = extensionApi({
+    setSessionName: vi.fn(() => {
+      throw new Error("rename failed");
+    }),
+  });
+
+  await handleSessionActions(pi, ctx);
+
+  expect(ctx.ui.notify).toHaveBeenCalledWith(
+    "Session action failed: rename failed",
+    "warning",
+  );
+});
+```
 
 - [ ] **Step 6: Run the narrow module test and verify green**
 
@@ -338,6 +390,7 @@ git commit -m "feat: add statusline session actions"
 ### Task 2: Route `/statusline session` Without Changing Plain `/statusline`
 
 **Files:**
+
 - Modify: `src/tui/command-router.ts`
 - Modify: `tests/tui/command-router.test.ts`
 - Modify: `src/index.ts:1-12,137-200`
@@ -349,18 +402,21 @@ git commit -m "feat: add statusline session actions"
 Create `tests/tui/command-router.test.ts` with the initial router contract:
 
 ```ts
-it.each(["session", "  session  "])("routes %j to session actions", (args) => {
-  expect(parseStatusLineCommand(args)).toEqual({ kind: "session" });
-});
+it.each(["session", "  session  ", "SESSION"])(
+  "routes %j to session actions",
+  (args) => {
+    expect(parseStatusLineCommand(args)).toEqual({ kind: "session" });
+  },
+);
 
 it("keeps empty arguments routed to the existing editor", () => {
   expect(parseStatusLineCommand("   ")).toEqual({ kind: "editor" });
 });
 
 it("preserves an unsupported command for one warning boundary", () => {
-  expect(parseStatusLineCommand("unknown")).toEqual({
+  expect(parseStatusLineCommand("  Unknown  ")).toEqual({
     kind: "unknown",
-    command: "unknown",
+    command: "Unknown",
   });
 });
 ```
@@ -382,9 +438,9 @@ export type StatusLineCommand =
   | { kind: "unknown"; command: string };
 
 export function parseStatusLineCommand(args: string): StatusLineCommand {
-  const command = args.trim().toLowerCase();
+  const command = args.trim();
   if (!command) return { kind: "editor" };
-  if (command === "session") return { kind: "session" };
+  if (command.toLowerCase() === "session") return { kind: "session" };
   return { kind: "unknown", command };
 }
 ```
@@ -399,7 +455,7 @@ Expected: PASS for editor, session, whitespace normalization, and unknown input.
 
 - [ ] **Step 5: Extend shared test helpers with public session methods**
 
-In `tests/helpers.ts`, add defaults without replacing existing overrides:
+In `tests/helpers.ts`, import `vi` from `vitest` and add defaults without replacing existing overrides:
 
 ```ts
 getSessionName: vi.fn(() => undefined),
@@ -416,14 +472,14 @@ on the existing `sessionManager` mock. Keep the current `ui.select`, `ui.input`,
 
 - [ ] **Step 6: Add a failing registration/wiring test**
 
-In `tests/index.test.ts`, obtain the registered `statusline` handler with the file's existing helper pattern, invoke `handler("session", ctx)`, and assert that a mocked `ctx.ui.select` receives a title containing both `Session details` and the helper's session ID. Also retain or add this regression assertion:
+In `tests/index.test.ts`, obtain the registered `statusline` handler with the file's existing helper pattern, invoke `handler("session", ctx)`, and assert that a mocked `ctx.ui.select` receives a title containing both `Session details` and the helper's session ID. Also prove unknown routing and retain or add this regression assertion:
 
 ```ts
 await handler("", ctx);
 expect(ctx.ui.custom).toHaveBeenCalled();
 ```
 
-The test must separately prove that `handler("session", ctx)` does **not** call the footer configuration `ctx.ui.custom` editor.
+The tests must separately prove that `handler("session", ctx)` does **not** call the footer configuration `ctx.ui.custom` editor, that `handler("unknown", ctx)` warns without opening either UI, and that an RPC session invocation reports `/statusline session requires interactive TUI`.
 
 - [ ] **Step 7: Run the wiring test and verify red**
 
@@ -473,6 +529,7 @@ git commit -m "feat: route statusline session command"
 ### Task 3: Document Session Actions
 
 **Files:**
+
 - Modify: `README.md`
 - Modify: `CHANGELOG.md`
 
@@ -515,7 +572,7 @@ Run: `pnpm lint`
 
 Expected: PASS with no Biome diagnostics.
 
-Run: `pnpm run pack:dry-run && pnpm pack:verify`
+Run: `mise exec node@24.15.0 -- env npm_config_cache=/tmp/pi-status-phase-04-npm-cache pnpm run pack:dry-run && mise exec node@24.15.0 -- env npm_config_cache=/tmp/pi-status-phase-04-npm-cache pnpm pack:verify`
 
 Expected: exit 0; the package listing contains `README.md`, `CHANGELOG.md`, `src/index.ts`, and `src/tui/session-actions.ts`, and contains no `tests/` or `docs/superpowers/` files.
 
@@ -532,7 +589,7 @@ git commit -m "docs: describe statusline session actions"
 
 - [ ] **Step 1: Verify the supported Node baseline**
 
-Run: `node --version`
+Run: `mise exec node@24.15.0 -- node --version`
 
 Expected: `v24.15.0` or newer. Stop and switch Node versions if lower; do not weaken `package.json` engines.
 
@@ -541,7 +598,8 @@ Expected: `v24.15.0` or newer. Stop and switch Node versions if lower; do not we
 Run:
 
 ```bash
-pnpm vitest run tests/tui/command-router.test.ts tests/tui/session-actions.test.ts tests/index.test.ts
+PHASE_NPM_CACHE=$(mktemp -d /tmp/pi-status-phase-04-npm-cache.XXXXXX)
+mise exec node@24.15.0 -- env npm_config_cache="$PHASE_NPM_CACHE" pnpm vitest run tests/tui/command-router.test.ts tests/tui/session-actions.test.ts tests/index.test.ts
 ```
 
 Expected: exit 0; session details, rename success/failure, compact confirm/decline/callbacks, RPC rejection, routing, and unchanged empty-command editor coverage pass.
@@ -549,10 +607,11 @@ Expected: exit 0; session details, rename success/failure, compact confirm/decli
 - [ ] **Step 3: Run all required full checks independently**
 
 ```bash
-pnpm lint
-pnpm typecheck
-pnpm test
-pnpm check
+PHASE_NPM_CACHE=$(mktemp -d /tmp/pi-status-phase-04-npm-cache.XXXXXX)
+mise exec node@24.15.0 -- env npm_config_cache="$PHASE_NPM_CACHE" pnpm lint
+mise exec node@24.15.0 -- env npm_config_cache="$PHASE_NPM_CACHE" pnpm typecheck
+mise exec node@24.15.0 -- env npm_config_cache="$PHASE_NPM_CACHE" pnpm test
+mise exec node@24.15.0 -- env npm_config_cache="$PHASE_NPM_CACHE" pnpm check
 ```
 
 Expected for each command: exit 0. `pnpm test` and `pnpm check` report every Vitest file green with no unhandled compaction-callback rejection.
@@ -562,8 +621,9 @@ Expected for each command: exit 0. `pnpm test` and `pnpm check` report every Vit
 Run:
 
 ```bash
-pnpm run pack:dry-run 2>&1 | tee /tmp/pi-status-phase-04-pack.txt
-pnpm pack:verify
+PHASE_NPM_CACHE=$(mktemp -d /tmp/pi-status-phase-04-npm-cache.XXXXXX)
+mise exec node@24.15.0 -- env npm_config_cache="$PHASE_NPM_CACHE" pnpm run pack:dry-run 2>&1 | tee /tmp/pi-status-phase-04-pack.txt
+mise exec node@24.15.0 -- env npm_config_cache="$PHASE_NPM_CACHE" pnpm pack:verify
 grep -E 'README.md|CHANGELOG.md|src/index.ts|src/tui/session-actions.ts' /tmp/pi-status-phase-04-pack.txt
 grep -E 'tests/|docs/superpowers/' /tmp/pi-status-phase-04-pack.txt && exit 1 || true
 ```
@@ -602,6 +662,7 @@ Phase 4 is complete only when all of the following are true:
 - `/statusline session` displays current session details and offers exactly rename, compact, and close actions.
 - Rename rejects canceled/blank input, trims valid input, uses `pi.setSessionName()`, and adds no pi-status persistence.
 - Compact always requires an affirmative `ctx.ui.confirm()` and reports callback failure without crashing.
+- Synchronous metadata, prompt, rename, and compaction-start failures become warnings without escaping the command handler.
 - Non-TUI invocation performs no session mutation.
 - Plain `/statusline`, unknown-command handling, footer restoration, and all prior tests remain green.
 - README and `CHANGELOG.md` describe shipped behavior.
