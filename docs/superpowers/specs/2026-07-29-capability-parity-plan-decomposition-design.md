@@ -33,8 +33,8 @@ Create these phase plans in order:
 6. `docs/superpowers/plans/2026-07-29-pi-status-phase-06-tool-controls.md`
 7. `docs/superpowers/plans/2026-07-29-pi-status-phase-07-completion-notifications.md`
 8. `docs/superpowers/plans/2026-07-29-pi-status-phase-08-live-activity.md`
-9. `docs/superpowers/plans/2026-07-29-pi-status-phase-09-presets.md`
-10. `docs/superpowers/plans/2026-07-29-pi-status-phase-10-workspace-pulse.md`
+9. `docs/superpowers/plans/2026-07-29-pi-status-phase-08-presets.md`
+10. `docs/superpowers/plans/2026-07-29-pi-status-phase-09-workspace-pulse.md`
 
 ## Phase Outcomes
 
@@ -66,15 +66,15 @@ Add searchable `/statusline tools` settings using Pi's `SettingsList`. Apply val
 
 Add opt-in `/statusline notifications`, persisted as a global preference. Notify on authoritative turn settlement and explicit ask-user blocked state. Native macOS and Windows delivery is bounded, best-effort, and nonfatal.
 
-### Phase 8: Live Activity
+### Phase 7: Live Activity
 
 Track run, turn, tool, and response events; durations; active and recent tools; TTFT; and estimated/final TPS. Add compact `turn-progress` and `response-performance` footer segments while retaining richer typed state for future sidebar work.
 
-### Phase 9: Display Presets
+### Phase 8: Display Presets
 
-Add exactly three display-only presets: `minimal`, `balanced`, and `telemetry`. `/statusline preset` previews the resulting segment list, asks for confirmation, and then saves through the existing settings ownership rules. Presets do not alter model, thinking, or tools.
+Add exactly three display-only presets: `minimal`, `balanced`, and `telemetry`. `/statusline preset` previews the complete four-zone layout, asks for confirmation, and then saves through the existing global extension-owned config path. Presets do not persist a preset name or alter model, thinking, tools, notifications, session, Git, or workspace state.
 
-### Phase 10: Workspace Pulse
+### Phase 9: Workspace Pulse
 
 Add bounded read-only Git inspection, generation-safe refresh, and explicit clean, changed, conflict, not-repository, unavailable, and stale states. Add a compact `workspace-pulse` footer segment and retain a reusable detailed snapshot for future sidebar work without implementing sidebar code.
 

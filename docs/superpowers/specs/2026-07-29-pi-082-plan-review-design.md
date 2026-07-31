@@ -58,7 +58,7 @@ Use `turn_start.event.turnIndex` and `event.timestamp` as authoritative turn met
 
 ### Phase 8: Display presets
 
-Pass a mutable copy of the preset-name tuple to `ctx.ui.select`. Preset saves preserve the effective global notification preference without serializing that global-only field into project configuration. Presets remain display-only expanded segment lists.
+Pass a mutable copy of the preset-name tuple to `ctx.ui.select`. Preset saves preserve the effective global notification preference while replacing only the complete four-zone `zones` layout in the global extension-owned config file. Presets remain display-only and do not persist a preset name.
 
 ### Phase 9: Workspace Pulse
 
