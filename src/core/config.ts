@@ -22,12 +22,14 @@ import {
 export const DEFAULT_CONFIG: PiStatusConfig = {
   zones: cloneZones(DEFAULT_ZONES),
   extensionSegments: { hidden: [] },
+  completionNotifications: false,
 };
 
 function cloneDefaultConfig(): PiStatusConfig {
   return {
     zones: cloneZones(DEFAULT_CONFIG.zones),
     extensionSegments: { hidden: [...DEFAULT_CONFIG.extensionSegments.hidden] },
+    completionNotifications: DEFAULT_CONFIG.completionNotifications,
   };
 }
 
@@ -147,6 +149,7 @@ function normalizeConfig(input: Record<string, unknown>): PiStatusConfig {
         ? normalizeZones({ topLeft: input.segments })
         : cloneZones(DEFAULT_ZONES),
     extensionSegments: normalizeExtensionSegments(input.extensionSegments),
+    completionNotifications: input.completionNotifications === true,
   };
 }
 
@@ -171,6 +174,7 @@ export function saveConfig(
   const next: PiStatusConfig = {
     zones: cloneZones(config.zones),
     extensionSegments: { hidden: [...config.extensionSegments.hidden] },
+    completionNotifications: config.completionNotifications,
   };
   store.write(path, `${JSON.stringify(next, null, 2)}\n`);
   return { path };

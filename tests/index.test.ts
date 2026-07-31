@@ -661,6 +661,7 @@ describe("extension wiring", () => {
         bottomRight: [],
       },
       extensionSegments: { hidden: [] },
+      completionNotifications: false,
     });
   });
 

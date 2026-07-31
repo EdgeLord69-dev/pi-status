@@ -26,6 +26,7 @@ import { MemoryConfigStore } from "../helpers.ts";
 const config: PiStatusConfig = {
   zones: { topLeft: ["git-branch"], topRight: [], bottomLeft: [], bottomRight: [] },
   extensionSegments: { hidden: ["alpha"] },
+  completionNotifications: false,
 };
 
 describe("config — normalization", () => {
@@ -148,6 +149,7 @@ describe("config — direct extension file", () => {
     expect(loadConfig({ agentDir, store })).toEqual({
       zones: DEFAULT_ZONES,
       extensionSegments: { hidden: [] },
+      completionNotifications: false,
     });
     expect(store.accessPaths).toEqual([path]);
     expect(store.accessPaths.some((accessed) => accessed.includes("settings.json"))).toBe(false);
@@ -178,6 +180,7 @@ describe("config — direct extension file", () => {
       expect(loadConfig({ agentDir: "/agent", store })).toEqual({
         zones: DEFAULT_ZONES,
         extensionSegments: { hidden: [] },
+        completionNotifications: false,
       });
     },
   );
@@ -261,7 +264,11 @@ describe("config — filesystem", () => {
     vi.stubEnv("PI_CODING_AGENT_DIR", agentDir);
     const path = join(agentDir, "extensions", "statusline.json");
 
-    expect(loadConfig()).toEqual({ zones: DEFAULT_ZONES, extensionSegments: { hidden: [] } });
+    expect(loadConfig()).toEqual({
+      zones: DEFAULT_ZONES,
+      extensionSegments: { hidden: [] },
+      completionNotifications: false,
+    });
     vi.mocked(mkdtempSync).mockClear();
     expect(saveConfig(config)).toEqual({ path });
     expect(loadConfig()).toEqual(config);
@@ -270,5 +277,112 @@ describe("config — filesystem", () => {
     const tempDir = vi.mocked(mkdtempSync).mock.results[0]?.value;
     expect(typeof tempDir).toBe("string");
     expect(existsSync(tempDir as string)).toBe(false);
+  });
+});
+
+describe("config — completion notifications", () => {
+  it("defaults completionNotifications to false when the file is missing", () => {
+    const store = new MemoryConfigStore();
+    expect(loadConfig({ agentDir: "/agent", store }).completionNotifications).toBe(false);
+  });
+
+  it("defaults completionNotifications to false when the key is absent", () => {
+    const store = new MemoryConfigStore();
+    store.seed(
+      getConfigPath("/agent"),
+      JSON.stringify({ zones: DEFAULT_ZONES, extensionSegments: { hidden: [] } }),
+    );
+    expect(loadConfig({ agentDir: "/agent", store }).completionNotifications).toBe(false);
+  });
+
+  it("defaults completionNotifications to false when the value is false", () => {
+    const store = new MemoryConfigStore();
+    store.seed(
+      getConfigPath("/agent"),
+      JSON.stringify({
+        zones: DEFAULT_ZONES,
+        extensionSegments: { hidden: [] },
+        completionNotifications: false,
+      }),
+    );
+    expect(loadConfig({ agentDir: "/agent", store }).completionNotifications).toBe(false);
+  });
+
+  it.each(["true", 1, "yes", {}, []])(
+    "only literal true enables completionNotifications (rejects %s)",
+    (value) => {
+      const store = new MemoryConfigStore();
+      store.seed(
+        getConfigPath("/agent"),
+        JSON.stringify({
+          zones: DEFAULT_ZONES,
+          extensionSegments: { hidden: [] },
+          completionNotifications: value,
+        }),
+      );
+      expect(loadConfig({ agentDir: "/agent", store }).completionNotifications).toBe(false);
+    },
+  );
+
+  it("enables completionNotifications only when the stored value is literal true", () => {
+    const store = new MemoryConfigStore();
+    store.seed(
+      getConfigPath("/agent"),
+      JSON.stringify({
+        zones: DEFAULT_ZONES,
+        extensionSegments: { hidden: [] },
+        completionNotifications: true,
+      }),
+    );
+    expect(loadConfig({ agentDir: "/agent", store }).completionNotifications).toBe(true);
+  });
+
+  it("preserves completionNotifications: true through saveConfig", () => {
+    const store = new MemoryConfigStore();
+    const path = getConfigPath("/agent");
+    const enabled = { ...config, completionNotifications: true };
+
+    saveConfig(enabled, { agentDir: "/agent", store });
+    expect(JSON.parse(store.read(path) as string).completionNotifications).toBe(true);
+    expect(loadConfig({ agentDir: "/agent", store }).completionNotifications).toBe(true);
+  });
+
+  it("preserves completionNotifications: false through saveConfig", () => {
+    const store = new MemoryConfigStore();
+    const path = getConfigPath("/agent");
+    const disabled = { ...config, completionNotifications: false };
+
+    saveConfig(disabled, { agentDir: "/agent", store });
+    expect(JSON.parse(store.read(path) as string).completionNotifications).toBe(false);
+    expect(loadConfig({ agentDir: "/agent", store }).completionNotifications).toBe(false);
+  });
+
+  it("serializes completionNotifications as part of the direct config schema", () => {
+    const store = new MemoryConfigStore();
+    const path = getConfigPath("/agent");
+
+    saveConfig({ ...config, completionNotifications: true }, { agentDir: "/agent", store });
+    const written = JSON.parse(store.read(path) as string);
+    expect(written).toEqual({ ...config, completionNotifications: true });
+    expect(Object.keys(written).sort()).toEqual(
+      ["completionNotifications", "extensionSegments", "zones"].sort(),
+    );
+  });
+
+  it("still refuses to overwrite malformed or non-object config even when notifications are set", () => {
+    const store = new MemoryConfigStore();
+    const path = getConfigPath("/agent");
+    store.seed(path, "{ bad");
+
+    expect(() =>
+      saveConfig({ ...config, completionNotifications: true }, { agentDir: "/agent", store }),
+    ).toThrow(/refusing to overwrite malformed or non-object config/i);
+    expect(store.writePaths).toEqual([]);
+  });
+
+  it("falls back to the default completionNotifications: false for malformed configs", () => {
+    const store = new MemoryConfigStore();
+    store.seed(getConfigPath("/agent"), "{ bad");
+    expect(loadConfig({ agentDir: "/agent", store }).completionNotifications).toBe(false);
   });
 });

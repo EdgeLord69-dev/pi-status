@@ -272,6 +272,7 @@ describe("resolveFooter", () => {
     const config = {
       zones: { topLeft: ["run-state" as const], topRight: [], bottomLeft: [], bottomRight: [] },
       extensionSegments: { hidden: [] },
+      completionNotifications: false,
     };
     const result = resolveFooter(snapshot, config, identityTheme);
     expect(result.topLeft).toEqual([{ key: "run-state", text: "idle", color: "dim" }]);
@@ -290,6 +291,7 @@ describe("resolveFooter", () => {
         bottomRight: [],
       },
       extensionSegments: { hidden: [] },
+      completionNotifications: false,
     };
     const result = resolveFooter(snapshot, config, identityTheme);
     expect(result.topLeft).toEqual([{ key: "run-state", text: "idle", color: "dim" }]);
@@ -305,6 +307,7 @@ describe("resolveFooter", () => {
         bottomRight: [],
       },
       extensionSegments: { hidden: [] },
+      completionNotifications: false,
     };
     const result = resolveFooter(snapshot, config, identityTheme);
     expect(result.topLeft).toEqual([
@@ -324,6 +327,7 @@ describe("resolveFooter", () => {
         bottomRight: [],
       },
       extensionSegments: { hidden: [] },
+      completionNotifications: false,
     };
     const result = resolveFooter(snapshot, config, identityTheme);
     expect(result.topLeft).toEqual([]);
@@ -334,6 +338,7 @@ describe("resolveFooter", () => {
     const config = {
       zones: { topLeft: [], topRight: [], bottomLeft: [], bottomRight: [] },
       extensionSegments: { hidden: [] },
+      completionNotifications: false,
     };
     const result = resolveFooter(snapshot, config, identityTheme);
     expect(result).toEqual({ topLeft: [], topRight: [], bottomLeft: [], bottomRight: [] });
@@ -346,6 +351,7 @@ describe("resolveFooter", () => {
     const config = {
       zones: { topLeft: ["run-state" as const], topRight: [], bottomLeft: [], bottomRight: [] },
       extensionSegments: { hidden: [] },
+      completionNotifications: false,
     };
     const result = resolveFooter(snapshot, config, identityTheme);
     expect(result.bottomRight).toEqual([{ key: "extension-status", text: "5h: 60%", color: null }]);
@@ -363,6 +369,7 @@ describe("resolveFooter", () => {
     const config = {
       zones: { topLeft: ["run-state" as const], topRight: [], bottomLeft: [], bottomRight: [] },
       extensionSegments: { hidden: ["pi-usage"] },
+      completionNotifications: false,
     };
     const result = resolveFooter(snapshot, config, identityTheme);
     expect(result.bottomRight).toEqual([{ key: "extension-status", text: "ok", color: null }]);
@@ -373,6 +380,7 @@ describe("resolveFooter", () => {
     const config = {
       zones: { topLeft: ["run-state" as const], topRight: [], bottomLeft: [], bottomRight: [] },
       extensionSegments: { hidden: [] },
+      completionNotifications: false,
     };
     const result = resolveFooter(snapshot, config, identityTheme);
     expect(result.bottomRight).toEqual([]);
