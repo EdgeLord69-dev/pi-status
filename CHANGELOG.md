@@ -4,6 +4,10 @@ All notable changes to `@pi-vault/pi-status` are documented in this file.
 
 ## Unreleased
 
+### Added
+
+- Added opt-in `turn-progress` and `response-performance` footer segments that observe the current TUI session only. `turn-progress` shows the active turn number, grouped active tools, or the newest completed tool with an elided duration. `response-performance` shows time-to-first-token and the current or final tokens-per-second, conservative during streaming and overridden by Pi's official assistant usage when the response completes.
+
 ### Breaking Changes
 
 - Replaced the flat `FooterRenderInput` shape and removed `DEFAULT_SEGMENTS`, `buildFooterLine()`, and `buildFooterLineFromResolved()`. Persisted legacy `segments` configuration still migrates into the top-left zone.
