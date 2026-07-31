@@ -103,6 +103,16 @@ describe("fitFooterRow", () => {
     ).toEqual({ left: [item("model", "m")], right: [] });
   });
 
+  it("keeps turn progress ahead of response performance at narrow widths", () => {
+    const items = [
+      item("turn-progress", "t"),
+      item("response-performance", "r"),
+      item("current-dir", "c"),
+    ];
+    expect(fitFooterRow(items, [], 5, " · ", visibleWidth).left).toEqual(items.slice(0, 2));
+    expect(fitFooterRow(items, [], 1, " · ", visibleWidth).left).toEqual(items.slice(0, 1));
+  });
+
   it("keeps one oversized item rather than removing every item", () => {
     expect(fitFooterRow([item("model", "oversized")], [], 1, " · ", visibleWidth)).toEqual({
       left: [item("model", "oversized")],

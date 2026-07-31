@@ -1,9 +1,8 @@
-import type { LiveActivitySnapshot, StatusLineSegmentId, ToolActivity } from "../shared/types.ts";
+import type { StatusLineSegmentId } from "../shared/types.ts";
 import type { FooterRenderColor, FooterRenderInput, ThemeLike } from "./render.ts";
 import {
   abbreviateHomeDir,
   findProjectRootLabel,
-  formatCompactDuration,
   formatCompactNumber,
   normalizeThinkingLevel,
   thinkingLevelColor,
@@ -239,86 +238,69 @@ export function formatAccessType(
   return input.accessType ? [`Access: ${input.accessType}`, "dim"] : null;
 }
 
-function isActiveTool(tool: ToolActivity): boolean {
-  return tool.status === "active";
-}
-
-function groupActiveToolsByName(tools: ToolActivity[]): Map<string, ToolActivity[]> {
-  const groups = new Map<string, ToolActivity[]>();
-  for (const tool of tools) {
-    const list = groups.get(tool.name) ?? [];
-    list.push(tool);
-    groups.set(tool.name, list);
-  }
-  return groups;
-}
-
 export function formatTurnProgress(
   input: FooterRenderInput,
-  theme: ThemeLike,
+  _theme: ThemeLike,
 ): [string, FooterRenderColor | null] | null {
   const activity = input.activity;
   if (!activity) return null;
-  const dim = (s: string) => theme.fg("dim", s);
+  const active = activity.activeTools;
+  const parts: string[] = [];
 
-  const active = activity.activeTools.filter(isActiveTool);
+  if (activity.run.status !== "idle") {
+    parts.push(`Run ${formatActivityDuration(activity.run.durationMs)}`);
+  }
+  if (activity.turn.status !== "idle" && activity.turn.number > 0) {
+    parts.push(`Turn ${activity.turn.number} ${formatActivityDuration(activity.turn.durationMs)}`);
+  }
+
   if (active.length > 0) {
-    const groups = groupActiveToolsByName(active);
-    const oldest = [...groups.entries()].sort(
-      ([, a], [, b]) => a[0]!.startedAt - b[0]!.startedAt,
-    )[0];
-    if (!oldest) return null;
-    const [name, calls] = oldest;
-    const leader = calls[0]!;
-    const extra = calls.length - 1;
-    const elapsed =
-      activity.turn.status === "active" ? activity.turn.durationMs : leader.durationMs;
-    const duration = activeDurationLabel(elapsed);
-    const prefix = `turn ${activity.turn.number}`;
-    const body = `${prefix} · ${name} · ${duration}`;
-    const text = extra > 0 ? `${body} +${extra}` : body;
-    return [text, "warning"];
+    const oldest = active[0];
+    const calls = active.filter((tool) => tool.name === oldest.name).length;
+    const hidden = active.length - calls;
+    parts.push(`${oldest.name}${calls > 1 ? `×${calls}` : ""}${hidden > 0 ? ` +${hidden}` : ""}`);
+    return [parts.join(" · "), "accent"];
   }
 
   const recent = activity.recentTools[0];
   if (recent) {
-    return [`${recent.name} · ${formatCompactDuration(recent.durationMs)}`, "dim"];
+    parts.push(`${recent.name} ${formatActivityDuration(recent.durationMs)}`);
   }
 
-  if (activity.turn.status === "active" && activity.turn.number > 0) {
-    const prefix = `turn ${activity.turn.number}`;
-    const duration = activeDurationLabel(activity.turn.durationMs);
-    return [`${prefix} · ${duration}`, "warning"];
-  }
-
-  if (activity.run.status === "active" || activity.run.status === "complete") {
-    return null;
-  }
-
-  return null;
+  return parts.length > 0
+    ? [
+        parts.join(" · "),
+        activity.run.status === "active" || activity.turn.status === "active" ? "accent" : "dim",
+      ]
+    : null;
 }
 
-function activeDurationLabel(ms: number): string {
-  if (!Number.isFinite(ms) || ms < 1000) return "0s";
-  return formatCompactDuration(ms);
+function formatActivityDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 1_000) return "<1s";
+  const totalSeconds = Math.floor(ms / 1_000);
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+  return `${Math.floor(totalSeconds / 60)}m ${String(totalSeconds % 60).padStart(2, "0")}s`;
+}
+
+function formatTtft(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 1_000) return `${Math.max(0, Math.round(ms))}ms`;
+  return `${(ms / 1_000).toFixed(1)}s`;
 }
 
 export function formatResponsePerformance(
   input: FooterRenderInput,
-  theme: ThemeLike,
+  _theme: ThemeLike,
 ): [string, FooterRenderColor | null] | null {
   const activity = input.activity;
   if (!activity) return null;
   const response = activity.response;
   if (response.status === "idle") return null;
   if (response.ttftMs === undefined || response.firstTokenAt === undefined) return null;
-  if (response.tps === undefined || !Number.isFinite(response.tps)) return null;
+  const ttft = `TTFT ${formatTtft(response.ttftMs)}`;
+  if (response.tps === undefined || !Number.isFinite(response.tps)) return [ttft, "dim"];
 
-  const dim = (s: string) => theme.fg("dim", s);
-  const ttft = response.ttftMs;
-  const tps = (response.tps * 1000).toFixed(1);
   const kind = response.tokenCountKind === "estimated" ? "~" : "";
-  return [`ttft ${ttft}ms ${kind}${tps} tok/s`, "dim"];
+  return [`${ttft} · ${kind}${response.tps.toFixed(1)} tok/s`, "dim"];
 }
 
 export const segmentFormatters = new Map<StatusLineSegmentId, SegmentFormatter>([

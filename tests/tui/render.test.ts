@@ -105,6 +105,38 @@ describe("render", () => {
     expect(rows.join("\n")).toContain("/Users/test/project");
   });
 
+  it("renders configured live activity segments in order", () => {
+    const rows = buildFooterRows(
+      segmentInput({
+        zones: {
+          topLeft: ["turn-progress", "response-performance"],
+          topRight: [],
+          bottomLeft: [],
+          bottomRight: [],
+        },
+        activity: {
+          run: { status: "active", startedAt: 1000, durationMs: 2000 },
+          turn: { status: "active", number: 3, startedAt: 2000, durationMs: 1000 },
+          activeTools: [],
+          recentTools: [],
+          response: {
+            status: "streaming",
+            startedAt: 2000,
+            firstTokenAt: 2100,
+            ttftMs: 100,
+            outputTokens: 10,
+            tokenCountKind: "estimated",
+            tps: 20,
+          },
+          updatedAt: 3000,
+        },
+      }),
+      identityTheme,
+      200,
+    );
+    expect(rows).toEqual(["Run 2s · Turn 3 1s · TTFT 100ms · ~20.0 tok/s"]);
+  });
+
   it("renders compatibility windows for MiniMax too", () => {
     const rows = buildFooterRows(
       segmentInput({

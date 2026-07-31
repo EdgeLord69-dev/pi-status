@@ -424,12 +424,12 @@ describe("formatTurnProgress", () => {
   it("shows turn number and progress when a turn is active", () => {
     const activity = {
       ...idleActivity,
-      run: { status: "active" as const, startedAt: 1000, durationMs: 0 },
-      turn: { status: "active" as const, number: 3, startedAt: 1100, durationMs: 0 },
+      run: { status: "active" as const, startedAt: 1000, durationMs: 2000 },
+      turn: { status: "active" as const, number: 3, startedAt: 1100, durationMs: 1000 },
     };
     expect(formatTurnProgress(input({ activity }), identityTheme)).toEqual([
-      "turn 3 · 0s",
-      "warning",
+      "Run 2s · Turn 3 1s",
+      "accent",
     ]);
   });
 
@@ -445,8 +445,8 @@ describe("formatTurnProgress", () => {
       ],
     };
     expect(formatTurnProgress(input({ activity }), identityTheme)).toEqual([
-      "turn 1 · read · 0s +1",
-      "warning",
+      "Turn 1 <1s · read×2 +2",
+      "accent",
     ]);
   });
 
@@ -464,17 +464,17 @@ describe("formatTurnProgress", () => {
         },
       ],
     };
-    expect(formatTurnProgress(input({ activity }), identityTheme)).toEqual(["read · 100ms", "dim"]);
+    expect(formatTurnProgress(input({ activity }), identityTheme)).toEqual(["read <1s", "dim"]);
   });
 
-  it("omits the duration when it is below one second", () => {
+  it("formats durations below one second compactly", () => {
     const activity = {
       ...idleActivity,
       turn: { status: "active" as const, number: 5, startedAt: 1000, durationMs: 0 },
     };
     expect(formatTurnProgress(input({ activity }), identityTheme)).toEqual([
-      "turn 5 · 0s",
-      "warning",
+      "Turn 5 <1s",
+      "accent",
     ]);
   });
 
@@ -484,8 +484,8 @@ describe("formatTurnProgress", () => {
       turn: { status: "active" as const, number: 1, startedAt: 0, durationMs: 65_000 },
     };
     expect(formatTurnProgress(input({ activity }), identityTheme)).toEqual([
-      "turn 1 · 1m 5s",
-      "warning",
+      "Turn 1 1m 05s",
+      "accent",
     ]);
   });
 
@@ -500,8 +500,8 @@ describe("formatTurnProgress", () => {
       ],
     };
     expect(formatTurnProgress(input({ activity }), identityTheme)).toEqual([
-      "turn 1 · read · 0s +2",
-      "warning",
+      "Turn 1 <1s · read×3",
+      "accent",
     ]);
   });
 });
@@ -542,11 +542,49 @@ describe("formatResponsePerformance", () => {
         ttftMs: 100,
         outputTokens: 50,
         tokenCountKind: "estimated" as const,
-        tps: 50 / 1000,
+        tps: 50,
       },
     };
     expect(formatResponsePerformance(input({ activity }), identityTheme)).toEqual([
-      "ttft 100ms ~50.0 tok/s",
+      "TTFT 100ms · ~50.0 tok/s",
+      "dim",
+    ]);
+  });
+
+  it("shows TTFT while generation time is still zero", () => {
+    const activity = {
+      ...idleActivity,
+      response: {
+        status: "streaming" as const,
+        startedAt: 1000,
+        firstTokenAt: 1100,
+        ttftMs: 100,
+        outputTokens: 1,
+        tokenCountKind: "estimated" as const,
+      },
+    };
+    expect(formatResponsePerformance(input({ activity }), identityTheme)).toEqual([
+      "TTFT 100ms",
+      "dim",
+    ]);
+  });
+
+  it("formats TTFT above one second compactly", () => {
+    const activity = {
+      ...idleActivity,
+      response: {
+        status: "complete" as const,
+        startedAt: 1000,
+        firstTokenAt: 2200,
+        endedAt: 3200,
+        ttftMs: 1200,
+        outputTokens: 10,
+        tokenCountKind: "final" as const,
+        tps: 10,
+      },
+    };
+    expect(formatResponsePerformance(input({ activity }), identityTheme)).toEqual([
+      "TTFT 1.2s · 10.0 tok/s",
       "dim",
     ]);
   });
@@ -562,16 +600,16 @@ describe("formatResponsePerformance", () => {
         ttftMs: 100,
         outputTokens: 200,
         tokenCountKind: "final" as const,
-        tps: 200 / 900,
+        tps: 200 / 0.9,
       },
     };
     expect(formatResponsePerformance(input({ activity }), identityTheme)).toEqual([
-      "ttft 100ms 222.2 tok/s",
+      "TTFT 100ms · 222.2 tok/s",
       "dim",
     ]);
   });
 
-  it("still renders metrics when activity is provided as a no-op snapshot", () => {
+  it("renders TTFT when no TPS sample is available", () => {
     const activity = {
       ...idleActivity,
       response: {
@@ -584,6 +622,9 @@ describe("formatResponsePerformance", () => {
         tokenCountKind: "final" as const,
       },
     };
-    expect(formatResponsePerformance(input({ activity }), identityTheme)).toBeNull();
+    expect(formatResponsePerformance(input({ activity }), identityTheme)).toEqual([
+      "TTFT 100ms",
+      "dim",
+    ]);
   });
 });
