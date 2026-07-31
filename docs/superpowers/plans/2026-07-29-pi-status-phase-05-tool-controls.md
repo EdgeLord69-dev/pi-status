@@ -585,7 +585,7 @@ Expected: FAIL because `tools` is not recognized.
 Add `{ kind: "tools" }` to the existing `StatusLineCommand` union and this parser branch:
 
 ```ts
-if (command === "tools") return { kind: "tools" };
+if (command.toLowerCase() === "tools") return { kind: "tools" };
 ```
 
 Preserve editor, session, and unknown behavior. Do not add aliases or nested tool arguments.
@@ -623,12 +623,13 @@ Import:
 import { openToolControls } from "./tui/tool-controls.ts";
 ```
 
-Add to the existing parsed-route switch:
+Add alongside the existing parsed-route branches:
 
 ```ts
-case "tools":
+if (command.kind === "tools") {
   await openToolControls(pi, ctx);
   return;
+}
 ```
 
 Do not install the empty footer used only by the no-argument editor. Tool controls use Pi's native custom component while the live footer remains installed; do not add renderer access or a second footer lifecycle.

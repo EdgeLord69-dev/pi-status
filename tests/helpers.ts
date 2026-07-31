@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { vi } from "vitest";
 import type { ConfigStore } from "../src/shared/types.ts";
 import { DEFAULT_ZONES } from "../src/shared/types.ts";
 import type { FooterRenderInput } from "../src/tui/render.ts";
@@ -47,6 +48,7 @@ export function createContext(overrides?: Partial<ExtensionContext>): ExtensionC
     cwd: "/Users/test/project",
     sessionManager: {
       getSessionId: () => "abcdef123456",
+      getSessionFile: () => undefined,
       getBranch: () => [],
       getEntries: () => [],
     } as unknown as ExtensionContext["sessionManager"],
@@ -110,6 +112,8 @@ export function buildPiWithHandlers(options: { thinkingLevel?: string } = {}) {
     },
     registerCommand: registerCommand.fn.bind(registerCommand),
     getThinkingLevel: () => options.thinkingLevel ?? "medium",
+    getSessionName: vi.fn(() => undefined),
+    setSessionName: vi.fn(),
   } as unknown as ExtensionAPI;
   return { pi, handlers, registerCommandCalls: registerCommand.calls };
 }
