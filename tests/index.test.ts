@@ -895,6 +895,85 @@ describe("extension wiring", () => {
     expect(footerSpy.calls).toHaveLength(3);
     expect(renderWithFactory(footerSpy.calls[2])).toContain("GPT-5 [med]");
   });
+
+  it("routes /statusline session to the session menu without opening the editor", async () => {
+    const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
+    const select = vi.fn(async () => "Close");
+    const custom = vi.fn(async () => null);
+
+    createExtension(pi);
+
+    const ctx = createContext({
+      ui: {
+        ...createContext().ui,
+        select: select as unknown as ExtensionContext["ui"]["select"],
+        custom: custom as unknown as ExtensionContext["ui"]["custom"],
+      },
+    });
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+
+    const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
+    await handler("session", ctx);
+
+    expect(select).toHaveBeenCalledTimes(1);
+    const title = select.mock.calls[0]?.[0] as string;
+    expect(title).toContain("Session details");
+    expect(title).toContain("abcdef123456");
+    expect(custom).not.toHaveBeenCalled();
+  });
+
+  it("warns on unknown /statusline commands without opening UI", async () => {
+    const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
+    const select = vi.fn();
+    const custom = vi.fn();
+    const notify = vi.fn();
+
+    createExtension(pi);
+
+    const ctx = createContext({
+      ui: {
+        ...createContext().ui,
+        select: select as unknown as ExtensionContext["ui"]["select"],
+        custom: custom as unknown as ExtensionContext["ui"]["custom"],
+        notify: notify as unknown as ExtensionContext["ui"]["notify"],
+      },
+    });
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+
+    const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
+    await handler("widgets", ctx);
+
+    expect(select).not.toHaveBeenCalled();
+    expect(custom).not.toHaveBeenCalled();
+    expect(notify).toHaveBeenCalledWith(
+      "Unknown /statusline command: widgets",
+      "warning",
+    );
+  });
+
+  it("rejects /statusline session in RPC mode without opening prompts", async () => {
+    const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
+    const select = vi.fn();
+    const notify = vi.fn();
+
+    createExtension(pi);
+
+    const ctx = createContext({
+      mode: "rpc",
+      ui: {
+        ...createContext().ui,
+        select: select as unknown as ExtensionContext["ui"]["select"],
+        notify: notify as unknown as ExtensionContext["ui"]["notify"],
+      },
+    });
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+
+    const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
+    await handler("session", ctx);
+
+    expect(select).not.toHaveBeenCalled();
+    expect(notify).toHaveBeenCalledWith("/statusline requires interactive UI", "warning");
+  });
 });
 
 describe("/statusline theme adaptation", () => {

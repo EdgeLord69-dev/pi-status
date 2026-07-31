@@ -5,6 +5,8 @@ import { createRuntimeStateMachine } from "./core/runtime-state.ts";
 import { createUsageRuntime } from "./core/usage-runtime.ts";
 import type { AccessType, PiStatusConfig } from "./shared/types.ts";
 import { createStatusLineEditor } from "./tui/editor.ts";
+import { parseStatusLineCommand } from "./tui/command-router.ts";
+import { handleSessionActions } from "./tui/session-actions.ts";
 import { buildFooterRowsFromResolved } from "./tui/render.ts";
 import { fromPiTheme, noColorRequested, noTheme, type StatusLineTheme } from "./tui/theme.ts";
 
@@ -130,9 +132,19 @@ export default function createExtension(pi: ExtensionAPI): void {
 
   pi.registerCommand("statusline", {
     description: "Configure statusline segments and extension-status visibility",
-    handler: async (_args, ctx) => {
+    handler: async (args, ctx) => {
       if (ctx.mode !== "tui") {
         ctx.ui.notify("/statusline requires interactive UI", "warning");
+        return;
+      }
+
+      const command = parseStatusLineCommand(args);
+      if (command.kind === "session") {
+        await handleSessionActions(pi, ctx);
+        return;
+      }
+      if (command.kind === "unknown") {
+        ctx.ui.notify(`Unknown /statusline command: ${command.command}`, "warning");
         return;
       }
 
