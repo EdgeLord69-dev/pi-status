@@ -11,7 +11,8 @@ function makeInput(overrides?: Partial<SnapshotInput>): SnapshotInput {
     isIdle: true,
     hasPendingMessages: false,
     contextUsage: { tokens: 5000, contextWindow: 200000, percent: 2.5 },
-    branch: [],
+    entries: [],
+    accessType: undefined,
     sessionId: "abcdef123456",
     usageState: undefined,
     extensionStatuses: new Map(),
@@ -59,121 +60,190 @@ describe("buildSnapshot", () => {
     expect(result.runState).toBe("idle");
   });
 
-  it("aggregates branch totals from assistant messages with usage", () => {
-    const branch = [
+  it("aggregates all usage-bearing entries into session metrics", () => {
+    const usage = (overrides: Record<string, unknown> = {}) => ({
+      input: 0,
+      output: 0,
+      totalTokens: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      cost: { total: 0 },
+      ...overrides,
+    });
+    const entries = [
       {
         type: "message",
-        message: {
-          role: "assistant",
-          usage: { input: 100, output: 50, totalTokens: 150 },
-        },
+        message: { role: "user", usage: usage({ input: 999, totalTokens: 999 }) },
       },
       {
         type: "message",
         message: {
           role: "assistant",
-          usage: { input: 200, output: 75, totalTokens: 275 },
+          usage: usage({
+            input: 200,
+            output: 40,
+            totalTokens: 1_065,
+            cacheRead: 800,
+            cacheWrite: 25,
+            cost: { total: 0.0123 },
+          }),
+        },
+      },
+      {
+        type: "message",
+        message: {
+          role: "toolResult",
+          usage: usage({ input: 10, output: 5, totalTokens: 15, cost: { total: 0.001 } }),
+        },
+      },
+      {
+        type: "branch_summary",
+        usage: usage({ input: 20, output: 5, totalTokens: 25, cost: { total: 0.002 } }),
+      },
+      {
+        type: "compaction",
+        usage: usage({
+          input: 30,
+          output: 10,
+          totalTokens: 40,
+          cacheRead: 5,
+          cost: { total: 0.003 },
+        }),
+      },
+      {
+        type: "message",
+        message: {
+          role: "assistant",
+          usage: usage({
+            input: 50,
+            output: 10,
+            totalTokens: 65,
+            cacheWrite: 5,
+            cost: { total: 0.001 },
+          }),
         },
       },
     ];
-    const result = buildSnapshot(makeInput({ branch }));
-    expect(result.branchTotals).toEqual({
-      input: 300,
-      output: 125,
-      totalTokens: 425,
+    const result = buildSnapshot(makeInput({ entries, accessType: "subscription" }));
+    expect(result.sessionMetrics).toEqual({
+      inputTokens: 310,
+      outputTokens: 70,
+      totalTokens: 1_210,
+      cacheReadTokens: 805,
+      cacheWriteTokens: 30,
+      latestCacheHitPercent: 0,
+      costUsd: 0.0193,
     });
+    expect(result.branchTotals).toEqual({
+      input: 310,
+      output: 70,
+      totalTokens: 1_210,
+    });
+    expect(result.accessType).toBe("subscription");
   });
 
-  it("skips non-message entries in branch", () => {
-    const branch = [
+  it("ignores malformed telemetry and distinguishes zero cost from absent cost", () => {
+    const entries = [
+      null,
+      undefined,
       { type: "tool_call", data: {} },
       {
         type: "message",
         message: {
           role: "assistant",
-          usage: { input: 100, output: 50, totalTokens: 150 },
+          usage: {
+            input: -1,
+            output: Number.NaN,
+            totalTokens: 10,
+            cacheRead: -1,
+            cacheWrite: 0,
+            cost: { total: 0 },
+          },
         },
       },
     ];
-    const result = buildSnapshot(makeInput({ branch }));
-    expect(result.branchTotals).toEqual({
-      input: 100,
-      output: 50,
-      totalTokens: 150,
-    });
-  });
-
-  it("skips user messages in branch", () => {
-    const branch = [
-      {
-        type: "message",
-        message: {
-          role: "user",
-          usage: { input: 500, output: 0, totalTokens: 500 },
-        },
-      },
-      {
-        type: "message",
-        message: {
-          role: "assistant",
-          usage: { input: 100, output: 50, totalTokens: 150 },
-        },
-      },
-    ];
-    const result = buildSnapshot(makeInput({ branch }));
-    expect(result.branchTotals).toEqual({
-      input: 100,
-      output: 50,
-      totalTokens: 150,
-    });
-  });
-
-  it("skips assistant messages without usage", () => {
-    const branch = [
-      { type: "message", message: { role: "assistant" } },
-      {
-        type: "message",
-        message: {
-          role: "assistant",
-          usage: { input: 100, output: 50, totalTokens: 150 },
-        },
-      },
-    ];
-    const result = buildSnapshot(makeInput({ branch }));
-    expect(result.branchTotals).toEqual({
-      input: 100,
-      output: 50,
-      totalTokens: 150,
-    });
-  });
-
-  it("returns zero totals for empty branch", () => {
-    const result = buildSnapshot(makeInput({ branch: [] }));
+    const result = buildSnapshot(makeInput({ entries: entries as unknown[] }));
     expect(result.branchTotals).toEqual({
       input: 0,
       output: 0,
-      totalTokens: 0,
+      totalTokens: 10,
+    });
+    expect(result.sessionMetrics).toEqual({
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 10,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      latestCacheHitPercent: undefined,
+      costUsd: 0,
     });
   });
 
-  it("handles null/undefined entries in branch gracefully", () => {
-    const branch = [
-      null,
-      undefined,
+  it("keeps the latest cache hit through non-assistant and usage-less entries", () => {
+    const entries = [
       {
         type: "message",
         message: {
           role: "assistant",
-          usage: { input: 10, output: 5, totalTokens: 15 },
+          usage: { input: 100, cacheRead: 300, cacheWrite: 100 },
         },
       },
+      {
+        type: "message",
+        message: {
+          role: "toolResult",
+          usage: { input: 1, cacheRead: 999, cacheWrite: 1 },
+        },
+      },
+      {
+        type: "branch_summary",
+        usage: { input: 1, cacheRead: 1 },
+      },
+      {
+        type: "compaction",
+        usage: { input: 1, cacheRead: 1 },
+      },
+      { type: "message", message: { role: "assistant" } },
     ];
-    const result = buildSnapshot(makeInput({ branch: branch as unknown[] }));
-    expect(result.branchTotals).toEqual({
-      input: 10,
-      output: 5,
-      totalTokens: 15,
-    });
+    expect(buildSnapshot(makeInput({ entries })).sessionMetrics?.latestCacheHitPercent).toBe(60);
+  });
+
+  it("clears the latest cache hit for malformed assistant prompt usage", () => {
+    const entries = [
+      {
+        type: "message",
+        message: {
+          role: "assistant",
+          usage: { input: 100, cacheRead: 100, cacheWrite: 0 },
+        },
+      },
+      {
+        type: "message",
+        message: { role: "assistant", usage: { input: 10, cacheRead: 5 } },
+      },
+    ];
+    expect(
+      buildSnapshot(makeInput({ entries })).sessionMetrics?.latestCacheHitPercent,
+    ).toBeUndefined();
+  });
+
+  it("clears the latest cache hit for a zero-token assistant prompt", () => {
+    const entries = [
+      {
+        type: "message",
+        message: {
+          role: "assistant",
+          usage: { input: 100, cacheRead: 100, cacheWrite: 0 },
+        },
+      },
+      {
+        type: "message",
+        message: { role: "assistant", usage: { input: 0, cacheRead: 0, cacheWrite: 0 } },
+      },
+    ];
+    expect(
+      buildSnapshot(makeInput({ entries })).sessionMetrics?.latestCacheHitPercent,
+    ).toBeUndefined();
   });
 
   it("passes through usageState when provided", () => {

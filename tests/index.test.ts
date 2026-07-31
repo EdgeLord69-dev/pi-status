@@ -26,6 +26,131 @@ import {
 } from "./helpers.ts";
 
 describe("extension wiring", () => {
+  it("builds live telemetry from all session entries and OAuth access", () => {
+    mkdirSync(join(agentDir, "extensions"), { recursive: true });
+    writeFileSync(
+      join(agentDir, "extensions", "statusline.json"),
+      JSON.stringify({
+        zones: {
+          topLeft: ["session-cost", "access-type"],
+          topRight: [],
+          bottomLeft: [],
+          bottomRight: [],
+        },
+        extensionSegments: { hidden: [] },
+      }),
+      "utf8",
+    );
+    const { pi, handlers } = buildPiWithHandlers();
+    const footerSpy = buildSetFooterSpy();
+    const getEntries = vi.fn(() => [{ type: "compaction", usage: { cost: { total: 0.01 } } }]);
+    const getBranch = vi.fn(() => []);
+
+    createExtension(pi);
+    const ctx = createContext({
+      sessionManager: {
+        getSessionId: () => "abcdef123456",
+        getBranch,
+        getEntries,
+      } as unknown as ExtensionContext["sessionManager"],
+      modelRegistry: { isUsingOAuth: () => true } as unknown as ExtensionContext["modelRegistry"],
+      ui: { ...createContext().ui, setFooter: footerSpy.setFooter },
+    });
+    for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
+
+    expect(renderWithFactory(footerSpy.calls[0])).toContain("Cost: $0.0100");
+    expect(renderWithFactory(footerSpy.calls[0])).toContain("Access: subscription");
+    expect(getEntries).toHaveBeenCalled();
+    expect(getBranch).not.toHaveBeenCalled();
+  });
+
+  it("classifies Kimi as subscription, other models as metered, and omits access without a model", () => {
+    mkdirSync(join(agentDir, "extensions"), { recursive: true });
+    writeFileSync(
+      join(agentDir, "extensions", "statusline.json"),
+      JSON.stringify({
+        zones: { topLeft: ["access-type"], topRight: [], bottomLeft: [], bottomRight: [] },
+        extensionSegments: { hidden: [] },
+      }),
+      "utf8",
+    );
+    const renderAccess = (model: ExtensionContext["model"], oauth: boolean) => {
+      const { pi, handlers } = buildPiWithHandlers();
+      const footerSpy = buildSetFooterSpy();
+      createExtension(pi);
+      const ctx = createContext({
+        model,
+        modelRegistry: {
+          isUsingOAuth: () => oauth,
+        } as unknown as ExtensionContext["modelRegistry"],
+        ui: { ...createContext().ui, setFooter: footerSpy.setFooter },
+      });
+      for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
+      return renderWithFactory(footerSpy.calls[0]);
+    };
+
+    expect(
+      renderAccess(
+        { id: "kimi", name: "Kimi", provider: "kimi-coding", reasoning: false } as never,
+        false,
+      ),
+    ).toContain("Access: subscription");
+    expect(
+      renderAccess(
+        { id: "gpt-5", name: "GPT-5", provider: "openai", reasoning: false } as never,
+        false,
+      ),
+    ).toContain("Access: metered");
+    expect(renderAccess(undefined, false)).not.toContain("Access:");
+  });
+
+  it("uses telemetry in the statusline editor preview", async () => {
+    mkdirSync(join(agentDir, "extensions"), { recursive: true });
+    writeFileSync(
+      join(agentDir, "extensions", "statusline.json"),
+      JSON.stringify({
+        zones: {
+          topLeft: ["session-cost", "access-type"],
+          topRight: [],
+          bottomLeft: [],
+          bottomRight: [],
+        },
+        extensionSegments: { hidden: [] },
+      }),
+      "utf8",
+    );
+    const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
+    let preview = "";
+    const custom = vi.fn(
+      async (factory: (...args: unknown[]) => { render: (width: number) => string[] }) => {
+        preview = factory(
+          { requestRender: () => {} },
+          { fg: (_color: string, text: string) => text, bold: (text: string) => text },
+          {},
+          () => {},
+        )
+          .render(200)
+          .join("\n");
+        return null;
+      },
+    );
+    createExtension(pi);
+    const ctx = createContext({
+      sessionManager: {
+        getSessionId: () => "abcdef123456",
+        getBranch: () => [],
+        getEntries: () => [{ type: "compaction", usage: { cost: { total: 0.01 } } }],
+      } as unknown as ExtensionContext["sessionManager"],
+      modelRegistry: { isUsingOAuth: () => true } as unknown as ExtensionContext["modelRegistry"],
+      ui: { ...createContext().ui, custom: custom as ExtensionContext["ui"]["custom"] },
+    });
+    for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
+    await getRegisteredCommand(registerCommandCalls, "statusline").handler("", ctx);
+
+    expect(preview).toContain("Cost: $0.0100");
+    expect(preview).toContain("Access: subscription");
+  });
+
   it("does not call action methods during extension loading", () => {
     const { pi } = buildPiWithHandlers();
     const getThinkingLevel = vi.fn(() => {

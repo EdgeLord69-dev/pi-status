@@ -199,6 +199,45 @@ export function formatWeeklyLimit(
   ];
 }
 
+export function formatCacheReadTokens(
+  input: FooterRenderInput,
+  _theme: ThemeLike,
+): [string, FooterRenderColor | null] | null {
+  const value = input.sessionMetrics?.cacheReadTokens;
+  return value === undefined ? null : [`Cache read: ${formatCompactNumber(value)}`, "dim"];
+}
+
+export function formatCacheWriteTokens(
+  input: FooterRenderInput,
+  _theme: ThemeLike,
+): [string, FooterRenderColor | null] | null {
+  const value = input.sessionMetrics?.cacheWriteTokens;
+  return value === undefined ? null : [`Cache write: ${formatCompactNumber(value)}`, "dim"];
+}
+
+export function formatCacheHit(
+  input: FooterRenderInput,
+  _theme: ThemeLike,
+): [string, FooterRenderColor | null] | null {
+  const value = input.sessionMetrics?.latestCacheHitPercent;
+  return value === undefined ? null : [`Cache hit: ${Math.round(value)}%`, "dim"];
+}
+
+export function formatSessionCost(
+  input: FooterRenderInput,
+  _theme: ThemeLike,
+): [string, FooterRenderColor | null] | null {
+  const value = input.sessionMetrics?.costUsd;
+  return value === undefined ? null : [`Cost: $${value.toFixed(value < 1 ? 4 : 2)}`, "dim"];
+}
+
+export function formatAccessType(
+  input: FooterRenderInput,
+  _theme: ThemeLike,
+): [string, FooterRenderColor | null] | null {
+  return input.accessType ? [`Access: ${input.accessType}`, "dim"] : null;
+}
+
 export const segmentFormatters = new Map<StatusLineSegmentId, SegmentFormatter>([
   ["model", formatModel],
   ["model-with-reasoning", formatModelWithReasoningSegment],
@@ -214,4 +253,9 @@ export const segmentFormatters = new Map<StatusLineSegmentId, SegmentFormatter>(
   ["session-id", formatSessionId],
   ["five-hour-limit", formatFiveHourLimit],
   ["weekly-limit", formatWeeklyLimit],
+  ["cache-read-tokens", formatCacheReadTokens],
+  ["cache-write-tokens", formatCacheWriteTokens],
+  ["cache-hit", formatCacheHit],
+  ["session-cost", formatSessionCost],
+  ["access-type", formatAccessType],
 ]);

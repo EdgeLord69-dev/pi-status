@@ -11,12 +11,14 @@ All notable changes to `@pi-vault/pi-status` are documented in this file.
 ### Added
 
 - Added four-zone footer and `/statusline` editor layout controls for top-left, top-right, bottom-left, and bottom-right segment placement.
+- Added opt-in `cache-read-tokens`, `cache-write-tokens`, `cache-hit`, `session-cost`, and `access-type` footer segments.
 
 ### Changed
 
 - Moved pi-status configuration from Pi's `settings.json` files to the global extension-owned `<Pi agent directory>/extensions/statusline.json` file with a four-zone JSON shape.
 - Footer rows now fit independently at narrow widths, dropping lower-priority items before truncating the remaining content; visible extension statuses remain bottom-right.
 - Honor `NO_COLOR` by presence, including an empty value, for the footer and `/statusline` editor.
+- Token totals now include usage from assistant, tool-result, branch-summary, and compaction session entries; context, usage-window, and default segments are unchanged.
 
 ### Fixed
 

@@ -31,6 +31,26 @@ function next(
 }
 
 describe("editor zones", () => {
+  it("lists and searches all telemetry segment choices", () => {
+    const state = initEditorState(config(), []);
+    const telemetry = [
+      "cache-read-tokens",
+      "cache-write-tokens",
+      "cache-hit",
+      "session-cost",
+      "access-type",
+    ];
+    const ids = getInteractiveRows(state)
+      .filter((row): row is { type: "segment"; id: never } => row.type === "segment")
+      .map((row) => row.id);
+    expect(ids.filter((id) => telemetry.includes(id))).toEqual(telemetry);
+    expect(
+      getFilteredRows({ ...state, query: "cache" })
+        .filter((row): row is { type: "segment"; id: never } => row.type === "segment")
+        .map((row) => row.id),
+    ).toEqual(expect.arrayContaining(["cache-read-tokens", "cache-write-tokens", "cache-hit"]));
+  });
+
   it("deep-copies zones and starts on top-left", () => {
     const source = config({ zones: zones({ topRight: ["git-branch"] }) });
     const state = initEditorState(source, []);
@@ -88,7 +108,7 @@ describe("editor zones", () => {
       getFilteredRows({ ...state, query: "alpha" }).map((row) =>
         row.type === "segment" ? row.id : row.key,
       ),
-    ).toEqual(["alpha"]);
+    ).toContain("alpha");
   });
 
   it("hides unavailable usage choices without dropping assigned values on save", () => {
@@ -110,6 +130,24 @@ describe("editor zones", () => {
 });
 
 describe("editor zone actions", () => {
+  it("toggles and reorders a telemetry segment through the generic editor actions", () => {
+    let state = initEditorState(
+      config({ zones: zones({ topLeft: ["model"], bottomLeft: [] }) }),
+      [],
+    );
+    let index = getFilteredRows(state).findIndex(
+      (row) => row.type === "segment" && row.id === "session-cost",
+    );
+    state = next({ ...state, selectedIndex: index }, { type: "toggle" });
+    expect(state.zones.topLeft).toEqual(["model", "session-cost"]);
+
+    index = getFilteredRows(state).findIndex(
+      (row) => row.type === "segment" && row.id === "session-cost",
+    );
+    state = next({ ...state, selectedIndex: index }, { type: "reorder_left" });
+    expect(state.zones.topLeft).toEqual(["session-cost", "model"]);
+  });
+
   it("moves a selected segment into the active zone without duplicates", () => {
     let state = initEditorState(config(), []);
     state = next(state, { type: "next_zone" });

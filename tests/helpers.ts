@@ -48,9 +48,10 @@ export function createContext(overrides?: Partial<ExtensionContext>): ExtensionC
     sessionManager: {
       getSessionId: () => "abcdef123456",
       getBranch: () => [],
+      getEntries: () => [],
     } as unknown as ExtensionContext["sessionManager"],
-    modelRegistry: {} as ExtensionContext["modelRegistry"],
-    model: { id: "gpt-5", name: "GPT-5", reasoning: true } as never,
+    modelRegistry: { isUsingOAuth: () => false } as unknown as ExtensionContext["modelRegistry"],
+    model: { id: "gpt-5", name: "GPT-5", provider: "anthropic", reasoning: true } as never,
     isIdle: () => true,
     abort: () => {},
     hasPendingMessages: () => false,

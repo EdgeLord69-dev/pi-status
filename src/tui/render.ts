@@ -2,7 +2,13 @@ import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { segmentFormatters } from "./formatters.ts";
 import { fitFooterRow } from "./layout.ts";
 import { normalizeThinkingLevel, thinkingLevelColor } from "./render-utils.ts";
-import type { ExtensionSegments, StatusLineSegmentId, StatusLineZones } from "../shared/types.ts";
+import type {
+  AccessType,
+  ExtensionSegments,
+  SessionMetrics,
+  StatusLineSegmentId,
+  StatusLineZones,
+} from "../shared/types.ts";
 
 export type FooterRenderColor =
   | "accent"
@@ -59,6 +65,8 @@ export type FooterRenderInput = {
     percent?: number | null;
   };
   branchTotals?: { input: number; output: number; totalTokens: number };
+  sessionMetrics?: SessionMetrics;
+  accessType?: AccessType;
   sessionId?: string;
   usageState?: {
     compatibility?: {

@@ -3,7 +3,7 @@ import { loadConfig, saveConfig } from "./core/config.ts";
 import { buildSnapshot, resolveFooter } from "./core/resolve-footer.ts";
 import { createRuntimeStateMachine } from "./core/runtime-state.ts";
 import { createUsageRuntime } from "./core/usage-runtime.ts";
-import type { PiStatusConfig } from "./shared/types.ts";
+import type { AccessType, PiStatusConfig } from "./shared/types.ts";
 import { createStatusLineEditor } from "./tui/editor.ts";
 import { buildFooterRowsFromResolved } from "./tui/render.ts";
 import { fromPiTheme, noColorRequested, noTheme, type StatusLineTheme } from "./tui/theme.ts";
@@ -43,6 +43,13 @@ function isLiveTheme(value: unknown): boolean {
   if (!value || typeof value !== "object") return false;
   const candidate = value as { fg?: unknown; bold?: unknown };
   return typeof candidate.fg === "function" && typeof candidate.bold === "function";
+}
+
+function getAccessType(ctx: ExtensionContext): AccessType | undefined {
+  if (!ctx.model) return undefined;
+  return ctx.model.provider === "kimi-coding" || ctx.modelRegistry.isUsingOAuth(ctx.model)
+    ? "subscription"
+    : "metered";
 }
 
 export default function createExtension(pi: ExtensionAPI): void {
@@ -99,7 +106,8 @@ export default function createExtension(pi: ExtensionAPI): void {
             isIdle: activeCtx.isIdle(),
             hasPendingMessages: activeCtx.hasPendingMessages(),
             contextUsage: activeCtx.getContextUsage(),
-            branch: activeCtx.sessionManager.getBranch() as unknown[],
+            entries: activeCtx.sessionManager.getEntries() as unknown[],
+            accessType: getAccessType(activeCtx),
             sessionId: activeCtx.sessionManager.getSessionId(),
             usageState: usageRuntime.getState(),
             extensionStatuses: footerProviderState.extensionStatuses,
@@ -151,7 +159,8 @@ export default function createExtension(pi: ExtensionAPI): void {
             isIdle: activeCtx.isIdle(),
             hasPendingMessages: activeCtx.hasPendingMessages(),
             contextUsage: activeCtx.getContextUsage(),
-            branch: activeCtx.sessionManager.getBranch() as unknown[],
+            entries: activeCtx.sessionManager.getEntries() as unknown[],
+            accessType: getAccessType(activeCtx),
             sessionId: activeCtx.sessionManager.getSessionId(),
             usageState: usageRuntime.getState(),
             extensionStatuses: footerProviderState.extensionStatuses,

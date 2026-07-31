@@ -12,7 +12,24 @@ export type StatusLineSegmentId =
   | "total-output-tokens"
   | "session-id"
   | "five-hour-limit"
-  | "weekly-limit";
+  | "weekly-limit"
+  | "cache-read-tokens"
+  | "cache-write-tokens"
+  | "cache-hit"
+  | "session-cost"
+  | "access-type";
+
+export type AccessType = "subscription" | "metered";
+
+export interface SessionMetrics {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  latestCacheHitPercent: number | undefined;
+  costUsd: number | undefined;
+}
 
 export type ExtensionSegments = { hidden: string[] };
 
@@ -47,6 +64,11 @@ export const KNOWN_SEGMENTS: readonly StatusLineSegmentId[] = [
   "session-id",
   "five-hour-limit",
   "weekly-limit",
+  "cache-read-tokens",
+  "cache-write-tokens",
+  "cache-hit",
+  "session-cost",
+  "access-type",
 ] as const;
 
 export const DEFAULT_ZONES: StatusLineZones = {

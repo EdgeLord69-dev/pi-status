@@ -871,6 +871,47 @@ describe("formatSegment — weekly-limit", () => {
 });
 
 describe("buildFooterRows", () => {
+  it("retains configured telemetry at wide widths and tier-zero anchors as space narrows", () => {
+    const configured = segmentInput({
+      model: { id: "gpt-5", name: "GPT-5" },
+      cwd: "/work",
+      zones: {
+        topLeft: ["cache-read-tokens", "model", "current-dir", "run-state"],
+        topRight: ["access-type", "session-cost"],
+        bottomLeft: [],
+        bottomRight: [],
+      },
+      sessionMetrics: {
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        cacheReadTokens: 1_200,
+        cacheWriteTokens: 0,
+        latestCacheHitPercent: undefined,
+        costUsd: 0.1234,
+      },
+      accessType: "metered",
+    });
+
+    const wide = buildFooterRows(configured, identityTheme, 120)[0] ?? "";
+    for (const value of [
+      "Cache read: 1.2k",
+      "GPT-5",
+      "/work",
+      "idle",
+      "Access: metered",
+      "Cost: $0.1234",
+    ]) {
+      expect(wide).toContain(value);
+    }
+    expect(wide.indexOf("Cache read: 1.2k")).toBeLessThan(wide.indexOf("GPT-5"));
+    expect(wide.indexOf("GPT-5")).toBeLessThan(wide.indexOf("/work"));
+    expect(wide.indexOf("Access: metered")).toBeLessThan(wide.indexOf("Cost: $0.1234"));
+
+    expect(buildFooterRows(configured, identityTheme, 20)).toEqual(["GPT-5 · /work · idle"]);
+    expect(buildFooterRows(configured, identityTheme, 12)).toEqual(["GPT-5 · idle"]);
+  });
+
   it("keeps extension statuses in bottom right and applies colors per item", () => {
     const rows = buildFooterRows(
       segmentInput({

@@ -67,6 +67,23 @@ const SEGMENT_ORDER: readonly SegmentMetadata[] = [
     label: "Weekly Limit",
     description: "Remaining usage on the secondary usage limit (omitted when unavailable)",
   },
+  {
+    id: "cache-read-tokens",
+    label: "Cache Read Tokens",
+    description: "Total cache-read tokens used in session",
+  },
+  {
+    id: "cache-write-tokens",
+    label: "Cache Write Tokens",
+    description: "Total cache-write tokens used in session",
+  },
+  {
+    id: "cache-hit",
+    label: "Cache Hit",
+    description: "Latest assistant prompt cache-hit percentage",
+  },
+  { id: "session-cost", label: "Session Cost", description: "Best-effort session cost telemetry" },
+  { id: "access-type", label: "Access Type", description: "Subscription or metered model access" },
 ] as const;
 
 export const SEGMENT_METADATA = new Map(SEGMENT_ORDER.map((segment) => [segment.id, segment]));
