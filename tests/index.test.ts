@@ -1259,6 +1259,24 @@ describe("/statusline notifications command", () => {
     expect(notify).toHaveBeenCalledWith("/statusline requires interactive UI", "warning");
   });
 
+  it.each(["notifications", "notifications maybe"])(
+    "rejects /statusline %s in RPC mode before parsing the action",
+    (args) => {
+      const { registerCommandCalls, handlers } = setup();
+      const notify = vi.fn();
+      const ctx = createContext({
+        mode: "rpc",
+        ui: { ...createContext().ui, notify },
+      });
+      for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+      const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
+
+      handler(args, ctx);
+
+      expect(notify).toHaveBeenCalledWith("/statusline requires interactive UI", "warning");
+    },
+  );
+
   it("reports the usage string for an invalid notifications invocation", () => {
     const { registerCommandCalls, handlers } = setup();
     const notify = vi.fn();
@@ -1273,6 +1291,28 @@ describe("/statusline notifications command", () => {
 });
 
 describe("extension wiring — completion notifications", () => {
+  function enableNotifications(): void {
+    const configPath = join(agentDir, "extensions", "statusline.json");
+    mkdirSync(join(agentDir, "extensions"), { recursive: true });
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        zones: { topLeft: [], topRight: [], bottomLeft: [], bottomRight: [] },
+        extensionSegments: { hidden: [] },
+        completionNotifications: true,
+      }),
+      "utf8",
+    );
+  }
+
+  function installNotificationSpawn(pi: ExtensionAPI, calls: string[], kill = vi.fn()): void {
+    (pi as unknown as { spawn: () => unknown }).spawn = () => {
+      calls.push("spawn");
+      return { kill, once: () => undefined, unref: () => {} };
+    };
+    (pi as unknown as { platform: NodeJS.Platform }).platform = "darwin";
+  }
+
   it("does not launch a native process when the preference is disabled", () => {
     const { pi, handlers } = buildPiWithHandlers();
     const spawn = vi.fn();
@@ -1285,42 +1325,48 @@ describe("extension wiring — completion notifications", () => {
     expect(spawn).not.toHaveBeenCalled();
   });
 
-  it("ignores agent_settled callbacks for stale session contexts", () => {
+  it("notifies for fresh event contexts from the active TUI session", () => {
+    enableNotifications();
     const { pi, handlers } = buildPiWithHandlers();
     const calls: string[] = [];
-    (pi as unknown as { spawn: () => unknown }).spawn = () => {
-      calls.push("spawn");
-      return { kill: () => true, once: () => undefined, unref: () => {} };
-    };
-    (pi as unknown as { platform: NodeJS.Platform }).platform = "darwin";
+    installNotificationSpawn(pi, calls);
     createExtension(pi);
-    const oldCtx = createContext({ mode: "tui" });
-    for (const h of handlers.get("session_start") ?? []) h({}, oldCtx);
-    for (const h of handlers.get("agent_start") ?? []) h({}, oldCtx);
-    for (const h of handlers.get("session_shutdown") ?? []) h({}, oldCtx);
-    for (const h of handlers.get("agent_settled") ?? []) h({}, oldCtx);
+    const sessionManager = createContext().sessionManager;
+    const startCtx = createContext({ sessionManager });
+    const eventCtx = createContext({ sessionManager });
+    for (const h of handlers.get("session_start") ?? []) h({}, startCtx);
+    for (const h of handlers.get("agent_start") ?? []) h({}, eventCtx);
+    for (const h of handlers.get("agent_settled") ?? []) h({}, eventCtx);
+
+    expect(calls).toEqual(["spawn"]);
+  });
+
+  it("ignores agent_settled callbacks for stale session contexts", () => {
+    enableNotifications();
+    const { pi, handlers } = buildPiWithHandlers();
+    const calls: string[] = [];
+    installNotificationSpawn(pi, calls);
+    createExtension(pi);
+    const oldSessionManager = createContext().sessionManager;
+    const currentSessionManager = createContext().sessionManager;
+    for (const h of handlers.get("session_start") ?? []) {
+      h({}, createContext({ sessionManager: oldSessionManager }));
+      h({}, createContext({ sessionManager: currentSessionManager }));
+    }
+    for (const h of handlers.get("agent_start") ?? []) {
+      h({}, createContext({ sessionManager: currentSessionManager }));
+    }
+    for (const h of handlers.get("agent_settled") ?? []) {
+      h({}, createContext({ sessionManager: oldSessionManager }));
+    }
     expect(calls).toEqual([]);
   });
 
   it("forwards only once per questionnaire interval", () => {
-    const configPath = join(agentDir, "extensions", "statusline.json");
-    mkdirSync(join(agentDir, "extensions"), { recursive: true });
-    writeFileSync(
-      configPath,
-      JSON.stringify({
-        zones: { topLeft: [], topRight: [], bottomLeft: [], bottomRight: [] },
-        extensionSegments: { hidden: [] },
-        completionNotifications: true,
-      }),
-      "utf8",
-    );
+    enableNotifications();
     const { pi, handlers, events } = buildPiWithHandlers();
     const calls: string[] = [];
-    (pi as unknown as { spawn: () => unknown }).spawn = () => {
-      calls.push("spawn");
-      return { kill: () => true, once: () => undefined, unref: () => {} };
-    };
-    (pi as unknown as { platform: NodeJS.Platform }).platform = "darwin";
+    installNotificationSpawn(pi, calls);
     createExtension(pi);
     const ctx = createContext({ mode: "tui" });
     for (const h of handlers.get("session_start") ?? []) h({}, ctx);
@@ -1331,5 +1377,52 @@ describe("extension wiring — completion notifications", () => {
     events.emit("pi-vault:questionnaire:status", { active: true, label: "New wait" });
 
     expect(calls.length).toBe(2);
+  });
+
+  it("ignores malformed questionnaire requests without a label", () => {
+    enableNotifications();
+    const { pi, handlers, events } = buildPiWithHandlers();
+    const calls: string[] = [];
+    installNotificationSpawn(pi, calls);
+    createExtension(pi);
+    const ctx = createContext({ mode: "tui" });
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+
+    events.emit("pi-vault:questionnaire:status", { active: true });
+
+    expect(calls).toEqual([]);
+  });
+
+  it("does not listen for questionnaire requests in RPC sessions", () => {
+    enableNotifications();
+    const { pi, handlers, events } = buildPiWithHandlers();
+    const calls: string[] = [];
+    installNotificationSpawn(pi, calls);
+    createExtension(pi);
+    const ctx = createContext({ mode: "rpc" });
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+
+    events.emit("pi-vault:questionnaire:status", { active: true, label: "Choose tool" });
+
+    expect(calls).toEqual([]);
+  });
+
+  it("rearms questionnaires without clearing the settled-run dedupe", () => {
+    enableNotifications();
+    const { pi, handlers, events } = buildPiWithHandlers();
+    const calls: string[] = [];
+    const kill = vi.fn(() => true);
+    installNotificationSpawn(pi, calls, kill);
+    createExtension(pi);
+    const ctx = createContext({ mode: "tui" });
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+    for (const h of handlers.get("agent_start") ?? []) h({}, ctx);
+    for (const h of handlers.get("agent_settled") ?? []) h({}, ctx);
+
+    events.emit("pi-vault:questionnaire:status", { active: false });
+    for (const h of handlers.get("agent_settled") ?? []) h({}, ctx);
+
+    expect(calls).toEqual(["spawn"]);
+    expect(kill).not.toHaveBeenCalled();
   });
 });

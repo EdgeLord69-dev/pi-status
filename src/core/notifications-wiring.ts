@@ -1,84 +1,60 @@
-import type { ExtensionContext, EventBus } from "@earendil-works/pi-coding-agent";
-import { spawn as nodeSpawn, type SpawnOptions } from "node:child_process";
-import { createCompletionNotifier, type CompletionNotifier } from "./completion-notifier.ts";
-import type { PiStatusConfig } from "../shared/types.ts";
+import type { EventBus, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { createCompletionNotifier, type SpawnNotificationProcess } from "./completion-notifier.ts";
 
-export const NOTIFICATIONS_STATUS_EVENT = "pi-vault:questionnaire:status";
+const NOTIFICATIONS_STATUS_EVENT = "pi-vault:questionnaire:status";
 
-export type NotificationsStatusPayload = {
-  active?: unknown;
-  label?: unknown;
-};
-
-export type NotificationsSpawn = (file: string, args: string[], options: SpawnOptions) => unknown;
-
-export interface NotificationsWiring {
-  notifyAgentSettled(ctx: ExtensionContext): void;
-  notifyRunStarted(ctx: ExtensionContext): void;
-  notifyTurnStarted(ctx: ExtensionContext): void;
-  dispose(): void;
-}
-
-export interface NotificationsWiringOptions {
+type NotificationsWiringOptions = {
   events: EventBus;
   isEnabled: () => boolean;
-  activeTuiSession: () => ExtensionContext | undefined;
-  spawn?: () => NotificationsSpawn | undefined;
-  platform?: () => NodeJS.Platform | undefined;
-}
+  sessionManager?: ExtensionContext["sessionManager"];
+  spawn?: SpawnNotificationProcess;
+  platform?: NodeJS.Platform;
+};
 
-const defaultSpawn = (file: string, args: string[], options: SpawnOptions) =>
-  nodeSpawn(file, args, options);
-
-export function createNotificationsWiring(
-  options: NotificationsWiringOptions,
-): NotificationsWiring {
-  const notifier: CompletionNotifier = createCompletionNotifier({
+export function createNotificationsWiring(options: NotificationsWiringOptions) {
+  const notifier = createCompletionNotifier({
     isEnabled: options.isEnabled,
-    spawn: (file, args, spawnOptions) => {
-      const override = options.spawn?.();
-      const target = override ?? defaultSpawn;
-      return target(file, args, spawnOptions) as never;
-    },
-    platform: options.platform?.() ?? process.platform,
+    spawn: options.spawn,
+    platform: options.platform,
   });
-  const unsubscribe = options.events.on(NOTIFICATIONS_STATUS_EVENT, (raw) => {
-    const payload = raw as NotificationsStatusPayload | null | undefined;
-    if (!payload || typeof payload !== "object") return;
-    const active = payload.active;
-    if (active === true) {
-      notifier.inputRequested("questionnaire");
-    } else if (active === false) {
-      notifier.reset();
-    }
-  });
+  let questionnaireActive = false;
+  let questionnaireInterval = 0;
+  const unsubscribe = options.sessionManager
+    ? options.events.on(NOTIFICATIONS_STATUS_EVENT, (raw) => {
+        const payload = raw as { active?: unknown; label?: unknown } | null | undefined;
+        if (!payload || typeof payload !== "object") return;
+        if (payload.active === false) {
+          questionnaireActive = false;
+          return;
+        }
+        if (payload.active !== true || typeof payload.label !== "string" || questionnaireActive) {
+          return;
+        }
+        questionnaireActive = true;
+        notifier.inputRequested(`questionnaire-${++questionnaireInterval}`);
+      })
+    : undefined;
 
   function isActiveTui(ctx: ExtensionContext): boolean {
-    if (ctx.mode !== "tui") return false;
-    return ctx === options.activeTuiSession();
+    try {
+      return ctx.mode === "tui" && ctx.sessionManager === options.sessionManager;
+    } catch {
+      return false;
+    }
   }
 
   return {
-    notifyAgentSettled(ctx) {
-      if (!isActiveTui(ctx)) return;
-      if (!ctx.isIdle()) return;
+    notifyAgentSettled(ctx: ExtensionContext): void {
+      if (!isActiveTui(ctx) || !ctx.isIdle()) return;
       notifier.turnSettled();
     },
-    notifyRunStarted(ctx) {
+    notifyRunStarted(ctx: ExtensionContext): void {
       if (!isActiveTui(ctx)) return;
       notifier.runStarted();
     },
-    notifyTurnStarted(ctx) {
-      if (!isActiveTui(ctx)) return;
-      notifier.runStarted();
-    },
-    dispose() {
-      unsubscribe();
+    dispose(): void {
+      unsubscribe?.();
       notifier.reset();
     },
   };
-}
-
-export function isNotificationsEnabled(config: PiStatusConfig): boolean {
-  return config.completionNotifications === true;
 }
