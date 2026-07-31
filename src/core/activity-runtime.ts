@@ -3,56 +3,13 @@ import type { LiveActivitySnapshot, ToolActivity } from "../shared/types.ts";
 const RECENT_TOOL_LIMIT = 5;
 const TICK_MS = 1_000;
 
-function nonNegativeFinite(value: number): number | undefined {
-  return Number.isFinite(value) && value >= 0 ? value : undefined;
-}
-
-function clampTurnIndex(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  return Math.max(0, Math.trunc(value));
-}
-
 function clampElapsed(start: number | undefined, end: number, hadEnd?: number): number {
   if (start === undefined) return 0;
   const reference = hadEnd ?? end;
   return Math.max(0, reference - start);
 }
 
-function computeTps(
-  outputTokens: number | undefined,
-  startedAt: number | undefined,
-  firstTokenAt: number | undefined,
-  endedAt: number | undefined,
-): number | undefined {
-  if (
-    outputTokens === undefined ||
-    startedAt === undefined ||
-    firstTokenAt === undefined ||
-    endedAt === undefined
-  ) {
-    return undefined;
-  }
-  const elapsedMs = Math.max(0, endedAt - startedAt);
-  if (elapsedMs <= 0) return undefined;
-  return outputTokens / elapsedMs;
-}
-
-export interface ActivityRuntime {
-  snapshot(): LiveActivitySnapshot;
-  setOnChange(listener: (() => void) | undefined): void;
-  startRun(at?: number): void;
-  finishRun(at?: number): void;
-  startTurn(turnIndex: number, at?: number): void;
-  finishTurn(at?: number): void;
-  startTool(callId: string, name: string, at?: number): void;
-  finishTool(callId: string, failed?: boolean, at?: number): void;
-  startResponse(at?: number): void;
-  updateResponseEstimate(estimatedOutputTokens: number, at?: number): void;
-  finishResponse(outputTokens?: number, at?: number): void;
-  reset(): void;
-}
-
-export function createActivityRuntime(): ActivityRuntime {
+export function createActivityRuntime() {
   let runStart: number | undefined;
   let runEnd: number | undefined;
   let turnIndex: number | undefined;
@@ -68,7 +25,6 @@ export function createActivityRuntime(): ActivityRuntime {
   let responseStatus: "idle" | "streaming" | "complete" = "idle";
   let listener: (() => void) | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  let lastTick = 0;
 
   function isActive(): boolean {
     if (runStart !== undefined && runEnd === undefined) return true;
@@ -123,8 +79,9 @@ export function createActivityRuntime(): ActivityRuntime {
   }
 
   function finishRun(at?: number): void {
+    if (!isActive()) return;
     const end = at ?? Date.now();
-    runEnd = end;
+    if (runStart !== undefined) runEnd = end;
     if (turnStart !== undefined && turnEnd === undefined) {
       turnEnd = end;
     }
@@ -135,7 +92,7 @@ export function createActivityRuntime(): ActivityRuntime {
     for (const tool of activeTools.values()) {
       tool.status = "failed";
       tool.endedAt = end;
-      tool.durationMs = end - tool.startedAt;
+      tool.durationMs = Math.max(0, end - tool.startedAt);
       recentTools.unshift({ ...tool });
     }
     activeTools.clear();
@@ -150,12 +107,8 @@ export function createActivityRuntime(): ActivityRuntime {
     if (runStart === undefined) {
       runStart = now;
     }
-    const normalized = clampTurnIndex(turnIndexArg);
-    if (turnIndex !== undefined && turnStart !== undefined && turnEnd === undefined) {
-      if (normalized <= turnIndex + 1) {
-        return;
-      }
-    }
+    const normalized = Number.isFinite(turnIndexArg) ? Math.max(0, Math.trunc(turnIndexArg)) : 0;
+    if (turnIndex !== undefined && normalized <= turnIndex) return;
     turnIndex = normalized;
     turnStart = now;
     turnEnd = undefined;
@@ -163,7 +116,7 @@ export function createActivityRuntime(): ActivityRuntime {
   }
 
   function finishTurn(at?: number): void {
-    if (turnStart === undefined) return;
+    if (turnStart === undefined || turnEnd !== undefined) return;
     turnEnd = at ?? Date.now();
     notify();
   }
@@ -188,7 +141,7 @@ export function createActivityRuntime(): ActivityRuntime {
       ...tool,
       status: failed ? "failed" : "complete",
       endedAt: end,
-      durationMs: end - tool.startedAt,
+      durationMs: Math.max(0, end - tool.startedAt),
     };
     activeTools.delete(callId);
     recentTools.unshift(completed);
@@ -209,17 +162,13 @@ export function createActivityRuntime(): ActivityRuntime {
   }
 
   function updateResponseEstimate(estimatedOutputTokens: number, at?: number): void {
-    if (!Number.isFinite(estimatedOutputTokens)) return;
+    if (!Number.isFinite(estimatedOutputTokens) || estimatedOutputTokens <= 0) return;
     if (responseStatus === "complete") return;
     if (responseStartedAt === undefined) return;
     const now = at ?? Date.now();
-    if (responseFirstTokenAt === undefined && estimatedOutputTokens > 0) {
-      responseFirstTokenAt = now;
-    }
-    if (responseTokenCountKind !== "final") {
-      responseOutputTokens = estimatedOutputTokens;
-      responseTokenCountKind = "estimated";
-    }
+    if (responseFirstTokenAt === undefined) responseFirstTokenAt = now;
+    responseOutputTokens = estimatedOutputTokens;
+    responseTokenCountKind = "estimated";
     notify();
   }
 
@@ -228,13 +177,13 @@ export function createActivityRuntime(): ActivityRuntime {
     if (responseStartedAt === undefined) return;
     const end = at ?? Date.now();
     responseEndedAt = end;
-    const final = outputTokens !== undefined ? nonNegativeFinite(outputTokens) : undefined;
+    const final =
+      outputTokens !== undefined && Number.isFinite(outputTokens) && outputTokens >= 0
+        ? outputTokens
+        : undefined;
     if (final !== undefined) {
       responseOutputTokens = final;
       responseTokenCountKind = "final";
-      if (responseFirstTokenAt === undefined && final > 0) {
-        responseFirstTokenAt = end;
-      }
     } else if (responseOutputTokens === undefined) {
       responseOutputTokens = 0;
     }
@@ -249,7 +198,7 @@ export function createActivityRuntime(): ActivityRuntime {
     const turnStatus =
       turnStart === undefined ? "idle" : turnEnd === undefined ? "active" : "complete";
     const activeList = [...activeTools.values()]
-      .sort((a, b) => a.startedAt - b.startedAt)
+      .sort((a, b) => a.startedAt - b.startedAt || a.callId.localeCompare(b.callId))
       .map((tool): ToolActivity => {
         if (tool.status === "active") {
           return {
@@ -271,13 +220,13 @@ export function createActivityRuntime(): ActivityRuntime {
     }
     if (responseOutputTokens !== undefined) responseSnap.outputTokens = responseOutputTokens;
     if (responseTokenCountKind !== undefined) responseSnap.tokenCountKind = responseTokenCountKind;
-    const tps = computeTps(
-      responseOutputTokens,
-      responseStartedAt,
-      responseFirstTokenAt,
-      responseEndedAt ?? (responseStatus === "complete" ? now : undefined),
-    );
-    if (tps !== undefined) responseSnap.tps = tps;
+    const tpsElapsedMs =
+      responseFirstTokenAt === undefined
+        ? 0
+        : Math.max(0, (responseEndedAt ?? now) - responseFirstTokenAt);
+    if (responseOutputTokens !== undefined && tpsElapsedMs > 0) {
+      responseSnap.tps = responseOutputTokens / (tpsElapsedMs / 1_000);
+    }
     return {
       run: {
         status: runStatus,
@@ -300,7 +249,12 @@ export function createActivityRuntime(): ActivityRuntime {
   }
 
   function reset(): void {
-    const wasActive = isActive();
+    const hadState =
+      runStart !== undefined ||
+      turnStart !== undefined ||
+      activeTools.size > 0 ||
+      recentTools.length > 0 ||
+      responseStatus !== "idle";
     runStart = undefined;
     runEnd = undefined;
     turnIndex = undefined;
@@ -318,19 +272,14 @@ export function createActivityRuntime(): ActivityRuntime {
       clearTimeout(timer);
       timer = undefined;
     }
-    if (wasActive) {
+    if (hadState) {
       listener?.();
     }
   }
 
   function setOnChange(cb: (() => void) | undefined): void {
     listener = cb;
-    if (cb && isActive()) {
-      restartTimer();
-    } else if (timer) {
-      clearInterval(timer);
-      timer = undefined;
-    }
+    restartTimer();
   }
 
   return {

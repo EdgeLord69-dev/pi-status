@@ -37,7 +37,7 @@ describe("createActivityRuntime", () => {
     });
   });
 
-  it("ignores a duplicate turn_start while a turn is already active", () => {
+  it("replaces an active turn when the next authoritative index arrives", () => {
     const runtime = createActivityRuntime();
     runtime.startRun(1000);
     runtime.startTurn(0, 1100);
@@ -45,23 +45,36 @@ describe("createActivityRuntime", () => {
     runtime.startTurn(1, 1500);
     expect(runtime.snapshot().turn).toEqual({
       status: "active",
-      number: 1,
+      number: 2,
+      startedAt: 1500,
+      durationMs: 0,
+    });
+  });
+
+  it("ignores an exact duplicate turn_start while a turn is active", () => {
+    const runtime = createActivityRuntime();
+    runtime.startRun(1000);
+    runtime.startTurn(1, 1100);
+    setClock(1500);
+    runtime.startTurn(1, 1500);
+    expect(runtime.snapshot().turn).toEqual({
+      status: "active",
+      number: 2,
       startedAt: 1100,
       durationMs: 400,
     });
   });
 
-  it("replaces the active turn when a later authoritative index arrives", () => {
+  it("ignores an old turn_start after the current turn has completed", () => {
     const runtime = createActivityRuntime();
-    runtime.startRun(1000);
-    runtime.startTurn(0, 1100);
-    setClock(1500);
-    runtime.startTurn(4, 1500);
-    expect(runtime.snapshot().turn).toEqual({
-      status: "active",
-      number: 5,
-      startedAt: 1500,
-      durationMs: 0,
+    runtime.startTurn(1, 1100);
+    runtime.finishTurn(1400);
+    runtime.startTurn(0, 1500);
+    expect(runtime.snapshot().turn).toMatchObject({
+      status: "complete",
+      number: 2,
+      startedAt: 1100,
+      endedAt: 1400,
     });
   });
 
@@ -145,6 +158,13 @@ describe("createActivityRuntime", () => {
     expect(runtime.snapshot().recentTools[0]?.status).toBe("failed");
   });
 
+  it("clamps completed tool durations when the clock moves backwards", () => {
+    const runtime = createActivityRuntime();
+    runtime.startTool("a", "read", 1500);
+    runtime.finishTool("a", false, 1000);
+    expect(runtime.snapshot().recentTools[0]?.durationMs).toBe(0);
+  });
+
   it("keeps only the most recent five completed tools in newest-first order", () => {
     const runtime = createActivityRuntime();
     runtime.startRun(1000);
@@ -193,10 +213,11 @@ describe("createActivityRuntime", () => {
     runtime.finishResponse(40, 1400);
     const snap = runtime.snapshot();
     expect(snap.response.status).toBe("complete");
-    expect(snap.response.firstTokenAt).toBe(1400);
-    expect(snap.response.ttftMs).toBe(300);
+    expect(snap.response.firstTokenAt).toBeUndefined();
+    expect(snap.response.ttftMs).toBeUndefined();
     expect(snap.response.outputTokens).toBe(40);
     expect(snap.response.tokenCountKind).toBe("final");
+    expect(snap.response.tps).toBeUndefined();
   });
 
   it("uses official output usage when final, otherwise keeps the estimate as estimated", () => {
@@ -209,7 +230,15 @@ describe("createActivityRuntime", () => {
     expect(snap.response.status).toBe("complete");
     expect(snap.response.outputTokens).toBe(200);
     expect(snap.response.tokenCountKind).toBe("final");
-    expect(snap.response.tps).toBeCloseTo(200 / 900, 5);
+    expect(snap.response.tps).toBeCloseTo(200 / 0.5, 5);
+  });
+
+  it("computes estimated TPS while streaming from first-token time", () => {
+    const runtime = createActivityRuntime();
+    runtime.startResponse(1000);
+    runtime.updateResponseEstimate(50, 1200);
+    setClock(2200);
+    expect(runtime.snapshot().response.tps).toBeCloseTo(50, 5);
   });
 
   it("keeps the final output usage once zero or negative", () => {
@@ -233,7 +262,20 @@ describe("createActivityRuntime", () => {
     expect(snap.response.status).toBe("complete");
     expect(snap.response.outputTokens).toBe(80);
     expect(snap.response.tokenCountKind).toBe("estimated");
-    expect(snap.response.tps).toBeCloseTo(80 / 700, 5);
+    expect(snap.response.tps).toBeCloseTo(80 / 0.4, 5);
+  });
+
+  it("does not invent first-token timing from final usage alone", () => {
+    const runtime = createActivityRuntime();
+    runtime.startResponse(1000);
+    runtime.finishResponse(40, 1400);
+    expect(runtime.snapshot().response).toEqual({
+      status: "complete",
+      startedAt: 1000,
+      endedAt: 1400,
+      outputTokens: 40,
+      tokenCountKind: "final",
+    });
   });
 
   it("ignores a non-finite final usage value", () => {
@@ -333,7 +375,7 @@ describe("createActivityRuntime", () => {
     expect(snap.response.status).toBe("complete");
     expect(snap.response.outputTokens).toBe(80);
     expect(snap.response.tokenCountKind).toBe("estimated");
-    expect(snap.response.tps).toBeCloseTo(80 / 900, 5);
+    expect(snap.response.tps).toBeCloseTo(80 / 0.6, 5);
   });
 
   it("finishRun is idempotent and does not move already-settled tools", () => {
@@ -344,6 +386,7 @@ describe("createActivityRuntime", () => {
     runtime.finishRun(2000);
     runtime.finishRun(3000);
     const snap = runtime.snapshot();
+    expect(snap.run.endedAt).toBe(2000);
     expect(snap.recentTools).toHaveLength(1);
     expect(snap.recentTools[0]?.status).toBe("complete");
   });
@@ -367,6 +410,18 @@ describe("createActivityRuntime", () => {
     runtime.setOnChange(listener);
     runtime.reset();
     expect(listener).not.toHaveBeenCalled();
+  });
+
+  it("reset notifies when settled state is cleared", () => {
+    const runtime = createActivityRuntime();
+    const listener = vi.fn();
+    runtime.setOnChange(listener);
+    runtime.startRun(1000);
+    runtime.finishRun(2000);
+    listener.mockClear();
+    runtime.reset();
+    expect(listener).toHaveBeenCalledOnce();
+    expect(runtime.snapshot().run.status).toBe("idle");
   });
 
   it("remains reusable after reset", () => {

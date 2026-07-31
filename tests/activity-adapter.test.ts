@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import createExtension from "../src/index.ts";
 import { buildPiWithHandlers, createContext } from "./helpers.ts";
@@ -28,6 +28,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.clearAllTimers();
+  vi.useRealTimers();
   vi.unstubAllEnvs();
   rmSync(agentDir, { recursive: true, force: true });
 });
@@ -35,7 +37,7 @@ afterEach(() => {
 function setup() {
   const { pi, handlers } = buildPiWithHandlers();
   createExtension(pi);
-  return { pi, handlers };
+  return handlers;
 }
 
 function call<T>(
@@ -52,61 +54,56 @@ function newCtx(overrides: Partial<ExtensionContext> = {}): ExtensionContext {
 }
 
 function attachFooter(
-  pi: ReturnType<typeof setup>["pi"],
-  handlers: ReturnType<typeof setup>["handlers"],
+  handlers: ReturnType<typeof setup>,
+  overrides: Partial<ExtensionContext> = {},
 ) {
   const requestRender = vi.fn();
-  let footerFactory:
-    | ((...args: unknown[]) => { render: (width: number) => string[]; dispose?: () => void })
-    | undefined;
+  let footerFactory: ((...args: unknown[]) => { render: (width: number) => string[] }) | undefined;
   const ctx = newCtx({
+    ...overrides,
     ui: {
       ...newCtx().ui,
+      ...overrides.ui,
       setFooter: (x: unknown) => (footerFactory = x as never),
     },
   });
   for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+  const footer = footerFactory?.(
+    { requestRender },
+    { fg: (_c: string, t: string) => t },
+    {
+      getGitBranch: () => null,
+      getExtensionStatuses: () => new Map(),
+    },
+  );
   return {
     ctx,
-    footerFactory,
     requestRender,
     render(width: number): string {
-      return (
-        footerFactory?.(
-          { requestRender },
-          { fg: (_c: string, t: string) => t },
-          {
-            getGitBranch: () => null,
-            getExtensionStatuses: () => new Map(),
-          },
-        )?.render(width) ?? []
-      ).join("\n");
+      return (footer?.render(width) ?? []).join("\n");
     },
-    pi,
-    handlers,
   };
 }
 
 describe("activity event wiring", () => {
   it("renders the one-based turn number from the authoritative turn_start index", () => {
-    const { pi, handlers } = setup();
-    const session = attachFooter(pi, handlers);
+    const handlers = setup();
+    const session = attachFooter(handlers);
     call(handlers, "agent_start", {}, session.ctx);
     call(handlers, "turn_start", { turnIndex: 0, timestamp: 1000 }, session.ctx);
     const initial = session.render(120);
-    expect(initial).toContain("turn 1");
+    expect(initial).toContain("Turn 1");
 
-    call(handlers, "turn_start", { turnIndex: 4, timestamp: 2000 }, session.ctx);
+    call(handlers, "turn_start", { turnIndex: 1, timestamp: 2000 }, session.ctx);
     const updated = session.render(120);
-    expect(updated).toContain("turn 5");
+    expect(updated).toContain("Turn 2");
   });
 
   it("ignores activity events from non-TUI sessions", () => {
-    const { pi, handlers } = setup();
+    const handlers = setup();
     let footerFactory:
       | ((...args: unknown[]) => { render: (width: number) => string[] })
       | undefined;
-    createExtension(pi);
     const ctx = newCtx({
       mode: "rpc",
       ui: {
@@ -147,40 +144,115 @@ describe("activity event wiring", () => {
   });
 
   it("ignores stale activity events from a previous session manager", () => {
-    const { pi, handlers } = setup();
-    createExtension(pi);
+    const handlers = setup();
     const ctxA = newCtx();
-    const ctxB = newCtx();
-    for (const h of handlers.get("session_start") ?? []) {
-      h({}, ctxA);
-      h({}, ctxB);
-    }
+    for (const h of handlers.get("session_start") ?? []) h({}, ctxA);
+    const current = attachFooter(handlers);
+    call(handlers, "agent_start", {}, current.ctx);
+    call(handlers, "turn_start", { turnIndex: 0, timestamp: 1000 }, current.ctx);
+    const before = current.render(120);
     call(handlers, "agent_start", {}, ctxA);
-    call(handlers, "turn_start", { turnIndex: 0, timestamp: 1000 }, ctxA);
-    expect(() =>
-      call(handlers, "tool_execution_start", { toolCallId: "a", toolName: "read", args: {} }, ctxA),
-    ).not.toThrow();
+    call(handlers, "turn_start", { turnIndex: 4, timestamp: 2000 }, ctxA);
+    call(handlers, "tool_execution_start", { toolCallId: "a", toolName: "read", args: {} }, ctxA);
+    expect(current.render(120)).toBe(before);
+  });
+
+  it("ignores stale shutdowns without clearing the current footer", () => {
+    const handlers = setup();
+    const ctxA = newCtx();
+    for (const h of handlers.get("session_start") ?? []) h({}, ctxA);
+    const current = attachFooter(handlers);
+    call(handlers, "agent_start", {}, current.ctx);
+    call(handlers, "turn_start", { turnIndex: 0, timestamp: 1000 }, current.ctx);
+
+    call(handlers, "session_shutdown", {}, ctxA);
+
+    expect(current.render(120)).toContain("Turn 1");
+  });
+
+  it("keeps the run active until agent_settled reports an idle context", () => {
+    let idle = false;
+    const handlers = setup();
+    const session = attachFooter(handlers, { isIdle: () => idle });
+    call(handlers, "agent_start", {}, session.ctx);
+    const activeRenderCount = session.requestRender.mock.calls.length;
+    call(handlers, "agent_settled", {}, session.ctx);
+    expect(session.requestRender).toHaveBeenCalledTimes(activeRenderCount);
+
+    idle = true;
+    call(handlers, "agent_settled", {}, session.ctx);
+    expect(session.requestRender).toHaveBeenCalledTimes(activeRenderCount + 1);
   });
 
   it("wires footer re-render to the activity runtime", () => {
-    const { pi, handlers } = setup();
-    const session = attachFooter(pi, handlers);
+    const handlers = setup();
+    const session = attachFooter(handlers);
     session.render(120);
     expect(session.requestRender).not.toHaveBeenCalled();
     call(handlers, "agent_start", {}, session.ctx);
     expect(session.requestRender).toHaveBeenCalled();
   });
 
-  it("resets the activity runtime on session replacement and on shutdown", () => {
-    const { pi, handlers } = setup();
-    const session = attachFooter(pi, handlers);
+  it("renders response and tool activity from Pi events", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    const handlers = setup();
+    const session = attachFooter(handlers);
     call(handlers, "agent_start", {}, session.ctx);
     call(handlers, "turn_start", { turnIndex: 0, timestamp: 1000 }, session.ctx);
-    expect(session.render(120)).toContain("turn 1");
+
+    vi.setSystemTime(1100);
+    call(handlers, "before_provider_request", { payload: {} }, session.ctx);
+    vi.setSystemTime(1300);
+    call(
+      handlers,
+      "message_update",
+      {
+        message: { role: "assistant", content: [{ type: "thinking", thinking: "abcdefgh" }] },
+      },
+      session.ctx,
+    );
+    expect(session.render(200)).toContain("TTFT 200ms");
+
+    vi.setSystemTime(2300);
+    expect(session.render(200)).toContain("~2.0 tok/s");
+    call(
+      handlers,
+      "tool_execution_start",
+      { toolCallId: "a", toolName: "read", args: {} },
+      session.ctx,
+    );
+    expect(session.render(200)).toContain("read");
+    vi.setSystemTime(2600);
+    call(
+      handlers,
+      "tool_execution_end",
+      { toolCallId: "a", toolName: "read", result: {}, isError: false },
+      session.ctx,
+    );
+    expect(session.render(200)).toContain("read <1s");
+
+    vi.setSystemTime(3300);
+    call(
+      handlers,
+      "message_end",
+      { message: { role: "assistant", content: [], usage: { output: 4 } } },
+      session.ctx,
+    );
+    expect(session.render(200)).toContain("2.0 tok/s");
+    expect(session.render(200)).not.toContain("~2.0 tok/s");
+  });
+
+  it("resets the activity runtime on session replacement and on shutdown", () => {
+    const handlers = setup();
+    const session = attachFooter(handlers);
+    call(handlers, "agent_start", {}, session.ctx);
+    call(handlers, "turn_start", { turnIndex: 0, timestamp: 1000 }, session.ctx);
+    expect(session.render(120)).toContain("Turn 1");
 
     for (const h of handlers.get("session_shutdown") ?? []) h({}, session.ctx);
     const ctx2 = newCtx();
     for (const h of handlers.get("session_start") ?? []) h({}, ctx2);
-    expect(session.render(120)).not.toContain("turn 1");
+    expect(session.render(120)).not.toContain("Turn 1");
   });
 });

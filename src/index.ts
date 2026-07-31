@@ -288,8 +288,8 @@ export default function createExtension(pi: ExtensionAPI): void {
 
   pi.on("session_start", (_event, ctx) => {
     resetFooterProviderState();
-    activityRuntime.reset();
     activityRuntime.setOnChange(undefined);
+    activityRuntime.reset();
     usageRuntime.requestCurrent();
     runtimeState.update({ type: "session_start", ctx });
     activeTuiSessionManager = ctx.mode === "tui" ? ctx.sessionManager : undefined;
@@ -305,8 +305,8 @@ export default function createExtension(pi: ExtensionAPI): void {
 
   pi.on("session_tree", (_event, ctx) => {
     resetFooterProviderState();
-    activityRuntime.reset();
     activityRuntime.setOnChange(undefined);
+    activityRuntime.reset();
     runtimeState.update({ type: "session_tree", ctx });
     activeTuiSessionManager = ctx.mode === "tui" ? ctx.sessionManager : undefined;
     runtimeState.update({
@@ -390,20 +390,22 @@ export default function createExtension(pi: ExtensionAPI): void {
 
   pi.on("agent_settled", (_event, ctx) => {
     notifications.notifyAgentSettled(ctx);
-    if (isActiveTuiSession(ctx, activeTuiSessionManager)) {
+    if (isActiveTuiSession(ctx, activeTuiSessionManager) && ctx.isIdle()) {
       activityRuntime.finishRun();
     }
   });
 
   pi.on("session_shutdown", (_event, ctx) => {
+    const activeCtx = runtimeState.snapshot().ctx;
+    if (activeCtx && activeCtx.sessionManager !== ctx.sessionManager) return;
     resetFooterProviderState();
     if (
       activeTuiSessionManager === undefined ||
       (ctx.mode === "tui" && ctx.sessionManager === activeTuiSessionManager)
     ) {
       notifications.dispose();
-      activityRuntime.reset();
       activityRuntime.setOnChange(undefined);
+      activityRuntime.reset();
       activeTuiSessionManager = undefined;
     }
     runtimeState.update({ type: "session_shutdown" });
