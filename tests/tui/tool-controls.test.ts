@@ -49,14 +49,7 @@ function makePi() {
   };
 }
 
-function makeContext(
-  opts?:
-    | {
-        custom?: ExtensionCommandContext["ui"]["custom"];
-        mode?: string;
-      }
-    | undefined,
-) {
+function makeContext(opts?: { custom?: ExtensionCommandContext["ui"]["custom"]; mode?: string }) {
   const mode = opts?.mode ?? "tui";
   let component: { handleInput(data: string): void; render(width: number): string[] } | undefined;
   const done = vi.fn();
@@ -71,7 +64,15 @@ function makeContext(
     mode,
     ui: { custom: customImpl, notify: vi.fn() },
   } as unknown as ExtensionCommandContext;
-  return { ctx, custom: customImpl, done, requestRender, getComponent: () => component };
+  const getComponent = () => {
+    if (!component) throw new Error("custom component was not created");
+    return component;
+  };
+  return { ctx, custom: customImpl, done, requestRender, getComponent };
+}
+
+function row(component: { render(width: number): string[] }, name: string) {
+  return component.render(100).find((line) => line.includes(name));
 }
 
 // ── calculateToolChange ──────────────────────────────────────────────────────
@@ -140,15 +141,15 @@ describe("openToolControls", () => {
     );
     const comp = getComponent();
     expect(comp).toBeDefined();
-    expect(comp?.render(100).join("\n")).toContain("read");
-    expect(comp?.render(100).join("\n")).toContain("write");
+    expect(comp.render(100).join("\n")).toContain("read");
+    expect(comp.render(100).join("\n")).toContain("write");
   });
 
   it("search filters items and toggle disables the visible tool", async () => {
     const { pi, setActiveTools } = makePi();
-    const { ctx, getComponent } = makeContext();
+    const { ctx, getComponent, requestRender } = makeContext();
     await openToolControls(pi, ctx);
-    const comp = getComponent()!;
+    const comp = getComponent();
     // type "write" to filter - intermediate "wr"/"wri"/"writ" have no exact match
     for (const char of "write") comp.handleInput(char);
     // after "write" the only visible tool is write
@@ -156,6 +157,7 @@ describe("openToolControls", () => {
     // press Enter to toggle write → disabled
     comp.handleInput("\r");
     expect(setActiveTools).toHaveBeenCalledWith(["read"]);
+    expect(requestRender).toHaveBeenCalled();
   });
 
   it("toggling enables a disabled tool", async () => {
@@ -163,7 +165,7 @@ describe("openToolControls", () => {
     setHostActive(["read"]); // write and bash are disabled
     const { ctx, getComponent } = makeContext();
     await openToolControls(pi, ctx);
-    const comp = getComponent()!;
+    const comp = getComponent();
     // navigate to write (2 up arrows from read) and toggle to enabled
     comp.handleInput("\x1b[A"); // up → bash
     comp.handleInput("\x1b[A"); // up → write
@@ -176,7 +178,7 @@ describe("openToolControls", () => {
     setHostActive(["read"]);
     const { ctx, getComponent } = makeContext();
     await openToolControls(pi, ctx);
-    const comp = getComponent()!;
+    const comp = getComponent();
     comp.handleInput("\r"); // try to disable the only active tool
     expect(setActiveTools).not.toHaveBeenCalled();
     expect(ctx.ui.notify).toHaveBeenCalledWith("At least one tool must remain active", "warning");
@@ -184,17 +186,54 @@ describe("openToolControls", () => {
     expect(comp.render(100).join("\n")).toContain("enabled");
   });
 
-  it("re-reads host active set on each toggle and shows accepted names", async () => {
+  it("restores rejected rows from the latest host state", async () => {
     const { pi, setHostActive } = makePi();
     const { ctx, getComponent } = makeContext();
     await openToolControls(pi, ctx);
-    const comp = getComponent()!;
-    // externally change active set
-    setHostActive(["read", "write"]);
-    // toggle first tool to see new active set reflected
+    setHostActive(["read"]);
+
+    const comp = getComponent();
     comp.handleInput("\r");
-    expect(comp.render(100).join("\n")).toContain("read");
-    expect(comp.render(100).join("\n")).toContain("write");
+
+    expect(row(comp, "read")).toContain("enabled");
+    expect(row(comp, "write")).toContain("disabled");
+  });
+
+  it("updates every visible row after the live catalog changes", async () => {
+    const { pi, setHostActive, setHostTools } = makePi();
+    const { ctx, getComponent } = makeContext();
+    await openToolControls(pi, ctx);
+    setHostTools([
+      { name: "read", description: "Read files" },
+      { name: "bash", description: "Run shell commands" },
+    ]);
+    setHostActive(["read", "bash"]);
+
+    const comp = getComponent();
+    comp.handleInput("\r");
+
+    expect(row(comp, "read")).toContain("disabled");
+    expect(row(comp, "write")).toContain("disabled");
+    expect(row(comp, "bash")).toContain("enabled");
+  });
+
+  it("preserves tools activated by another runtime participant", async () => {
+    const { pi, setActiveTools, setHostActive, setHostTools } = makePi();
+    const { ctx, getComponent } = makeContext();
+    await openToolControls(pi, ctx);
+    setHostTools([
+      { name: "read", description: "Read files" },
+      { name: "write", description: "Write files" },
+      { name: "bash", description: "Run shell commands" },
+      { name: "dynamic", description: "Added later" },
+    ]);
+    setHostActive(["read", "dynamic"]);
+
+    getComponent().handleInput("\r");
+
+    expect(setActiveTools).toHaveBeenCalledWith(["dynamic"]);
+    expect(row(getComponent(), "read")).toContain("disabled");
+    expect(row(getComponent(), "write")).toContain("disabled");
   });
 
   it("allows enabling from an empty host active set", async () => {
@@ -202,7 +241,7 @@ describe("openToolControls", () => {
     setHostActive([]);
     const { ctx, getComponent } = makeContext();
     await openToolControls(pi, ctx);
-    const comp = getComponent()!;
+    const comp = getComponent();
     comp.handleInput("\r"); // enable first tool (read)
     expect(setActiveTools).toHaveBeenCalledWith(["read"]);
   });
@@ -211,7 +250,7 @@ describe("openToolControls", () => {
     const { pi, setActiveTools } = makePi();
     const { ctx, done, getComponent } = makeContext();
     await openToolControls(pi, ctx);
-    const comp = getComponent()!;
+    const comp = getComponent();
     comp.handleInput("\x1b"); // Escape
     expect(done).toHaveBeenCalledWith(undefined);
     expect(setActiveTools).not.toHaveBeenCalled();
@@ -228,6 +267,16 @@ describe("openToolControls", () => {
     );
   });
 
+  it("contains a stale non-TUI notification context", async () => {
+    const { pi } = makePi();
+    const { ctx } = makeContext({ mode: "rpc" });
+    vi.mocked(ctx.ui.notify).mockImplementation(() => {
+      throw new Error("stale context");
+    });
+
+    await expect(openToolControls(pi, ctx)).resolves.toBeUndefined();
+  });
+
   it("warns when tool discovery fails", async () => {
     const { pi } = makePi();
     vi.mocked(pi.getAllTools).mockImplementationOnce(() => {
@@ -240,6 +289,18 @@ describe("openToolControls", () => {
       "warning",
     );
     expect(custom).not.toHaveBeenCalled();
+  });
+
+  it("warns when no tools are available", async () => {
+    const { pi, setActiveTools } = makePi();
+    vi.mocked(pi.getAllTools).mockReturnValue([]);
+    const { ctx, custom } = makeContext();
+
+    await openToolControls(pi, ctx);
+
+    expect(custom).not.toHaveBeenCalled();
+    expect(setActiveTools).not.toHaveBeenCalled();
+    expect(ctx.ui.notify).toHaveBeenCalledWith("No tools are available", "warning");
   });
 
   it("warns when active-tools fetch fails", async () => {
@@ -256,27 +317,59 @@ describe("openToolControls", () => {
     expect(custom).not.toHaveBeenCalled();
   });
 
-  it("warns when setActiveTools throws", async () => {
+  it("warns and restores rows when live refresh fails", async () => {
     const { pi } = makePi();
+    vi.mocked(pi.getAllTools)
+      .mockReturnValueOnce([
+        { name: "read", description: "Read files" },
+        { name: "write", description: "Write files" },
+        { name: "bash", description: "Run shell commands" },
+      ] as never)
+      .mockImplementationOnce(() => {
+        throw new Error("Refresh failed");
+      });
+    const { ctx, getComponent } = makeContext();
+    await openToolControls(pi, ctx);
+
+    const comp = getComponent();
+    comp.handleInput("\r");
+
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      "Could not refresh Pi tools: Refresh failed",
+      "warning",
+    );
+    expect(row(comp, "read")).toContain("enabled");
+  });
+
+  it("warns when setActiveTools throws", async () => {
+    const { pi, setHostActive } = makePi();
     vi.mocked(pi.setActiveTools).mockImplementationOnce(() => {
       throw new Error("Apply failed");
     });
     const { ctx, getComponent } = makeContext();
     await openToolControls(pi, ctx);
-    getComponent()!.handleInput("\r");
+    setHostActive(["read", "bash"]);
+    getComponent().handleInput("\r");
     expect(ctx.ui.notify).toHaveBeenCalledWith(
-      "Could not apply tool change: Apply failed",
+      "Could not update Pi tools: Apply failed",
       "warning",
     );
+    expect(row(getComponent(), "read")).toContain("enabled");
+    expect(row(getComponent(), "write")).toContain("disabled");
+    expect(row(getComponent(), "bash")).toContain("enabled");
   });
 
   it("contains notify throwing during rejection warning", async () => {
-    const { pi } = makePi();
-    const { ctx } = makeContext();
-    vi.mocked(ctx.ui.notify).mockImplementationOnce(() => {
+    const { pi, setHostActive } = makePi();
+    setHostActive(["read"]);
+    const { ctx, getComponent } = makeContext();
+    vi.mocked(ctx.ui.notify).mockImplementation(() => {
       throw new Error("notify throws");
     });
-    await openToolControls(pi, ctx); // should not throw
+    await openToolControls(pi, ctx);
+
+    expect(() => getComponent().handleInput("\r")).not.toThrow();
+    expect(row(getComponent(), "read")).toContain("enabled");
   });
 
   it("warns when overlay opening fails", async () => {

@@ -2,7 +2,11 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import {
+  initTheme,
+  type ExtensionAPI,
+  type ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
 import createExtension from "../src/index.ts";
 
 let agentDir: string;
@@ -983,9 +987,18 @@ describe("extension wiring", () => {
       getActiveTools: () => ["read", "write"],
       setActiveTools: vi.fn(),
     });
-    const custom = vi.fn(async () => null);
+    let preview = "";
+    const custom = vi.fn(
+      async (factory: (...args: unknown[]) => { render: (width: number) => string[] }) => {
+        preview = factory({ requestRender: () => {} }, {}, {}, () => {})
+          .render(100)
+          .join("\n");
+        return null;
+      },
+    );
 
     createExtension(pi);
+    initTheme("dark", false);
 
     const ctx = createContext({
       ui: {
@@ -1011,6 +1024,8 @@ describe("extension wiring", () => {
         margin: 1,
       },
     });
+    expect(preview).toContain("read");
+    expect(preview).toContain("write");
   });
 });
 

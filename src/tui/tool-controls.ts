@@ -4,7 +4,7 @@ import { SettingsList, type SettingItem } from "@earendil-works/pi-tui";
 
 // ── Pure transition validator ─────────────────────────────────────────────────
 
-export type ToolChange =
+type ToolChange =
   | { type: "apply"; names: string[] }
   | { type: "ignore" }
   | { type: "reject-last-active" };
@@ -31,9 +31,9 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function safeNotify(ctx: ExtensionCommandContext, message: string, type: "info" | "warning"): void {
+function warn(ctx: ExtensionCommandContext, message: string): void {
   try {
-    ctx.ui.notify(message, type);
+    ctx.ui.notify(message, "warning");
   } catch {}
 }
 
@@ -44,105 +44,94 @@ export async function openToolControls(
   ctx: ExtensionCommandContext,
 ): Promise<void> {
   if (ctx.mode !== "tui") {
-    ctx.ui.notify("/statusline tools requires interactive TUI", "warning");
+    warn(ctx, "/statusline tools requires interactive TUI");
     return;
   }
 
-  let allTools: { name: string; description?: string }[];
+  let allTools: ReturnType<ExtensionAPI["getAllTools"]>;
   try {
     allTools = pi.getAllTools();
   } catch (err) {
-    safeNotify(ctx, `Could not load Pi tools: ${errorText(err)}`, "warning");
+    warn(ctx, `Could not load Pi tools: ${errorText(err)}`);
     return;
   }
 
   if (allTools.length === 0) {
-    safeNotify(ctx, "No tools are available", "warning");
+    warn(ctx, "No tools are available");
     return;
   }
 
   const allNames = allTools.map((t) => t.name);
 
-  // Snapshot at open; runtime changes are re-read on every toggle.
-  let activeTools: string[];
+  let initialActiveNames: string[];
   try {
-    activeTools = pi.getActiveTools();
+    initialActiveNames = pi.getActiveTools().filter((name) => allNames.includes(name));
   } catch (err) {
-    safeNotify(ctx, `Could not load Pi tools: ${errorText(err)}`, "warning");
+    warn(ctx, `Could not load Pi tools: ${errorText(err)}`);
     return;
-  }
-
-  const activeSet = new Set(activeTools.filter((n) => allNames.includes(n)));
-
-  function restoreRows() {
-    for (const name of allNames) {
-      settingsList.updateValue(name, activeSet.has(name) ? "enabled" : "disabled");
-    }
   }
 
   const items: SettingItem[] = allTools.map((t) => ({
     id: t.name,
     label: t.name,
     description: t.description,
-    currentValue: activeSet.has(t.name) ? "enabled" : "disabled",
+    currentValue: initialActiveNames.includes(t.name) ? "enabled" : "disabled",
     values: ["enabled", "disabled"],
   }));
 
-  let settingsList: SettingsList;
-
   try {
-    await ctx.ui.custom(
+    await ctx.ui.custom<void>(
       (tui, _theme, _kb, done) => {
+        let settingsList: SettingsList;
+        let confirmedActiveNames = [...initialActiveNames];
+
+        const syncRows = (activeNames: readonly string[]) => {
+          confirmedActiveNames = [...activeNames];
+          for (const item of items) {
+            settingsList.updateValue(
+              item.id,
+              activeNames.includes(item.id) ? "enabled" : "disabled",
+            );
+          }
+        };
+
         settingsList = new SettingsList(
           items,
           Math.min(items.length + 2, 16),
           getSettingsListTheme(),
           (changedName, value) => {
-            // Re-read both host lists for every toggle.
+            let currentCatalog: string[];
             let currentActive: string[];
             try {
-              currentActive = pi.getActiveTools();
-            } catch {
-              restoreRows();
-              return;
-            }
-
-            let currentCatalog: string[];
-            try {
               currentCatalog = pi.getAllTools().map((t) => t.name);
-            } catch {
-              restoreRows();
+              currentActive = pi.getActiveTools().filter((name) => currentCatalog.includes(name));
+            } catch (err) {
+              syncRows(confirmedActiveNames);
+              warn(ctx, `Could not refresh Pi tools: ${errorText(err)}`);
               return;
             }
 
             const change = calculateToolChange(currentCatalog, currentActive, changedName, value);
 
             if (change.type === "ignore") {
-              restoreRows();
+              syncRows(currentActive);
               return;
             }
 
             if (change.type === "reject-last-active") {
-              safeNotify(ctx, "At least one tool must remain active", "warning");
-              restoreRows();
+              syncRows(currentActive);
+              warn(ctx, "At least one tool must remain active");
               return;
             }
 
-            // apply
             try {
               pi.setActiveTools(change.names);
-              activeSet.clear();
-              for (const n of change.names) activeSet.add(n);
-              for (const name of currentCatalog) {
-                settingsList.updateValue(
-                  name,
-                  change.names.includes(name) ? "enabled" : "disabled",
-                );
-              }
             } catch (err) {
-              safeNotify(ctx, `Could not apply tool change: ${errorText(err)}`, "warning");
-              restoreRows();
+              syncRows(currentActive);
+              warn(ctx, `Could not update Pi tools: ${errorText(err)}`);
+              return;
             }
+            syncRows(change.names);
           },
           () => done(undefined),
           { enableSearch: true },
@@ -169,6 +158,6 @@ export async function openToolControls(
       },
     );
   } catch (err) {
-    safeNotify(ctx, `Could not open tool controls: ${errorText(err)}`, "warning");
+    warn(ctx, `Could not open tool controls: ${errorText(err)}`);
   }
 }
