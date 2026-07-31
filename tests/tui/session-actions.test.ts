@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { formatSessionDetails, handleSessionActions } from "../../src/tui/session-actions.ts";
+import { handleSessionActions } from "../../src/tui/session-actions.ts";
 
 function commandContext(overrides: Record<string, unknown> = {}) {
   return {
@@ -29,22 +29,6 @@ function extensionApi(overrides: Record<string, unknown> = {}) {
     ...overrides,
   } as unknown as ExtensionAPI;
 }
-
-describe("formatSessionDetails", () => {
-  it("renders stable details and explicit missing-value fallbacks", () => {
-    expect(
-      formatSessionDetails({
-        name: undefined,
-        id: "session-123",
-        file: undefined,
-        cwd: "/work/pi-status",
-        model: undefined,
-      }),
-    ).toBe(
-      "Session details\nName: Untitled\nID: session-123\nFile: In memory\nDirectory: /work/pi-status\nModel: None",
-    );
-  });
-});
 
 describe("handleSessionActions", () => {
   it("trims and applies a renamed session through Pi", async () => {

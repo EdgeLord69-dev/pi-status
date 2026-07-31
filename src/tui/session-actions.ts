@@ -1,24 +1,5 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 
-export type SessionDetails = {
-  name: string | undefined;
-  id: string;
-  file: string | undefined;
-  cwd: string;
-  model: string | undefined;
-};
-
-export function formatSessionDetails(details: SessionDetails): string {
-  return [
-    "Session details",
-    `Name: ${details.name ?? "Untitled"}`,
-    `ID: ${details.id}`,
-    `File: ${details.file ?? "In memory"}`,
-    `Directory: ${details.cwd}`,
-    `Model: ${details.model ?? "None"}`,
-  ].join("\n");
-}
-
 function notifyIfActive(
   ctx: ExtensionCommandContext,
   message: string,
@@ -43,13 +24,14 @@ export async function handleSessionActions(
   try {
     const id = ctx.sessionManager.getSessionId();
     const action = await ctx.ui.select(
-      formatSessionDetails({
-        name: pi.getSessionName(),
-        id,
-        file: ctx.sessionManager.getSessionFile(),
-        cwd: ctx.cwd,
-        model: ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined,
-      }),
+      [
+        "Session details",
+        `Name: ${pi.getSessionName() ?? "Untitled"}`,
+        `ID: ${id}`,
+        `File: ${ctx.sessionManager.getSessionFile() ?? "In memory"}`,
+        `Directory: ${ctx.cwd}`,
+        `Model: ${ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "None"}`,
+      ].join("\n"),
       ["Rename session", "Compact session", "Close"],
     );
 
