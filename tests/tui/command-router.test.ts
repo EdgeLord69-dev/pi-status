@@ -20,4 +20,55 @@ describe("parseStatusLineCommand", () => {
       command: "Unknown",
     });
   });
+
+  it.each(["notifications", "  notifications  ", "NOTIFICATIONS", "Notifications "])(
+    "routes %j to the notifications command (query)",
+    (args) => {
+      expect(parseStatusLineCommand(args)).toEqual({
+        kind: "notifications",
+        action: "query",
+      });
+    },
+  );
+
+  it.each([
+    ["notifications on", "on"],
+    ["  NOTIFICATIONS   ON  ", "on"],
+    ["Notifications\tOn", "on"],
+  ])("routes %j to the notifications on action", (args, action) => {
+    expect(parseStatusLineCommand(args)).toEqual({
+      kind: "notifications",
+      action,
+    });
+  });
+
+  it.each([
+    ["notifications off", "off"],
+    ["  NOTIFICATIONS  OFF ", "off"],
+  ])("routes %j to the notifications off action", (args, action) => {
+    expect(parseStatusLineCommand(args)).toEqual({
+      kind: "notifications",
+      action,
+    });
+  });
+
+  it.each([
+    "notifications maybe",
+    "notifications on extra",
+    "notifications on off",
+    "notifications off on",
+    "notifications on --force",
+  ])("marks %j as an invalid notifications invocation", (args) => {
+    expect(parseStatusLineCommand(args)).toEqual({
+      kind: "notifications",
+      action: "invalid",
+    });
+  });
+
+  it("preserves the unknown-command payload for an unsupported top-level route", () => {
+    expect(parseStatusLineCommand("  widgets  ")).toEqual({
+      kind: "unknown",
+      command: "widgets",
+    });
+  });
 });
