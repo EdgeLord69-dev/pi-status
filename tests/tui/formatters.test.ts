@@ -454,13 +454,17 @@ describe("formatTurnProgress", () => {
     const activity = {
       ...idleActivity,
       recentTools: [
-        { callId: "a", name: "read", status: "complete" as const, startedAt: 1000, endedAt: 1100, durationMs: 100 },
+        {
+          callId: "a",
+          name: "read",
+          status: "complete" as const,
+          startedAt: 1000,
+          endedAt: 1100,
+          durationMs: 100,
+        },
       ],
     };
-    expect(formatTurnProgress(input({ activity }), identityTheme)).toEqual([
-      "read · 100ms",
-      "dim",
-    ]);
+    expect(formatTurnProgress(input({ activity }), identityTheme)).toEqual(["read · 100ms", "dim"]);
   });
 
   it("omits the duration when it is below one second", () => {

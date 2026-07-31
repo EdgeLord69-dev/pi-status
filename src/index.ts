@@ -345,9 +345,9 @@ export default function createExtension(pi: ExtensionAPI): void {
     }
   });
 
-  pi.on("turn_end", (event, ctx) => {
+  pi.on("turn_end", (_event, ctx) => {
     if (isActiveTuiSession(ctx, activeTuiSessionManager)) {
-      activityRuntime.finishTurn(event.timestamp);
+      activityRuntime.finishTurn();
     }
   });
 

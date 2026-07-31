@@ -54,7 +54,6 @@ function newCtx(overrides: Partial<ExtensionContext> = {}): ExtensionContext {
 function attachFooter(
   pi: ReturnType<typeof setup>["pi"],
   handlers: ReturnType<typeof setup>["handlers"],
-  configPath?: string,
 ) {
   const requestRender = vi.fn();
   let footerFactory:
@@ -73,10 +72,14 @@ function attachFooter(
     requestRender,
     render(width: number): string {
       return (
-        footerFactory?.({ requestRender }, { fg: (_c: string, t: string) => t }, {
-          getGitBranch: () => null,
-          getExtensionStatuses: () => new Map(),
-        })?.render(width) ?? []
+        footerFactory?.(
+          { requestRender },
+          { fg: (_c: string, t: string) => t },
+          {
+            getGitBranch: () => null,
+            getExtensionStatuses: () => new Map(),
+          },
+        )?.render(width) ?? []
       ).join("\n");
     },
     pi,
@@ -116,11 +119,29 @@ describe("activity event wiring", () => {
     call(handlers, "agent_start", {}, ctx);
     call(handlers, "turn_start", { turnIndex: 0, timestamp: 1000 }, ctx);
     call(handlers, "before_provider_request", { payload: {} }, ctx);
-    call(handlers, "message_update", { message: { role: "assistant" }, assistantMessageEvent: { type: "text_delta", delta: "hi" } }, ctx);
+    call(
+      handlers,
+      "message_update",
+      {
+        message: { role: "assistant" },
+        assistantMessageEvent: { type: "text_delta", delta: "hi" },
+      },
+      ctx,
+    );
     call(handlers, "message_end", { message: { role: "assistant", usage: { output: 10 } } }, ctx);
     call(handlers, "tool_execution_start", { toolCallId: "a", toolName: "read", args: {} }, ctx);
-    call(handlers, "tool_execution_end", { toolCallId: "a", toolName: "read", result: {}, isError: false }, ctx);
-    call(handlers, "turn_end", { turnIndex: 0, message: { role: "assistant" }, toolResults: [] }, ctx);
+    call(
+      handlers,
+      "tool_execution_end",
+      { toolCallId: "a", toolName: "read", result: {}, isError: false },
+      ctx,
+    );
+    call(
+      handlers,
+      "turn_end",
+      { turnIndex: 0, message: { role: "assistant" }, toolResults: [] },
+      ctx,
+    );
     call(handlers, "agent_settled", {}, ctx);
     expect(footerFactory).toBeUndefined();
   });

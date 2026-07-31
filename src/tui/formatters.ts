@@ -264,14 +264,15 @@ export function formatTurnProgress(
   const active = activity.activeTools.filter(isActiveTool);
   if (active.length > 0) {
     const groups = groupActiveToolsByName(active);
-    const oldest = [...groups.entries()].sort(([, a], [, b]) => a[0]!.startedAt - b[0]!.startedAt)[0];
+    const oldest = [...groups.entries()].sort(
+      ([, a], [, b]) => a[0]!.startedAt - b[0]!.startedAt,
+    )[0];
     if (!oldest) return null;
     const [name, calls] = oldest;
     const leader = calls[0]!;
     const extra = calls.length - 1;
-    const elapsed = activity.turn.status === "active"
-      ? activity.turn.durationMs
-      : leader.durationMs;
+    const elapsed =
+      activity.turn.status === "active" ? activity.turn.durationMs : leader.durationMs;
     const duration = activeDurationLabel(elapsed);
     const prefix = `turn ${activity.turn.number}`;
     const body = `${prefix} · ${name} · ${duration}`;

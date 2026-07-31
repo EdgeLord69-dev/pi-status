@@ -271,7 +271,8 @@ describe("createActivityRuntime", () => {
     const second = runtime.snapshot();
     expect(second.activeTools).toHaveLength(1);
     expect(second.recentTools).toHaveLength(0);
-    second.activeTools[0]!.durationMs = 999;
+    const activeFirst = second.activeTools[0];
+    if (activeFirst) activeFirst.durationMs = 999;
     expect(runtime.snapshot().activeTools[0]?.durationMs).not.toBe(999);
   });
 
