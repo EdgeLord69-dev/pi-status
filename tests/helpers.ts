@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { vi } from "vitest";
 import type { ConfigStore } from "../src/shared/types.ts";
 import { DEFAULT_ZONES } from "../src/shared/types.ts";
 import type { FooterRenderInput } from "../src/tui/render.ts";

@@ -916,7 +916,7 @@ describe("extension wiring", () => {
     await handler("session", ctx);
 
     expect(select).toHaveBeenCalledTimes(1);
-    const title = select.mock.calls[0]?.[0] as string;
+    const title = (select.mock.calls[0] as unknown[] | undefined)?.[0] as string;
     expect(title).toContain("Session details");
     expect(title).toContain("abcdef123456");
     expect(custom).not.toHaveBeenCalled();
@@ -945,10 +945,7 @@ describe("extension wiring", () => {
 
     expect(select).not.toHaveBeenCalled();
     expect(custom).not.toHaveBeenCalled();
-    expect(notify).toHaveBeenCalledWith(
-      "Unknown /statusline command: widgets",
-      "warning",
-    );
+    expect(notify).toHaveBeenCalledWith("Unknown /statusline command: widgets", "warning");
   });
 
   it("rejects /statusline session in RPC mode without opening prompts", async () => {

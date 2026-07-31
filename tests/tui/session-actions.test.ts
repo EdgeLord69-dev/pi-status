@@ -1,12 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import type {
-  ExtensionAPI,
-  ExtensionCommandContext,
-} from "@earendil-works/pi-coding-agent";
-import {
-  formatSessionDetails,
-  handleSessionActions,
-} from "../../src/tui/session-actions.ts";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { formatSessionDetails, handleSessionActions } from "../../src/tui/session-actions.ts";
 
 function commandContext(overrides: Record<string, unknown> = {}) {
   return {
@@ -62,10 +56,7 @@ describe("handleSessionActions", () => {
     await handleSessionActions(pi, ctx);
 
     expect(pi.setSessionName).toHaveBeenCalledWith("Release work");
-    expect(ctx.ui.notify).toHaveBeenCalledWith(
-      "Session renamed to Release work",
-      "info",
-    );
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Session renamed to Release work", "info");
   });
 
   it("does not rename on cancel or whitespace-only input", async () => {
@@ -176,9 +167,6 @@ describe("handleSessionActions", () => {
 
     await handleSessionActions(pi, ctx);
 
-    expect(ctx.ui.notify).toHaveBeenCalledWith(
-      "Session action failed: rename failed",
-      "warning",
-    );
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Session action failed: rename failed", "warning");
   });
 });
