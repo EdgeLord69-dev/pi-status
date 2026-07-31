@@ -1,6 +1,12 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { loadConfig, saveConfig } from "./core/config.ts";
 import { buildSnapshot, resolveFooter } from "./core/resolve-footer.ts";
+import {
+  createNotificationsWiring,
+  isNotificationsEnabled,
+  type NotificationsSpawn,
+  type NotificationsWiring,
+} from "./core/notifications-wiring.ts";
 import { createRuntimeStateMachine } from "./core/runtime-state.ts";
 import { createUsageRuntime } from "./core/usage-runtime.ts";
 import type { AccessType, PiStatusConfig } from "./shared/types.ts";
@@ -57,12 +63,32 @@ function getAccessType(ctx: ExtensionContext): AccessType | undefined {
 
 export default function createExtension(pi: ExtensionAPI): void {
   const runtimeState = createRuntimeStateMachine(loadConfig(), "off");
+  let activeTuiContext: ExtensionContext | undefined;
 
   const usageRuntime = createUsageRuntime(pi);
   const footerProviderState: FooterProviderState = {
     gitBranch: null,
     extensionStatuses: new Map(),
   };
+
+  let notifications: NotificationsWiring = createNotificationsWiring({
+    events: pi.events,
+    isEnabled: () => isNotificationsEnabled(runtimeState.snapshot().config),
+    activeTuiSession: () => activeTuiContext,
+    spawn: () => (pi as unknown as { spawn?: NotificationsSpawn }).spawn,
+    platform: () => (pi as unknown as { platform?: NodeJS.Platform }).platform,
+  });
+
+  function attachNotificationsForCurrentSession(): void {
+    notifications.dispose();
+    notifications = createNotificationsWiring({
+      events: pi.events,
+      isEnabled: () => isNotificationsEnabled(runtimeState.snapshot().config),
+      activeTuiSession: () => activeTuiContext,
+      spawn: () => (pi as unknown as { spawn?: NotificationsSpawn }).spawn,
+      platform: () => (pi as unknown as { platform?: NodeJS.Platform }).platform,
+    });
+  }
 
   function resetFooterProviderState(): void {
     footerProviderState.gitBranch = null;
@@ -131,6 +157,46 @@ export default function createExtension(pi: ExtensionAPI): void {
     if (ctx.mode === "tui") ctx.ui.setFooter(EMPTY_FOOTER_FACTORY as never);
   }
 
+  function handleNotificationsCommand(
+    ctx: ExtensionContext,
+    action: "query" | "on" | "off" | "invalid",
+  ): void {
+    if (action === "invalid") {
+      ctx.ui.notify("Usage: /statusline notifications [on|off]", "warning");
+      return;
+    }
+    if (action === "query") {
+      const enabled = runtimeState.snapshot().config.completionNotifications;
+      ctx.ui.notify(
+        enabled ? "Completion notifications: on" : "Completion notifications: off",
+        "info",
+      );
+      return;
+    }
+    if (ctx.mode !== "tui") {
+      ctx.ui.notify("/statusline requires interactive UI", "warning");
+      return;
+    }
+    const current = runtimeState.snapshot().config;
+    const next: PiStatusConfig = {
+      ...current,
+      completionNotifications: action === "on",
+    };
+    try {
+      saveConfig(next);
+      runtimeState.update({ type: "config_reload", config: next });
+    } catch {
+      ctx.ui.notify("Failed to save statusline config", "warning");
+      return;
+    }
+    ctx.ui.notify(
+      next.completionNotifications
+        ? "Completion notifications: on"
+        : "Completion notifications: off",
+      "info",
+    );
+  }
+
   pi.registerCommand("statusline", {
     description: "Configure statusline segments and extension-status visibility",
     handler: async (args, ctx) => {
@@ -141,6 +207,10 @@ export default function createExtension(pi: ExtensionAPI): void {
       }
       if (command.kind === "session") {
         await handleSessionActions(pi, ctx);
+        return;
+      }
+      if (command.kind === "notifications") {
+        handleNotificationsCommand(ctx, command.action);
         return;
       }
       if (command.kind === "unknown") {
@@ -210,24 +280,29 @@ export default function createExtension(pi: ExtensionAPI): void {
     resetFooterProviderState();
     usageRuntime.requestCurrent();
     runtimeState.update({ type: "session_start", ctx });
+    if (ctx.mode === "tui") activeTuiContext = ctx;
+    else if (ctx.mode !== "rpc") activeTuiContext = undefined;
     runtimeState.update({
       type: "thinking_level_changed",
       ctx,
       level: String(ctx.thinkingLevel ?? pi.getThinkingLevel()),
     });
     runtimeState.update({ type: "config_reload", config: loadConfig() });
+    attachNotificationsForCurrentSession();
     installFooter(ctx);
   });
 
   pi.on("session_tree", (_event, ctx) => {
     resetFooterProviderState();
     runtimeState.update({ type: "session_tree", ctx });
+    if (ctx.mode === "tui") activeTuiContext = ctx;
     runtimeState.update({
       type: "thinking_level_changed",
       ctx,
       level: String(ctx.thinkingLevel ?? pi.getThinkingLevel()),
     });
     runtimeState.update({ type: "config_reload", config: loadConfig() });
+    attachNotificationsForCurrentSession();
     installFooter(ctx);
   });
 
@@ -243,8 +318,22 @@ export default function createExtension(pi: ExtensionAPI): void {
     });
   });
 
+  pi.on("agent_start", (_event, ctx) => {
+    notifications.notifyRunStarted(ctx);
+  });
+
+  pi.on("turn_start", (_event, ctx) => {
+    notifications.notifyTurnStarted(ctx);
+  });
+
+  pi.on("agent_settled", (_event, ctx) => {
+    notifications.notifyAgentSettled(ctx);
+  });
+
   pi.on("session_shutdown", (_event, ctx) => {
     resetFooterProviderState();
+    notifications.dispose();
+    activeTuiContext = undefined;
     runtimeState.update({ type: "session_shutdown" });
     usageRuntime.setOnChange(undefined);
     if (ctx.mode === "tui") ctx.ui.setFooter(undefined);

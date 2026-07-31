@@ -1194,3 +1194,142 @@ describe("/statusline theme adaptation", () => {
     expect(didThrow).toBe(false);
   });
 });
+
+describe("/statusline notifications command", () => {
+  function setup() {
+    const harness = buildPiWithHandlers();
+    createExtension(harness.pi);
+    return { ...harness, pi: harness.pi as ExtensionAPI & { events: typeof harness.events } };
+  }
+
+  it("reports the current state on /statusline notifications", () => {
+    const { registerCommandCalls, handlers } = setup();
+    const notify = vi.fn();
+    const ctx = createContext({ ui: { ...createContext().ui, notify } });
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+
+    const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
+    handler("notifications", ctx);
+
+    expect(notify).toHaveBeenCalledWith("Completion notifications: off", "info");
+  });
+
+  it("writes the new state and updates runtime when /statusline notifications on is invoked", async () => {
+    const { registerCommandCalls, handlers } = setup();
+    const configPath = join(agentDir, "extensions", "statusline.json");
+    mkdirSync(join(agentDir, "extensions"), { recursive: true });
+    const notify = vi.fn();
+    const ctx = createContext({ ui: { ...createContext().ui, notify } });
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+    const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
+
+    await handler("notifications on", ctx);
+
+    expect(JSON.parse(readFileSync(configPath, "utf8")).completionNotifications).toBe(true);
+    expect(notify).toHaveBeenCalledWith("Completion notifications: on", "info");
+  });
+
+  it("rolls back to the previous runtime config when saveConfig throws", async () => {
+    const { registerCommandCalls, handlers } = setup();
+    const configPath = join(agentDir, "extensions", "statusline.json");
+    mkdirSync(join(agentDir, "extensions"), { recursive: true });
+    writeFileSync(configPath, "{ bad", "utf8");
+    const notify = vi.fn();
+    const ctx = createContext({ ui: { ...createContext().ui, notify } });
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+    const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
+
+    await handler("notifications on", ctx);
+
+    expect(notify).toHaveBeenCalledWith("Failed to save statusline config", "warning");
+  });
+
+  it("rejects /statusline notifications in RPC mode", () => {
+    const { registerCommandCalls, handlers } = setup();
+    const notify = vi.fn();
+    const ctx = createContext({
+      mode: "rpc",
+      ui: { ...createContext().ui, notify },
+    });
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+    const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
+
+    handler("notifications on", ctx);
+
+    expect(notify).toHaveBeenCalledWith("/statusline requires interactive UI", "warning");
+  });
+
+  it("reports the usage string for an invalid notifications invocation", () => {
+    const { registerCommandCalls, handlers } = setup();
+    const notify = vi.fn();
+    const ctx = createContext({ ui: { ...createContext().ui, notify } });
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+    const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
+
+    handler("notifications maybe", ctx);
+
+    expect(notify).toHaveBeenCalledWith("Usage: /statusline notifications [on|off]", "warning");
+  });
+});
+
+describe("extension wiring — completion notifications", () => {
+  it("does not launch a native process when the preference is disabled", () => {
+    const { pi, handlers } = buildPiWithHandlers();
+    const spawn = vi.fn();
+    (pi as unknown as { spawn: () => unknown }).spawn = spawn;
+    createExtension(pi);
+    const ctx = createContext({ mode: "tui" });
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+    for (const h of handlers.get("agent_start") ?? []) h({}, ctx);
+    for (const h of handlers.get("agent_settled") ?? []) h({}, ctx);
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it("ignores agent_settled callbacks for stale session contexts", () => {
+    const { pi, handlers } = buildPiWithHandlers();
+    const calls: string[] = [];
+    (pi as unknown as { spawn: () => unknown }).spawn = () => {
+      calls.push("spawn");
+      return { kill: () => true, once: () => undefined, unref: () => {} };
+    };
+    (pi as unknown as { platform: NodeJS.Platform }).platform = "darwin";
+    createExtension(pi);
+    const oldCtx = createContext({ mode: "tui" });
+    for (const h of handlers.get("session_start") ?? []) h({}, oldCtx);
+    for (const h of handlers.get("agent_start") ?? []) h({}, oldCtx);
+    for (const h of handlers.get("session_shutdown") ?? []) h({}, oldCtx);
+    for (const h of handlers.get("agent_settled") ?? []) h({}, oldCtx);
+    expect(calls).toEqual([]);
+  });
+
+  it("forwards only once per questionnaire interval", () => {
+    const configPath = join(agentDir, "extensions", "statusline.json");
+    mkdirSync(join(agentDir, "extensions"), { recursive: true });
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        zones: { topLeft: [], topRight: [], bottomLeft: [], bottomRight: [] },
+        extensionSegments: { hidden: [] },
+        completionNotifications: true,
+      }),
+      "utf8",
+    );
+    const { pi, handlers, events } = buildPiWithHandlers();
+    const calls: string[] = [];
+    (pi as unknown as { spawn: () => unknown }).spawn = () => {
+      calls.push("spawn");
+      return { kill: () => true, once: () => undefined, unref: () => {} };
+    };
+    (pi as unknown as { platform: NodeJS.Platform }).platform = "darwin";
+    createExtension(pi);
+    const ctx = createContext({ mode: "tui" });
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+
+    events.emit("pi-vault:questionnaire:status", { active: true, label: "Choose tool" });
+    events.emit("pi-vault:questionnaire:status", { active: true, label: "Choose model" });
+    events.emit("pi-vault:questionnaire:status", { active: false });
+    events.emit("pi-vault:questionnaire:status", { active: true, label: "New wait" });
+
+    expect(calls.length).toBe(2);
+  });
+});
