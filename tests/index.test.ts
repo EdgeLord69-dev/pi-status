@@ -969,7 +969,7 @@ describe("extension wiring", () => {
     await handler("session", ctx);
 
     expect(select).not.toHaveBeenCalled();
-    expect(notify).toHaveBeenCalledWith("/statusline requires interactive UI", "warning");
+    expect(notify).toHaveBeenCalledWith("/statusline session requires interactive TUI", "warning");
   });
 });
 

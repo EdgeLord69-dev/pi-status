@@ -19,6 +19,18 @@ export function formatSessionDetails(details: SessionDetails): string {
   ].join("\n");
 }
 
+function notifyIfActive(
+  ctx: ExtensionCommandContext,
+  message: string,
+  type: "info" | "warning",
+): void {
+  try {
+    ctx.ui.notify(message, type);
+  } catch {
+    // Deferred callbacks may outlive the command context after session replacement.
+  }
+}
+
 export async function handleSessionActions(
   pi: ExtensionAPI,
   ctx: ExtensionCommandContext,
@@ -57,8 +69,8 @@ export async function handleSessionActions(
     if (!confirmed) return;
 
     ctx.compact({
-      onComplete: () => ctx.ui.notify("Session compacted", "info"),
-      onError: (error) => ctx.ui.notify(error.message, "warning"),
+      onComplete: () => notifyIfActive(ctx, "Session compacted", "info"),
+      onError: (error) => notifyIfActive(ctx, error.message, "warning"),
     });
   } catch (error) {
     ctx.ui.notify(

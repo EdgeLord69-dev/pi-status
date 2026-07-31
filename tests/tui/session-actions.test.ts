@@ -55,14 +55,25 @@ describe("handleSessionActions", () => {
 
     await handleSessionActions(pi, ctx);
 
+    expect(ctx.ui.select).toHaveBeenCalledWith(
+      [
+        "Session details",
+        "Name: Original name",
+        "ID: session-123",
+        "File: /tmp/session-123.jsonl",
+        "Directory: /work/pi-status",
+        "Model: anthropic/claude-sonnet-4",
+      ].join("\n"),
+      ["Rename session", "Compact session", "Close"],
+    );
     expect(pi.setSessionName).toHaveBeenCalledWith("Release work");
     expect(ctx.ui.notify).toHaveBeenCalledWith("Session renamed to Release work", "info");
   });
 
-  it("does not rename on cancel or whitespace-only input", async () => {
+  it.each([undefined, "   "])("does not rename for input %j", async (input) => {
     const ctx = commandContext();
     vi.mocked(ctx.ui.select).mockResolvedValue("Rename session");
-    vi.mocked(ctx.ui.input).mockResolvedValue("   ");
+    vi.mocked(ctx.ui.input).mockResolvedValue(input);
     const pi = extensionApi();
 
     await handleSessionActions(pi, ctx);
@@ -103,6 +114,26 @@ describe("handleSessionActions", () => {
     };
     options.onError(new Error("compact failed"));
     expect(ctx.ui.notify).toHaveBeenCalledWith("compact failed", "warning");
+  });
+
+  it("keeps deferred compaction notifications nonfatal after the context becomes stale", async () => {
+    const compact = vi.fn();
+    const ctx = commandContext({ compact });
+    vi.mocked(ctx.ui.select).mockResolvedValue("Compact session");
+    vi.mocked(ctx.ui.confirm).mockResolvedValue(true);
+
+    await handleSessionActions(extensionApi(), ctx);
+
+    const options = compact.mock.calls[0]?.[0] as {
+      onComplete: () => void;
+      onError: (error: Error) => void;
+    };
+    vi.mocked(ctx.ui.notify).mockImplementation(() => {
+      throw new Error("stale context");
+    });
+
+    expect(() => options.onComplete()).not.toThrow();
+    expect(() => options.onError(new Error("compact failed"))).not.toThrow();
   });
 
   it("reports a synchronous compaction-start failure", async () => {
@@ -168,5 +199,34 @@ describe("handleSessionActions", () => {
     await handleSessionActions(pi, ctx);
 
     expect(ctx.ui.notify).toHaveBeenCalledWith("Session action failed: rename failed", "warning");
+  });
+
+  it("reports a session metadata failure without throwing", async () => {
+    const ctx = commandContext();
+    const pi = extensionApi({
+      getSessionName: vi.fn(() => {
+        throw new Error("metadata unavailable");
+      }),
+    });
+
+    await handleSessionActions(pi, ctx);
+
+    expect(ctx.ui.select).not.toHaveBeenCalled();
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      "Session action failed: metadata unavailable",
+      "warning",
+    );
+  });
+
+  it("reports a native prompt failure without throwing", async () => {
+    const ctx = commandContext();
+    vi.mocked(ctx.ui.select).mockRejectedValue(new Error("prompt unavailable"));
+
+    await handleSessionActions(extensionApi(), ctx);
+
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      "Session action failed: prompt unavailable",
+      "warning",
+    );
   });
 });

@@ -133,11 +133,6 @@ export default function createExtension(pi: ExtensionAPI): void {
   pi.registerCommand("statusline", {
     description: "Configure statusline segments and extension-status visibility",
     handler: async (args, ctx) => {
-      if (ctx.mode !== "tui") {
-        ctx.ui.notify("/statusline requires interactive UI", "warning");
-        return;
-      }
-
       const command = parseStatusLineCommand(args);
       if (command.kind === "session") {
         await handleSessionActions(pi, ctx);
@@ -145,6 +140,10 @@ export default function createExtension(pi: ExtensionAPI): void {
       }
       if (command.kind === "unknown") {
         ctx.ui.notify(`Unknown /statusline command: ${command.command}`, "warning");
+        return;
+      }
+      if (ctx.mode !== "tui") {
+        ctx.ui.notify("/statusline requires interactive UI", "warning");
         return;
       }
 
