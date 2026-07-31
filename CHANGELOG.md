@@ -10,6 +10,7 @@ All notable changes to `@pi-vault/pi-status` are documented in this file.
 
 ### Added
 
+- Added opt-in completion notifications on macOS and Windows via `/statusline notifications [on|off]`. The preference is global-only, off by default, and is stored in the same `extensions/statusline.json` file. Pi's `agent_settled` event drives settlement notifications; an optional subscription to the literal `pi-vault:questionnaire:status` event drives questionnaire-wait notifications. Notification content is fixed and never includes prompts, labels, answers, or other session content.
 - Added four-zone footer and `/statusline` editor layout controls for top-left, top-right, bottom-left, and bottom-right segment placement.
 - Added opt-in `cache-read-tokens`, `cache-write-tokens`, `cache-hit`, `session-cost`, and `access-type` footer segments.
 - Added `/statusline session` with current-session details, rename, and confirmed compaction actions.
