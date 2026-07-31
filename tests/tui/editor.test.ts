@@ -18,6 +18,7 @@ function config(): PiStatusConfig {
       bottomRight: [],
     },
     extensionSegments: { hidden: [] },
+    completionNotifications: false,
   };
 }
 
@@ -66,6 +67,7 @@ describe("statusline editor input", () => {
         bottomRight: [],
       },
       extensionSegments: { hidden: [] },
+      completionNotifications: false,
     });
     expect(initial.zones.bottomLeft).toEqual(["current-dir"]);
 

@@ -212,7 +212,10 @@ export function getRegisteredCommand(
 Import it in `tests/index.test.ts` and replace every optional-chain/cast block with this form:
 
 ```ts
-const { handler } = getRegisteredCommand(registerCommand.mock.calls, "statusline");
+const { handler } = getRegisteredCommand(
+  registerCommand.mock.calls,
+  "statusline",
+);
 ```
 
 For helper-recorded calls, use:
@@ -346,12 +349,19 @@ it("avoids custom TUI APIs throughout RPC lifecycle", async () => {
   });
 
   for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
-  await getRegisteredCommand(registerCommandCalls, "statusline").handler("", ctx);
-  for (const handler of handlers.get("session_shutdown") ?? []) handler({}, ctx);
+  await getRegisteredCommand(registerCommandCalls, "statusline").handler(
+    "",
+    ctx,
+  );
+  for (const handler of handlers.get("session_shutdown") ?? [])
+    handler({}, ctx);
 
   expect(setFooter).not.toHaveBeenCalled();
   expect(custom).not.toHaveBeenCalled();
-  expect(notify).toHaveBeenCalledWith("/statusline requires interactive UI", "warning");
+  expect(notify).toHaveBeenCalledWith(
+    "/statusline requires interactive UI",
+    "warning",
+  );
 });
 ```
 
@@ -537,7 +547,9 @@ it("ignores legacy Pi settings without accessing them", () => {
   expect(store.readPaths).toEqual([
     join("/agent-root", "extensions", "statusline.json"),
   ]);
-  expect(store.accessPaths.some((path) => path.endsWith("settings.json"))).toBe(false);
+  expect(store.accessPaths.some((path) => path.endsWith("settings.json"))).toBe(
+    false,
+  );
 });
 ```
 
@@ -552,7 +564,9 @@ it("writes only the direct config object", () => {
   };
 
   const result = saveConfig(config, { agentDir: "/agent-root", store });
-  expect(result.path).toBe(join("/agent-root", "extensions", "statusline.json"));
+  expect(result.path).toBe(
+    join("/agent-root", "extensions", "statusline.json"),
+  );
   expect(JSON.parse(store.read(result.path) ?? "null")).toEqual(config);
   expect(store.writePaths).toEqual([result.path]);
 });
@@ -712,7 +726,8 @@ function readJsonObject(
   if (content === null) return null;
   try {
     const parsed: unknown = JSON.parse(content);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+      return null;
     return parsed as Record<string, unknown>;
   } catch {
     return null;
@@ -740,7 +755,9 @@ export function saveConfig(
   const path = getConfigPath(options?.agentDir);
 
   if (store.exists(path) && readJsonObject(path, store) === null) {
-    throw new Error(`Refusing to overwrite malformed or non-object config file: ${path}`);
+    throw new Error(
+      `Refusing to overwrite malformed or non-object config file: ${path}`,
+    );
   }
 
   const next: PiStatusConfig = {
@@ -779,7 +796,9 @@ it("round-trips through PI_CODING_AGENT_DIR without temp-file residue", () => {
       segments: ["git-branch"],
       extensionSegments: { hidden: ["alpha"] },
     });
-    expect(readdirSync(join(agentDir, "extensions"))).toEqual(["statusline.json"]);
+    expect(readdirSync(join(agentDir, "extensions"))).toEqual([
+      "statusline.json",
+    ]);
   } finally {
     if (oldAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
     else process.env.PI_CODING_AGENT_DIR = oldAgentDir;
@@ -877,7 +896,10 @@ it("keeps runtime config unchanged when the config file is malformed", async () 
   });
   for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
 
-  await getRegisteredCommand(registerCommandCalls, "statusline").handler("", ctx);
+  await getRegisteredCommand(registerCommandCalls, "statusline").handler(
+    "",
+    ctx,
+  );
 
   expect(readFileSync(path, "utf8")).toBe("{ bad");
   expect(notify).toHaveBeenCalledWith(
@@ -1171,26 +1193,30 @@ Change documentation/manual/final-gate references from global/project settings t
 
 - [ ] **Step 4: Correct Phase 6's global preference contract**
 
-In `docs/superpowers/plans/2026-07-29-pi-status-phase-06-completion-notifications.md`, make the existing single global file the only owner:
+In `docs/superpowers/plans/2026-07-29-pi-status-phase-06-completion-notifications.md`, keep the existing single global file as the only owner and use the existing full-config save path:
 
 ```markdown
 - Phases 1–5 are complete, including the global extension-owned config file, Phase 2 four-zone migration, compatibility lifecycle, and `/statusline` argument router.
 - Absent `completionNotifications` means `false`; only literal `true` enables it. No project/session configuration exists.
-
-`loadConfig()` normalizes `completionNotifications` from the direct config object. `saveConfig()` preserves it during editor/preset saves. `saveCompletionNotifications()` atomically updates the same `<getAgentDir()>/extensions/statusline.json` object while preserving display fields.
+- `loadConfig()` normalizes `completionNotifications` from the direct config object.
+- `saveConfig()` preserves the boolean during editor, preset, and notification-command saves.
+- Notification commands build a complete next `PiStatusConfig`, call `saveConfig()` first, and update runtime state only after the write succeeds.
 ```
 
-Rewrite Task 1 tests to cover absent/false/literal-true, editor round-trip, display-save preservation, notification update preservation, malformed/write failure, and this direct path:
+Rewrite Task 1 tests to cover absent/false/literal-true, editor round-trip, display-save preservation, malformed-file refusal, and write failure. Test the notification update through the existing full-config path:
 
 ```ts
-expect(loadConfig({ store, agentDir: "/agent" }).completionNotifications).toBe(false);
-saveCompletionNotifications(true, { store, agentDir: "/agent" });
+const current = loadConfig({ store, agentDir: "/agent" });
+saveConfig(
+  { ...current, completionNotifications: true },
+  { store, agentDir: "/agent" },
+);
 expect(
   JSON.parse(store.read("/agent/extensions/statusline.json") ?? "{}"),
 ).toMatchObject({ completionNotifications: true });
 ```
 
-Remove project-ignore, project omission, target ownership, wrapper, and `/agent/settings.json` cases.
+Do not add a notification-specific config writer, project/session ownership, or `/agent/settings.json` access.
 
 - [ ] **Step 5: Correct Phase 8's preset persistence contract**
 

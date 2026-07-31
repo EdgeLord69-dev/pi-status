@@ -19,10 +19,12 @@ describe("/statusline persistence", () => {
     const initial: PiStatusConfig = {
       zones: { topLeft: ["model"], topRight: [], bottomLeft: [], bottomRight: [] },
       extensionSegments: { hidden: [] },
+      completionNotifications: false,
     };
     const saved: PiStatusConfig = {
       zones: { topLeft: ["current-dir"], topRight: [], bottomLeft: [], bottomRight: [] },
       extensionSegments: { hidden: [] },
+      completionNotifications: false,
     };
     const loadConfig = vi.fn(() => initial);
     const saveConfig = vi.fn();

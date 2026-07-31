@@ -44,6 +44,7 @@ Once installed, the footer updates automatically.
 - Run `/statusline tools` to search and toggle Pi's currently available tools in a centered overlay. Valid changes apply to the session immediately, and the control will not disable the final active tool.
 - Run `/statusline session` to view the current session name, ID, file, directory, and model.
 - From the session menu, rename the current session or compact it after an explicit confirmation.
+- Run `/statusline notifications [on|off]` to toggle opt-in native completion notifications on macOS and Windows.
 - Use `Tab` and `Shift+Tab` to select the TL, TR, BL, or BR zone.
 - Toggle segments on or off with `Space`.
 - Reorder segments in the active zone with `Left` and `Right`.
@@ -171,7 +172,8 @@ The file contains the statusline config directly:
     "bottomLeft": ["current-dir"],
     "bottomRight": []
   },
-  "extensionSegments": { "hidden": [] }
+  "extensionSegments": { "hidden": [] },
+  "completionNotifications": false
 }
 ```
 
@@ -187,6 +189,42 @@ There are no project-specific overrides. pi-status no longer reads or writes
 Pi's global or project `settings.json`. Existing `statusLine` values in those
 files are ignored and left unchanged. To keep them, manually copy the contents
 of the old `statusLine` object into `extensions/statusline.json`.
+
+## Completion Notifications
+
+`/statusline notifications [on|off]` toggles an opt-in, global preference for
+bounded, best-effort native system notifications when a TUI agent run settles
+or `@pi-vault/pi-questionnaire` enters its wait state.
+
+- `/statusline notifications` reports the current state.
+- `/statusline notifications on` enables completion notifications.
+- `/statusline notifications off` disables them.
+- `/statusline notifications maybe` (or any other arguments) reports
+  `Usage: /statusline notifications [on|off]`.
+
+The preference is global-only, off by default, and lives in the same
+`extensions/statusline.json` file. There is no per-project or per-session
+override.
+
+The authoritative settlement signal is Pi's public `agent_settled` event. The
+extension does not infer completion from `agent_end`, `turn_end`, assistant
+text, or tool completion. When `@pi-vault/pi-questionnaire` is installed, the
+extension also subscribes to its literal
+`pi-vault:questionnaire:status` event and notifies once per false-to-true
+interval; the event label is ignored, so prompts, answers, and other content
+are never included in the notification body.
+
+macOS and Windows receive best-effort native delivery through `/usr/bin/osascript`
+or hidden `powershell.exe`. The notification text is fixed: `Pi finished` /
+`The current run has settled.` on settlement, and `Pi needs input` /
+`A questionnaire is waiting for you.` while a questionnaire is active. Notification
+text is always passed through argv (macOS) or child-only environment variables
+named `PI_STATUS_NOTIFICATION_TITLE` and `PI_STATUS_NOTIFICATION_BODY`
+(Windows); no shell interpolation is used. Native processes are detached,
+time-bounded, and fail silently if the OS rejects them. Other platforms and
+RPC/print contexts do not receive notifications. Settings are updated
+independently of the editor; failed writes leave both runtime state and the
+notifier unchanged.
 
 ## Upgrade Notes For 0.2.x Users
 

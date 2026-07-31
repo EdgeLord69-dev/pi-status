@@ -96,6 +96,7 @@ export interface EditorState {
   shownStatuses: Set<string>;
   selectedIndex: number;
   query: string;
+  completionNotifications: boolean;
 }
 
 export type EditorAction =
@@ -213,6 +214,7 @@ function toConfig(state: EditorState): PiStatusConfig {
         shownKeys: state.shownStatuses,
       }),
     },
+    completionNotifications: state.completionNotifications,
   };
 }
 
@@ -234,6 +236,7 @@ export function initEditorState(
     ),
     selectedIndex: 0,
     query: "",
+    completionNotifications: config.completionNotifications,
   };
 }
 

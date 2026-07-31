@@ -48,9 +48,9 @@ Wrap `SettingsList` in a component adapter whose input handler delegates to the 
 
 ### Phase 6: Completion notifications
 
-Replace the nonexistent rpiv blocked event with the public `@pi-vault/pi-questionnaire` status contract. Listen optionally on the literal `pi-vault:questionnaire:status` event without adding a package dependency. Accept only `{ active: true, label: string }` and `{ active: false }`; notify once per false-to-true interval and rearm after false. Notification content contains no questionnaire prompt or answer text.
+Replace the nonexistent rpiv blocked event with the public `@pi-vault/pi-questionnaire` status contract. Listen optionally on the literal `pi-vault:questionnaire:status` event without adding a package dependency. Validate `{ active: true, label: string }` and `{ active: false }` structurally, tolerate additional fields, notify once per false-to-true interval, and rearm after false. Notification content contains no questionnaire prompt or answer text.
 
-The authoritative turn-completion signal remains `agent_settled`. Notifications remain opt-in, global-only, bounded, platform-specific, and nonfatal.
+The authoritative turn-completion signal remains `agent_settled`. Notifications remain opt-in, global-only, bounded, platform-specific, TUI-only, and nonfatal. Reuse the existing full-config `saveConfig()` path; the notifier reads the runtime preference through an `isEnabled()` callback, and lifecycle delivery is guarded by the active TUI session's `sessionManager` identity.
 
 ### Phase 7: Live activity
 

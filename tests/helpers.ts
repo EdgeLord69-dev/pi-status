@@ -115,7 +115,7 @@ export function buildPiWithHandlers(options: { thinkingLevel?: string } = {}) {
     getSessionName: vi.fn(() => undefined),
     setSessionName: vi.fn(),
   } as unknown as ExtensionAPI;
-  return { pi, handlers, registerCommandCalls: registerCommand.calls };
+  return { pi, handlers, registerCommandCalls: registerCommand.calls, events };
 }
 
 export function buildSetFooterSpy() {

@@ -18,7 +18,19 @@ function zones(overrides: Partial<StatusLineZones> = {}): StatusLineZones {
 }
 
 function config(overrides: Partial<PiStatusConfig> = {}): PiStatusConfig {
-  return { zones: zones(), extensionSegments: { hidden: [] }, ...overrides };
+  return {
+    zones: zones(),
+    extensionSegments: { hidden: [] },
+    ...overrides,
+    completionNotifications: overrides.completionNotifications ?? false,
+  };
+}
+
+function configWith(
+  completionNotifications: boolean,
+  overrides: Partial<PiStatusConfig> = {},
+): PiStatusConfig {
+  return config({ ...overrides, completionNotifications });
 }
 
 function next(
@@ -124,6 +136,7 @@ describe("editor zones", () => {
       config: {
         zones: zones({ topLeft: ["five-hour-limit", "model"] }),
         extensionSegments: { hidden: [] },
+        completionNotifications: false,
       },
     });
   });
@@ -220,7 +233,11 @@ describe("editor zone actions", () => {
 
     expect(result).toEqual({
       type: "done",
-      config: { zones: zones(), extensionSegments: { hidden: ["alpha"] } },
+      config: {
+        zones: zones(),
+        extensionSegments: { hidden: ["alpha"] },
+        completionNotifications: false,
+      },
     });
   });
 
@@ -245,5 +262,52 @@ describe("editor zone actions", () => {
     result.config.zones.topLeft.push("model");
 
     expect(state.zones.topLeft).toEqual(["model-with-reasoning"]);
+  });
+
+  it("carries the completion notification preference through init and save when true", () => {
+    const state = initEditorState(configWith(true), []);
+    const result = editorReducer(state, { type: "save" });
+    if (result.type !== "done" || !result.config) throw new Error("expected saved config");
+    expect(result.config.completionNotifications).toBe(true);
+  });
+
+  it("carries the completion notification preference through init and save when false", () => {
+    const state = initEditorState(configWith(false), []);
+    const result = editorReducer(state, { type: "save" });
+    if (result.type !== "done" || !result.config) throw new Error("expected saved config");
+    expect(result.config.completionNotifications).toBe(false);
+  });
+
+  it("preserves the completion notification preference across segment and status edits", () => {
+    let state = initEditorState(configWith(true), ["alpha"]);
+    const statusIndex = getFilteredRows(state).findIndex(
+      (row) => row.type === "status" && row.key === "alpha",
+    );
+    state = next({ ...state, selectedIndex: statusIndex }, { type: "toggle" });
+    const result = editorReducer(state, { type: "save" });
+    if (result.type !== "done" || !result.config) throw new Error("expected saved config");
+    expect(result.config.completionNotifications).toBe(true);
+    expect(result.config.extensionSegments).toEqual({ hidden: ["alpha"] });
+  });
+
+  it("does not expose a toggle that changes the completion notification preference", () => {
+    const state = initEditorState(configWith(true), []);
+    const actions: Parameters<typeof editorReducer>[1][] = [
+      { type: "move_up" },
+      { type: "move_down" },
+      { type: "next_zone" },
+      { type: "previous_zone" },
+      { type: "toggle" },
+      { type: "reorder_left" },
+      { type: "reorder_right" },
+      { type: "type_char", char: "x" },
+      { type: "backspace" },
+    ];
+    for (const action of actions) {
+      const after = editorReducer(state, action);
+      if (after.type === "next") {
+        expect(after.state.completionNotifications).toBe(true);
+      }
+    }
   });
 });

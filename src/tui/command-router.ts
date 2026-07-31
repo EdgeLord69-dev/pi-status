@@ -1,14 +1,31 @@
+export type NotificationCommandAction = "query" | "on" | "off" | "invalid";
+
 export type StatusLineCommand =
   | { kind: "editor" }
   | { kind: "session" }
   | { kind: "tools" }
+  | { kind: "notifications"; action: NotificationCommandAction }
   | { kind: "unknown"; command: string };
 
 export function parseStatusLineCommand(args: string): StatusLineCommand {
-  const command = args.trim();
-  if (!command) return { kind: "editor" };
-  const lower = command.toLowerCase();
-  if (lower === "tools") return { kind: "tools" };
-  if (lower === "session") return { kind: "session" };
-  return { kind: "unknown", command };
+  const trimmed = args.trim();
+  if (!trimmed) return { kind: "editor" };
+  const tokens = trimmed.toLowerCase().split(/\s+/);
+  const [head, sub, extra] = tokens;
+  if (head === "tools") {
+    if (sub !== undefined) return { kind: "unknown", command: trimmed };
+    return { kind: "tools" };
+  }
+  if (head === "session") {
+    if (sub !== undefined) return { kind: "unknown", command: trimmed };
+    return { kind: "session" };
+  }
+  if (head === "notifications") {
+    if (sub === undefined) return { kind: "notifications", action: "query" };
+    if (extra !== undefined) return { kind: "notifications", action: "invalid" };
+    if (sub === "on") return { kind: "notifications", action: "on" };
+    if (sub === "off") return { kind: "notifications", action: "off" };
+    return { kind: "notifications", action: "invalid" };
+  }
+  return { kind: "unknown", command: trimmed };
 }

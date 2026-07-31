@@ -17,6 +17,7 @@ function render(width = 80) {
           bottomRight: ["git-branch"],
         },
         extensionSegments: { hidden: [] },
+        completionNotifications: false,
       },
       ["alpha"],
     ),
