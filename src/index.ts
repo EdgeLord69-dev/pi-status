@@ -10,6 +10,7 @@ import { createUsageRuntime } from "./core/usage-runtime.ts";
 import type { AccessType, PiStatusConfig } from "./shared/types.ts";
 import { createStatusLineEditor } from "./tui/editor.ts";
 import { parseStatusLineCommand } from "./tui/command-router.ts";
+import { handleDisplayPreset } from "./tui/preset-actions.ts";
 import { openToolControls } from "./tui/tool-controls.ts";
 import { handleSessionActions } from "./tui/session-actions.ts";
 import { buildFooterRowsFromResolved } from "./tui/render.ts";
@@ -69,6 +70,11 @@ function isActiveTuiSession(
 export default function createExtension(pi: ExtensionAPI): void {
   const runtimeState = createRuntimeStateMachine(loadConfig(), "off");
   let activeTuiSessionManager: ExtensionContext["sessionManager"] | undefined;
+
+  function saveAndApplyConfig(next: PiStatusConfig): void {
+    saveConfig(next);
+    runtimeState.update({ type: "config_reload", config: next });
+  }
 
   const usageRuntime = createUsageRuntime(pi);
   const activityRuntime = createActivityRuntime();
@@ -192,8 +198,7 @@ export default function createExtension(pi: ExtensionAPI): void {
       completionNotifications: action === "on",
     };
     try {
-      saveConfig(next);
-      runtimeState.update({ type: "config_reload", config: next });
+      saveAndApplyConfig(next);
     } catch {
       ctx.ui.notify("Failed to save statusline config", "warning");
       return;
@@ -220,6 +225,21 @@ export default function createExtension(pi: ExtensionAPI): void {
       }
       if (command.kind === "notifications") {
         handleNotificationsCommand(ctx, command.action);
+        return;
+      }
+      if (command.kind === "preset") {
+        await handleDisplayPreset(ctx, command.action, (zones) => {
+          const current = runtimeState.snapshot().config;
+          saveAndApplyConfig({
+            ...current,
+            zones: {
+              topLeft: [...zones.topLeft],
+              topRight: [...zones.topRight],
+              bottomLeft: [...zones.bottomLeft],
+              bottomRight: [...zones.bottomRight],
+            },
+          });
+        });
         return;
       }
       if (command.kind === "unknown") {
@@ -278,8 +298,7 @@ export default function createExtension(pi: ExtensionAPI): void {
       if (!result) return;
 
       try {
-        saveConfig(result);
-        runtimeState.update({ type: "config_reload", config: result });
+        saveAndApplyConfig(result);
       } catch {
         ctx.ui.notify("Failed to save statusline config", "warning");
       }
