@@ -37,12 +37,7 @@ describe("displayPreset", () => {
     [
       "telemetry",
       {
-        topLeft: [
-          "model-with-reasoning",
-          "run-state",
-          "turn-progress",
-          "response-performance",
-        ],
+        topLeft: ["model-with-reasoning", "run-state", "turn-progress", "response-performance"],
         topRight: ["context-used", "context-remaining"],
         bottomLeft: [],
         bottomRight: [
@@ -78,12 +73,7 @@ describe("displayPreset", () => {
   it("keeps every segment ID unique across all four zones of each preset", () => {
     for (const name of DISPLAY_PRESET_NAMES) {
       const zones = displayPreset(name);
-      const all = [
-        ...zones.topLeft,
-        ...zones.topRight,
-        ...zones.bottomLeft,
-        ...zones.bottomRight,
-      ];
+      const all = [...zones.topLeft, ...zones.topRight, ...zones.bottomLeft, ...zones.bottomRight];
       expect(new Set(all).size).toBe(all.length);
     }
   });
@@ -146,9 +136,7 @@ function buildCtx(
   const notify = spies.notify ?? vi.fn();
   const ctx = {
     mode,
-    ui: { select, confirm, notify } as unknown as Parameters<
-      typeof handleDisplayPreset
-    >[0]["ui"],
+    ui: { select, confirm, notify } as unknown as Parameters<typeof handleDisplayPreset>[0]["ui"],
   } as unknown as Parameters<typeof handleDisplayPreset>[0];
   return { ctx, spies: { select, confirm, notify } };
 }
@@ -203,7 +191,10 @@ describe("handleDisplayPreset", () => {
 
     expect(spies.confirm).not.toHaveBeenCalled();
     expect(save).not.toHaveBeenCalled();
-    expect(spies.notify).not.toHaveBeenCalledWith(expect.stringMatching(/Applied/), expect.any(String));
+    expect(spies.notify).not.toHaveBeenCalledWith(
+      expect.stringMatching(/Applied/),
+      expect.any(String),
+    );
   });
 
   it("does nothing when confirmation is rejected", async () => {
@@ -213,7 +204,10 @@ describe("handleDisplayPreset", () => {
     await handleDisplayPreset(ctx, { type: "apply", name: "telemetry" }, save);
 
     expect(save).not.toHaveBeenCalled();
-    expect(spies.notify).not.toHaveBeenCalledWith(expect.stringMatching(/Applied/), expect.any(String));
+    expect(spies.notify).not.toHaveBeenCalledWith(
+      expect.stringMatching(/Applied/),
+      expect.any(String),
+    );
   });
 
   it("warns and exits on RPC mode before opening dialogs", async () => {
@@ -267,10 +261,7 @@ describe("handleDisplayPreset", () => {
     await handleDisplayPreset(ctx, { type: "apply", name: "minimal" }, save);
 
     expect(spies.notify).toHaveBeenCalledWith("Failed to apply display preset", "warning");
-    expect(spies.notify).not.toHaveBeenCalledWith(
-      "Applied minimal display preset.",
-      "info",
-    );
+    expect(spies.notify).not.toHaveBeenCalledWith("Applied minimal display preset.", "info");
   });
 
   it("emits success only after the save callback resolves", async () => {

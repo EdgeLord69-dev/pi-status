@@ -17,12 +17,7 @@ const DISPLAY_PRESETS = {
     bottomRight: ["five-hour-limit", "weekly-limit"],
   },
   telemetry: {
-    topLeft: [
-      "model-with-reasoning",
-      "run-state",
-      "turn-progress",
-      "response-performance",
-    ],
+    topLeft: ["model-with-reasoning", "run-state", "turn-progress", "response-performance"],
     topRight: ["context-used", "context-remaining"],
     bottomLeft: [],
     bottomRight: [
@@ -72,14 +67,12 @@ function formatZone(segments: readonly StatusLineSegmentId[]): string {
 }
 
 export function displayPresetPreview(zones: StatusLineZones): string {
-  return (
-    [
-      `${ZONE_LABELS.topLeft}: ${formatZone(zones.topLeft)}`,
-      `${ZONE_LABELS.topRight}: ${formatZone(zones.topRight)}`,
-      `${ZONE_LABELS.bottomLeft}: ${formatZone(zones.bottomLeft)}`,
-      `${ZONE_LABELS.bottomRight}: ${formatZone(zones.bottomRight)}`,
-    ].join("\n")
-  );
+  return [
+    `${ZONE_LABELS.topLeft}: ${formatZone(zones.topLeft)}`,
+    `${ZONE_LABELS.topRight}: ${formatZone(zones.topRight)}`,
+    `${ZONE_LABELS.bottomLeft}: ${formatZone(zones.bottomLeft)}`,
+    `${ZONE_LABELS.bottomRight}: ${formatZone(zones.bottomRight)}`,
+  ].join("\n");
 }
 
 export type PresetAction =
@@ -149,5 +142,3 @@ export async function handleDisplayPreset(
     ctx.ui.notify("Failed to apply display preset", "warning");
   }
 }
-
-

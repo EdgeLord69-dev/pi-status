@@ -45,6 +45,7 @@ Once installed, the footer updates automatically.
 - Run `/statusline session` to view the current session name, ID, file, directory, and model.
 - From the session menu, rename the current session or compact it after an explicit confirmation.
 - Run `/statusline notifications [on|off]` to toggle opt-in native completion notifications on macOS and Windows.
+- Run `/statusline preset [minimal|balanced|telemetry]` to choose a curated four-zone layout from a selector and confirm it before it is persisted.
 - Use `Tab` and `Shift+Tab` to select the TL, TR, BL, or BR zone.
 - Toggle segments on or off with `Space`.
 - Reorder segments in the active zone with `Left` and `Right`.
@@ -102,6 +103,46 @@ The two live activity segments are also opt-in. They observe the current TUI ses
 - An externally empty host active set stays empty until a row is explicitly enabled.
 - No tool choices are persisted and no second settings framework is added.
 - Plain `/statusline` (no argument) continues to open the footer segment editor.
+
+## Display Presets
+
+`/statusline preset [minimal|balanced|telemetry]` picks one of three curated four-zone layouts. The command shows the four-row preview as the confirmation message, writes the chosen layout to `<Pi agent directory>/extensions/statusline.json` only after you confirm, and updates the live footer in the same step. Cancellation at either prompt is silent and changes nothing.
+
+- `/statusline preset` opens a selector titled `Choose display preset`; the choices are `minimal`, `balanced`, and `telemetry`. Cancelling the selector leaves every config field untouched.
+- `/statusline preset minimal|balanced|telemetry` skips the selector. An unknown name or extra tokens show `Usage: /statusline preset [minimal|balanced|telemetry]`.
+- Each preset replaces every segment in all four zones. The preview lists the exact IDs that will be written, with `—` for empty zones. Segments whose backing data is unavailable render blank until their source has data.
+- Persistence path: `<Pi agent directory>/extensions/statusline.json` (overridable via `$PI_CODING_AGENT_DIR`). The footer field, completion-notification preference, and extension-status hidden list are preserved unchanged.
+
+### Preset Layouts
+
+`minimal`
+
+```text
+Top Left: model-with-reasoning
+Top Right: —
+Bottom Left: current-dir
+Bottom Right: —
+```
+
+`balanced`
+
+```text
+Top Left: model-with-reasoning · run-state
+Top Right: context-remaining
+Bottom Left: current-dir · git-branch
+Bottom Right: five-hour-limit · weekly-limit
+```
+
+`telemetry`
+
+```text
+Top Left: model-with-reasoning · run-state · turn-progress · response-performance
+Top Right: context-used · context-remaining
+Bottom Left: —
+Bottom Right: total-input-tokens · total-output-tokens · cache-read-tokens · cache-write-tokens · cache-hit · session-cost · access-type · five-hour-limit · weekly-limit
+```
+
+Presets only change zone membership and order. They never modify your model, thinking level, tool selection, completion-notification preference, session identity, Git state, or workspace state.
 
 ## Footer Layout And Extension Statuses
 

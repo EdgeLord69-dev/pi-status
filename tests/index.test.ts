@@ -1291,7 +1291,11 @@ describe("/statusline notifications command", () => {
 });
 
 describe("/statusline preset command", () => {
-  function setup(): { pi: ExtensionAPI; handlers: Map<string, Array<(event: unknown, ctx: ExtensionContext) => void>>; registerCommandCalls: unknown[][] } {
+  function setup(): {
+    pi: ExtensionAPI;
+    handlers: Map<string, Array<(event: unknown, ctx: ExtensionContext) => void>>;
+    registerCommandCalls: unknown[][];
+  } {
     const harness = buildPiWithHandlers();
     createExtension(harness.pi);
     return harness;
@@ -1358,12 +1362,7 @@ describe("/statusline preset command", () => {
     expect(saved.extensionSegments).toEqual({ hidden: ["alpha-status"] });
     expect(saved.completionNotifications).toBe(true);
     expect(saved.zones).toMatchObject({
-      topLeft: [
-        "model-with-reasoning",
-        "run-state",
-        "turn-progress",
-        "response-performance",
-      ],
+      topLeft: ["model-with-reasoning", "run-state", "turn-progress", "response-performance"],
       topRight: ["context-used", "context-remaining"],
     });
   });
@@ -1398,10 +1397,7 @@ describe("/statusline preset command", () => {
     await handler("preset minimal", ctx);
 
     expect(notify).toHaveBeenCalledWith("Failed to apply display preset", "warning");
-    expect(notify).not.toHaveBeenCalledWith(
-      "Applied minimal display preset.",
-      "info",
-    );
+    expect(notify).not.toHaveBeenCalledWith("Applied minimal display preset.", "info");
     expect(renderWithFactory(footerSpy.calls[footerSpy.calls.length - 1])).toBe("GPT-5");
   });
 
@@ -1424,9 +1420,10 @@ describe("/statusline preset command", () => {
     await handler("preset balanced", ctx);
 
     expect(select).not.toHaveBeenCalled();
-    expect(
-      JSON.parse(readFileSync(configPath, "utf8")).zones.bottomRight,
-    ).toEqual(["five-hour-limit", "weekly-limit"]);
+    expect(JSON.parse(readFileSync(configPath, "utf8")).zones.bottomRight).toEqual([
+      "five-hour-limit",
+      "weekly-limit",
+    ]);
   });
 });
 
