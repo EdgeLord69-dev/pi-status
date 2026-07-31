@@ -92,10 +92,7 @@ import type {
   ExtensionAPI,
   ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
-import {
-  formatSessionDetails,
-  handleSessionActions,
-} from "../../src/tui/session-actions.ts";
+import { handleSessionActions } from "../../src/tui/session-actions.ts";
 
 function commandContext(overrides: Record<string, unknown> = {}) {
   return {
@@ -124,22 +121,6 @@ function extensionApi(overrides: Record<string, unknown> = {}) {
     ...overrides,
   } as unknown as ExtensionAPI;
 }
-
-describe("formatSessionDetails", () => {
-  it("renders stable details and explicit missing-value fallbacks", () => {
-    expect(
-      formatSessionDetails({
-        name: undefined,
-        id: "session-123",
-        file: undefined,
-        cwd: "/work/pi-status",
-        model: undefined,
-      }),
-    ).toBe(
-      "Session details\nName: Untitled\nID: session-123\nFile: In memory\nDirectory: /work/pi-status\nModel: None",
-    );
-  });
-});
 
 describe("handleSessionActions", () => {
   it("trims and applies a renamed session through Pi", async () => {
@@ -277,23 +258,16 @@ import type {
   ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
 
-export type SessionDetails = {
-  name: string | undefined;
-  id: string;
-  file: string | undefined;
-  cwd: string;
-  model: string | undefined;
-};
-
-export function formatSessionDetails(details: SessionDetails): string {
-  return [
-    "Session details",
-    `Name: ${details.name ?? "Untitled"}`,
-    `ID: ${details.id}`,
-    `File: ${details.file ?? "In memory"}`,
-    `Directory: ${details.cwd}`,
-    `Model: ${details.model ?? "None"}`,
-  ].join("\n");
+function notifyIfActive(
+  ctx: ExtensionCommandContext,
+  message: string,
+  type: "info" | "warning",
+): void {
+  try {
+    ctx.ui.notify(message, type);
+  } catch {
+    // Deferred callbacks may outlive the command context after session replacement.
+  }
 }
 
 export async function handleSessionActions(
@@ -308,13 +282,14 @@ export async function handleSessionActions(
   try {
     const id = ctx.sessionManager.getSessionId();
     const action = await ctx.ui.select(
-      formatSessionDetails({
-        name: pi.getSessionName(),
-        id,
-        file: ctx.sessionManager.getSessionFile(),
-        cwd: ctx.cwd,
-        model: ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined,
-      }),
+      [
+        "Session details",
+        `Name: ${pi.getSessionName() ?? "Untitled"}`,
+        `ID: ${id}`,
+        `File: ${ctx.sessionManager.getSessionFile() ?? "In memory"}`,
+        `Directory: ${ctx.cwd}`,
+        `Model: ${ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "None"}`,
+      ].join("\n"),
       ["Rename session", "Compact session", "Close"],
     );
 
@@ -336,8 +311,8 @@ export async function handleSessionActions(
     if (!confirmed) return;
 
     ctx.compact({
-      onComplete: () => ctx.ui.notify("Session compacted", "info"),
-      onError: (error) => ctx.ui.notify(error.message, "warning"),
+      onComplete: () => notifyIfActive(ctx, "Session compacted", "info"),
+      onError: (error) => notifyIfActive(ctx, error.message, "warning"),
     });
   } catch (error) {
     ctx.ui.notify(
