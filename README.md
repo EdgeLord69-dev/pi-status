@@ -41,6 +41,8 @@ Usage-limit segments depend on `pi-usage`. `/statusline` can show those segment 
 Once installed, the footer updates automatically.
 
 - Run `/statusline` inside Pi to open the interactive editor.
+- Run `/statusline session` to view the current session name, ID, file, directory, and model.
+- From the session menu, rename the current session or compact it after an explicit confirmation.
 - Use `Tab` and `Shift+Tab` to select the TL, TR, BL, or BR zone.
 - Toggle segments on or off with `Space`.
 - Reorder segments in the active zone with `Left` and `Right`.
@@ -78,6 +80,10 @@ You can compose the footer from these segment IDs:
 `five-hour-limit` and `weekly-limit` depend on standalone [`@pi-vault/pi-usage`](https://www.npmjs.com/package/@pi-vault/pi-usage). `/statusline` shows those segments after `pi-usage` responds, and the live footer omits them until compatible live limit window data is available.
 
 The five telemetry segments are opt-in; none are enabled by default. Session token totals include assistant, tool-result, branch-summary, and compaction usage from all session entries. `cache-hit` reflects only the latest assistant prompt, `access-type` is `subscription` for OAuth or `kimi-coding` models and `metered` otherwise, and `session-cost` is best-effort telemetry rather than billing-grade data.
+
+## Session Actions
+
+`/statusline session` uses Pi's current-session APIs. Renaming updates the current Pi session name, and compaction starts only after you confirm the prompt. These actions do not add pi-status settings or change the behavior of plain `/statusline`.
 
 ## Footer Layout And Extension Statuses
 
