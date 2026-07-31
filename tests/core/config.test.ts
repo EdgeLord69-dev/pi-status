@@ -48,6 +48,13 @@ describe("config — normalization", () => {
     expect(normalizeSegments(undefined)).toEqual([]);
   });
 
+  it("accepts both opt-in live activity segments", () => {
+    expect(normalizeSegments(["turn-progress", "response-performance"])).toEqual([
+      "turn-progress",
+      "response-performance",
+    ]);
+  });
+
   it("normalizes zones in display order with one shared seen set", () => {
     expect(
       normalizeZones({

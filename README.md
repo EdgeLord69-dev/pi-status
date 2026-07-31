@@ -78,10 +78,14 @@ You can compose the footer from these segment IDs:
 - `cache-hit`
 - `session-cost`
 - `access-type`
+- `turn-progress`
+- `response-performance`
 
 `five-hour-limit` and `weekly-limit` depend on standalone [`@pi-vault/pi-usage`](https://www.npmjs.com/package/@pi-vault/pi-usage). `/statusline` shows those segments after `pi-usage` responds, and the live footer omits them until compatible live limit window data is available.
 
 The five telemetry segments are opt-in; none are enabled by default. Session token totals include assistant, tool-result, branch-summary, and compaction usage from all session entries. `cache-hit` reflects only the latest assistant prompt, `access-type` is `subscription` for OAuth or `kimi-coding` models and `metered` otherwise, and `session-cost` is best-effort telemetry rather than billing-grade data.
+
+The two live activity segments are also opt-in. They observe the current TUI session only and are session-local — nothing is persisted and nothing leaves the runtime. `turn-progress` renders values such as `Run 2s · Turn 3 1s · read×2 +1`; when no tool is active, it shows the most recently completed tool. `response-performance` renders values such as `TTFT 320ms · ~42.5 tok/s` and is omitted until TTFT is known. TTFT runs from provider dispatch to the first positive full assistant-message estimate, so thinking or tool-call content can establish the boundary before visible text. Streaming TPS is an estimate measured from that first token and may lag a throughput spike; when the response completes, Pi's official output usage replaces the estimate.
 
 ## Session Actions
 

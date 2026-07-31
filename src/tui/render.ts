@@ -5,6 +5,7 @@ import { normalizeThinkingLevel, thinkingLevelColor } from "./render-utils.ts";
 import type {
   AccessType,
   ExtensionSegments,
+  LiveActivitySnapshot,
   SessionMetrics,
   StatusLineSegmentId,
   StatusLineZones,
@@ -84,6 +85,7 @@ export type FooterRenderInput = {
   extensionStatuses?: ReadonlyMap<string, string>;
   extensionSegments: ExtensionSegments;
   zones: StatusLineZones;
+  activity?: LiveActivitySnapshot;
 };
 
 export {

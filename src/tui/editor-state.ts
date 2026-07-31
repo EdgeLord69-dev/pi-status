@@ -84,6 +84,16 @@ const SEGMENT_ORDER: readonly SegmentMetadata[] = [
   },
   { id: "session-cost", label: "Session Cost", description: "Best-effort session cost telemetry" },
   { id: "access-type", label: "Access Type", description: "Subscription or metered model access" },
+  {
+    id: "turn-progress",
+    label: "Turn Progress",
+    description: "Active turn number, active tools, and most recent completed tool",
+  },
+  {
+    id: "response-performance",
+    label: "Response Performance",
+    description: "TTFT and estimated/final tokens per second for the current response",
+  },
 ] as const;
 
 export const SEGMENT_METADATA = new Map(SEGMENT_ORDER.map((segment) => [segment.id, segment]));

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  SEGMENT_METADATA,
   editorReducer,
   getFilteredRows,
   getInteractiveRows,
@@ -43,6 +44,13 @@ function next(
 }
 
 describe("editor zones", () => {
+  it("describes both live activity segments", () => {
+    expect(SEGMENT_METADATA.get("turn-progress")).toMatchObject({ label: "Turn Progress" });
+    expect(SEGMENT_METADATA.get("response-performance")).toMatchObject({
+      label: "Response Performance",
+    });
+  });
+
   it("lists and searches all telemetry segment choices", () => {
     const state = initEditorState(config(), []);
     const telemetry = [

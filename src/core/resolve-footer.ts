@@ -32,6 +32,7 @@ export type SnapshotInput = {
   sessionId: string;
   usageState?: FooterRenderInput["usageState"];
   extensionStatuses: ReadonlyMap<string, string>;
+  activity?: FooterRenderInput["activity"];
 };
 
 function finiteNonNegative(value: unknown): number | undefined {
@@ -126,6 +127,7 @@ export function buildSnapshot(
     sessionId: input.sessionId,
     usageState: input.usageState,
     extensionStatuses: input.extensionStatuses,
+    activity: input.activity,
   };
 }
 

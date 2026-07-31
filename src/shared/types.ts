@@ -17,7 +17,9 @@ export type StatusLineSegmentId =
   | "cache-write-tokens"
   | "cache-hit"
   | "session-cost"
-  | "access-type";
+  | "access-type"
+  | "turn-progress"
+  | "response-performance";
 
 export type AccessType = "subscription" | "metered";
 
@@ -70,6 +72,8 @@ export const KNOWN_SEGMENTS: readonly StatusLineSegmentId[] = [
   "cache-hit",
   "session-cost",
   "access-type",
+  "turn-progress",
+  "response-performance",
 ] as const;
 
 export const DEFAULT_ZONES: StatusLineZones = {
@@ -93,4 +97,41 @@ export interface ConfigStore {
   exists(path: string): boolean;
   read(path: string): string | null;
   write(path: string, data: string): void;
+}
+
+export type ActivityStatus = "idle" | "active" | "complete";
+
+export interface ToolActivity {
+  callId: string;
+  name: string;
+  status: "active" | "complete" | "failed";
+  startedAt: number;
+  endedAt?: number;
+  durationMs: number;
+}
+
+export interface ResponsePerformance {
+  status: "idle" | "streaming" | "complete";
+  startedAt?: number;
+  firstTokenAt?: number;
+  endedAt?: number;
+  ttftMs?: number;
+  outputTokens?: number;
+  tokenCountKind?: "estimated" | "final";
+  tps?: number;
+}
+
+export interface LiveActivitySnapshot {
+  run: { status: ActivityStatus; startedAt?: number; endedAt?: number; durationMs: number };
+  turn: {
+    status: ActivityStatus;
+    number: number;
+    startedAt?: number;
+    endedAt?: number;
+    durationMs: number;
+  };
+  activeTools: ToolActivity[];
+  recentTools: ToolActivity[];
+  response: ResponsePerformance;
+  updatedAt: number;
 }

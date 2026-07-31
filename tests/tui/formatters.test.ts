@@ -15,9 +15,11 @@ import {
   formatModelWithReasoningSegment,
   formatProjectName,
   formatRunState,
+  formatResponsePerformance,
   formatSessionId,
   formatTotalInputTokens,
   formatTotalOutputTokens,
+  formatTurnProgress,
   formatUsedTokens,
   formatWeeklyLimit,
   segmentFormatters,
@@ -44,7 +46,7 @@ function input(overrides?: Partial<FooterRenderInput>): FooterRenderInput {
 }
 
 describe("segmentFormatters registry", () => {
-  it("contains all 19 segment ids", () => {
+  it("contains all 21 segment ids", () => {
     const expectedIds = [
       "model",
       "model-with-reasoning",
@@ -65,11 +67,13 @@ describe("segmentFormatters registry", () => {
       "cache-hit",
       "session-cost",
       "access-type",
+      "turn-progress",
+      "response-performance",
     ];
     for (const id of expectedIds) {
       expect(segmentFormatters.has(id as never), `missing formatter for "${id}"`).toBe(true);
     }
-    expect(segmentFormatters.size).toBe(19);
+    expect(segmentFormatters.size).toBe(21);
   });
 
   it("each registry value is a function", () => {
@@ -396,5 +400,231 @@ describe("formatCurrentDir", () => {
 describe("formatProjectName", () => {
   it("returns null when no project root is found", () => {
     expect(formatProjectName(input({ cwd: "/tmp" }), identityTheme)).toBeNull();
+  });
+});
+
+describe("formatTurnProgress", () => {
+  const idleActivity = {
+    run: { status: "idle" as const, durationMs: 0 },
+    turn: { status: "idle" as const, number: 0, durationMs: 0 },
+    activeTools: [],
+    recentTools: [],
+    response: { status: "idle" as const },
+    updatedAt: 0,
+  };
+
+  it("returns null when no activity is present", () => {
+    expect(formatTurnProgress(input(), identityTheme)).toBeNull();
+  });
+
+  it("returns null when activity is idle and no tools are recent", () => {
+    expect(formatTurnProgress(input({ activity: idleActivity }), identityTheme)).toBeNull();
+  });
+
+  it("shows turn number and progress when a turn is active", () => {
+    const activity = {
+      ...idleActivity,
+      run: { status: "active" as const, startedAt: 1000, durationMs: 2000 },
+      turn: { status: "active" as const, number: 3, startedAt: 1100, durationMs: 1000 },
+    };
+    expect(formatTurnProgress(input({ activity }), identityTheme)).toEqual([
+      "Run 2s · Turn 3 1s",
+      "accent",
+    ]);
+  });
+
+  it("groups active tools by name and shows the oldest group with +N for additional calls", () => {
+    const activity = {
+      ...idleActivity,
+      turn: { status: "active" as const, number: 1, startedAt: 1000, durationMs: 0 },
+      activeTools: [
+        { callId: "a", name: "read", status: "active" as const, startedAt: 1000, durationMs: 0 },
+        { callId: "b", name: "read", status: "active" as const, startedAt: 1100, durationMs: 0 },
+        { callId: "c", name: "write", status: "active" as const, startedAt: 1200, durationMs: 0 },
+        { callId: "d", name: "bash", status: "active" as const, startedAt: 1300, durationMs: 0 },
+      ],
+    };
+    expect(formatTurnProgress(input({ activity }), identityTheme)).toEqual([
+      "Turn 1 <1s · read×2 +2",
+      "accent",
+    ]);
+  });
+
+  it("shows the newest recent tool when no tools are active", () => {
+    const activity = {
+      ...idleActivity,
+      recentTools: [
+        {
+          callId: "a",
+          name: "read",
+          status: "complete" as const,
+          startedAt: 1000,
+          endedAt: 1100,
+          durationMs: 100,
+        },
+      ],
+    };
+    expect(formatTurnProgress(input({ activity }), identityTheme)).toEqual(["read <1s", "dim"]);
+  });
+
+  it("formats durations below one second compactly", () => {
+    const activity = {
+      ...idleActivity,
+      turn: { status: "active" as const, number: 5, startedAt: 1000, durationMs: 0 },
+    };
+    expect(formatTurnProgress(input({ activity }), identityTheme)).toEqual([
+      "Turn 5 <1s",
+      "accent",
+    ]);
+  });
+
+  it("formats compact durations with seconds then minutes", () => {
+    const activity = {
+      ...idleActivity,
+      turn: { status: "active" as const, number: 1, startedAt: 0, durationMs: 65_000 },
+    };
+    expect(formatTurnProgress(input({ activity }), identityTheme)).toEqual([
+      "Turn 1 1m 05s",
+      "accent",
+    ]);
+  });
+
+  it("counts additional active calls of the same name as +N", () => {
+    const activity = {
+      ...idleActivity,
+      turn: { status: "active" as const, number: 1, startedAt: 1000, durationMs: 0 },
+      activeTools: [
+        { callId: "a", name: "read", status: "active" as const, startedAt: 1000, durationMs: 0 },
+        { callId: "b", name: "read", status: "active" as const, startedAt: 1100, durationMs: 0 },
+        { callId: "c", name: "read", status: "active" as const, startedAt: 1200, durationMs: 0 },
+      ],
+    };
+    expect(formatTurnProgress(input({ activity }), identityTheme)).toEqual([
+      "Turn 1 <1s · read×3",
+      "accent",
+    ]);
+  });
+});
+
+describe("formatResponsePerformance", () => {
+  const idleActivity = {
+    run: { status: "idle" as const, durationMs: 0 },
+    turn: { status: "idle" as const, number: 0, durationMs: 0 },
+    activeTools: [],
+    recentTools: [],
+    response: { status: "idle" as const },
+    updatedAt: 0,
+  };
+
+  it("returns null when no activity is present", () => {
+    expect(formatResponsePerformance(input(), identityTheme)).toBeNull();
+  });
+
+  it("returns null when the response is idle", () => {
+    expect(formatResponsePerformance(input({ activity: idleActivity }), identityTheme)).toBeNull();
+  });
+
+  it("omits the segment before TTFT is known", () => {
+    const activity = {
+      ...idleActivity,
+      response: { status: "streaming" as const, startedAt: 1000 },
+    };
+    expect(formatResponsePerformance(input({ activity }), identityTheme)).toBeNull();
+  });
+
+  it("shows TTFT and estimated TPS once the first token arrives", () => {
+    const activity = {
+      ...idleActivity,
+      response: {
+        status: "streaming" as const,
+        startedAt: 1000,
+        firstTokenAt: 1100,
+        ttftMs: 100,
+        outputTokens: 50,
+        tokenCountKind: "estimated" as const,
+        tps: 50,
+      },
+    };
+    expect(formatResponsePerformance(input({ activity }), identityTheme)).toEqual([
+      "TTFT 100ms · ~50.0 tok/s",
+      "dim",
+    ]);
+  });
+
+  it("shows TTFT while generation time is still zero", () => {
+    const activity = {
+      ...idleActivity,
+      response: {
+        status: "streaming" as const,
+        startedAt: 1000,
+        firstTokenAt: 1100,
+        ttftMs: 100,
+        outputTokens: 1,
+        tokenCountKind: "estimated" as const,
+      },
+    };
+    expect(formatResponsePerformance(input({ activity }), identityTheme)).toEqual([
+      "TTFT 100ms",
+      "dim",
+    ]);
+  });
+
+  it("formats TTFT above one second compactly", () => {
+    const activity = {
+      ...idleActivity,
+      response: {
+        status: "complete" as const,
+        startedAt: 1000,
+        firstTokenAt: 2200,
+        endedAt: 3200,
+        ttftMs: 1200,
+        outputTokens: 10,
+        tokenCountKind: "final" as const,
+        tps: 10,
+      },
+    };
+    expect(formatResponsePerformance(input({ activity }), identityTheme)).toEqual([
+      "TTFT 1.2s · 10.0 tok/s",
+      "dim",
+    ]);
+  });
+
+  it("uses final TPS without the estimated marker when final usage is available", () => {
+    const activity = {
+      ...idleActivity,
+      response: {
+        status: "complete" as const,
+        startedAt: 1000,
+        firstTokenAt: 1100,
+        endedAt: 2000,
+        ttftMs: 100,
+        outputTokens: 200,
+        tokenCountKind: "final" as const,
+        tps: 200 / 0.9,
+      },
+    };
+    expect(formatResponsePerformance(input({ activity }), identityTheme)).toEqual([
+      "TTFT 100ms · 222.2 tok/s",
+      "dim",
+    ]);
+  });
+
+  it("renders TTFT when no TPS sample is available", () => {
+    const activity = {
+      ...idleActivity,
+      response: {
+        status: "complete" as const,
+        startedAt: 1000,
+        firstTokenAt: 1100,
+        endedAt: 1500,
+        ttftMs: 100,
+        outputTokens: 0,
+        tokenCountKind: "final" as const,
+      },
+    };
+    expect(formatResponsePerformance(input({ activity }), identityTheme)).toEqual([
+      "TTFT 100ms",
+      "dim",
+    ]);
   });
 });
