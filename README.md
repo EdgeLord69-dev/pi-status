@@ -95,19 +95,20 @@ The two live activity segments are also opt-in. They observe the current TUI ses
 
 Output tokens (always in this order, omitting any that are zero or unknown):
 
-- `Git` anchor + branch name (`HEAD` for detached, `—` when the branch is missing on a clean repository, `?` for unavailable without a branch)
-- `✓` check for a clean working tree
-- `!N` conflict count (conflict always wins over changed)
+- `Git` anchor, then `◌` when the last successful result is stale
+- `✓` for a clean working tree or `!N` for conflicts (conflict always wins over changed)
+- branch name (`HEAD` for detached, `—` when no branch is reported, and `?` for an unavailable inspection)
 - `+N` staged changes, `~N` unstaged edits, `?N` untracked files
 - `↑N` ahead of upstream, `↓N` behind upstream
-- `◌` stale marker when the segment cannot refresh after a successful inspection — the prior branch, counts, and ahead/behind remain visible until the next successful refresh
+
+When the segment cannot refresh after a successful inspection, the prior branch, counts, and ahead/behind remain visible with the `◌` marker until the next successful refresh.
 
 State values:
 
-- `clean` — clean working tree, default branch known
+- `clean` — clean working tree
 - `changed` — staged/unstaged/untracked work, no conflicts
 - `conflict` — unmerged entries exist (also implies changed)
-- `not-repository` — `cwd` is not inside a Git repository; terminal until the directory changes
+- `not-repository` — `cwd` was not inside a Git repository at the last inspection; later lifecycle events retry
 - `unavailable` — Git is missing, the process failed, the output exceeded the cap, or the inspection timed out
 - `stale` — the last known state is shown with a stale marker because a subsequent inspection failed
 
