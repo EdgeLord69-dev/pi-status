@@ -1,7 +1,9 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { StatusLineSegmentId, StatusLineZones } from "../shared/types.ts";
 
-export type DisplayPresetName = "minimal" | "balanced" | "telemetry";
+export const DISPLAY_PRESET_NAMES = ["minimal", "balanced", "telemetry"] as const;
+
+export type DisplayPresetName = (typeof DISPLAY_PRESET_NAMES)[number];
 
 const DISPLAY_PRESETS = {
   minimal: {
@@ -37,10 +39,6 @@ const DISPLAY_PRESETS = {
   Record<keyof StatusLineZones, readonly StatusLineSegmentId[]>
 >;
 
-export const DISPLAY_PRESET_NAMES = Object.freeze(
-  Object.keys(DISPLAY_PRESETS) as DisplayPresetName[],
-);
-
 export function isDisplayPresetName(value: string): value is DisplayPresetName {
   return (DISPLAY_PRESET_NAMES as readonly string[]).includes(value);
 }
@@ -55,23 +53,16 @@ export function displayPreset(name: DisplayPresetName): StatusLineZones {
   };
 }
 
-const ZONE_LABELS = {
-  topLeft: "Top Left",
-  topRight: "Top Right",
-  bottomLeft: "Bottom Left",
-  bottomRight: "Bottom Right",
-} as const satisfies Record<keyof StatusLineZones, string>;
-
 function formatZone(segments: readonly StatusLineSegmentId[]): string {
   return segments.length === 0 ? "—" : segments.join(" · ");
 }
 
 export function displayPresetPreview(zones: StatusLineZones): string {
   return [
-    `${ZONE_LABELS.topLeft}: ${formatZone(zones.topLeft)}`,
-    `${ZONE_LABELS.topRight}: ${formatZone(zones.topRight)}`,
-    `${ZONE_LABELS.bottomLeft}: ${formatZone(zones.bottomLeft)}`,
-    `${ZONE_LABELS.bottomRight}: ${formatZone(zones.bottomRight)}`,
+    `Top Left: ${formatZone(zones.topLeft)}`,
+    `Top Right: ${formatZone(zones.topRight)}`,
+    `Bottom Left: ${formatZone(zones.bottomLeft)}`,
+    `Bottom Right: ${formatZone(zones.bottomRight)}`,
   ].join("\n");
 }
 
@@ -82,29 +73,20 @@ export type PresetAction =
 
 export type SaveDisplayPreset = (zones: StatusLineZones) => void;
 
-const SELECT_TITLE = "Choose display preset";
-
 function notifyUsage(ctx: ExtensionCommandContext): void {
   ctx.ui.notify("Usage: /statusline preset [minimal|balanced|telemetry]", "warning");
 }
 
-async function applyZones(
+async function applyPreset(
   ctx: ExtensionCommandContext,
   save: SaveDisplayPreset,
   name: DisplayPresetName,
 ): Promise<void> {
   try {
-    const confirmed = await ctx.ui.confirm(
-      `Apply ${name} preset?`,
-      displayPresetPreview(displayPreset(name)),
-    );
+    const zones = displayPreset(name);
+    const confirmed = await ctx.ui.confirm(`Apply ${name} preset?`, displayPresetPreview(zones));
     if (!confirmed) return;
-    try {
-      save(displayPreset(name));
-    } catch {
-      ctx.ui.notify("Failed to apply display preset", "warning");
-      return;
-    }
+    save(zones);
     ctx.ui.notify(`Applied ${name} display preset.`, "info");
   } catch {
     ctx.ui.notify("Failed to apply display preset", "warning");
@@ -126,18 +108,18 @@ export async function handleDisplayPreset(
   }
 
   if (action.type === "apply") {
-    await applyZones(ctx, save, action.name);
+    await applyPreset(ctx, save, action.name);
     return;
   }
 
   try {
-    const choice = await ctx.ui.select(SELECT_TITLE, [...DISPLAY_PRESET_NAMES]);
+    const choice = await ctx.ui.select("Choose display preset", [...DISPLAY_PRESET_NAMES]);
     if (choice === undefined) return;
     if (!isDisplayPresetName(choice)) {
       notifyUsage(ctx);
       return;
     }
-    await applyZones(ctx, save, choice);
+    await applyPreset(ctx, save, choice);
   } catch {
     ctx.ui.notify("Failed to apply display preset", "warning");
   }

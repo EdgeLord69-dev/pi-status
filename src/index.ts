@@ -232,12 +232,7 @@ export default function createExtension(pi: ExtensionAPI): void {
           const current = runtimeState.snapshot().config;
           saveAndApplyConfig({
             ...current,
-            zones: {
-              topLeft: [...zones.topLeft],
-              topRight: [...zones.topRight],
-              bottomLeft: [...zones.bottomLeft],
-              bottomRight: [...zones.bottomRight],
-            },
+            zones,
           });
         });
         return;
