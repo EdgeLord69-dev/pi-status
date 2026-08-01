@@ -6,6 +6,7 @@ All notable changes to `@pi-vault/pi-status` are documented in this file.
 
 ### Added
 
+- Added `/statusline preset [minimal|balanced|telemetry]` with a native selector and confirmation prompt. Three curated four-zone layouts (`minimal`, `balanced`, `telemetry`) can be saved to `<Pi agent directory>/extensions/statusline.json` after a four-row preview and explicit confirmation; other config fields are preserved.
 - Added opt-in `turn-progress` and `response-performance` footer segments that observe the current TUI session only. `turn-progress` shows the active turn number, grouped active tools, or the newest completed tool with an elided duration. `response-performance` shows time-to-first-token and the current or final tokens-per-second, conservative during streaming and overridden by Pi's official assistant usage when the response completes.
 
 ### Breaking Changes

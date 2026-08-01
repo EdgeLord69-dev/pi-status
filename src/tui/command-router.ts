@@ -1,3 +1,5 @@
+import { isDisplayPresetName, type PresetAction } from "./preset-actions.ts";
+
 export type NotificationCommandAction = "query" | "on" | "off" | "invalid";
 
 export type StatusLineCommand =
@@ -5,6 +7,7 @@ export type StatusLineCommand =
   | { kind: "session" }
   | { kind: "tools" }
   | { kind: "notifications"; action: NotificationCommandAction }
+  | { kind: "preset"; action: PresetAction }
   | { kind: "unknown"; command: string };
 
 export function parseStatusLineCommand(args: string): StatusLineCommand {
@@ -19,6 +22,14 @@ export function parseStatusLineCommand(args: string): StatusLineCommand {
   if (head === "session") {
     if (sub !== undefined) return { kind: "unknown", command: trimmed };
     return { kind: "session" };
+  }
+  if (head === "preset") {
+    if (sub === undefined) return { kind: "preset", action: { type: "select" } };
+    if (extra !== undefined) return { kind: "preset", action: { type: "invalid" } };
+    if (isDisplayPresetName(sub)) {
+      return { kind: "preset", action: { type: "apply", name: sub } };
+    }
+    return { kind: "preset", action: { type: "invalid" } };
   }
   if (head === "notifications") {
     if (sub === undefined) return { kind: "notifications", action: "query" };

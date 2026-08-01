@@ -71,4 +71,32 @@ describe("parseStatusLineCommand", () => {
       command: "widgets",
     });
   });
+
+  it("routes a bare preset command to the selector action", () => {
+    expect(parseStatusLineCommand("preset")).toEqual({
+      kind: "preset",
+      action: { type: "select" },
+    });
+  });
+
+  it("normalises whitespace and case when applying a preset directly", () => {
+    expect(parseStatusLineCommand("  PRESET   Telemetry ")).toEqual({
+      kind: "preset",
+      action: { type: "apply", name: "telemetry" },
+    });
+  });
+
+  it("marks unknown preset names as invalid", () => {
+    expect(parseStatusLineCommand("preset unknown")).toEqual({
+      kind: "preset",
+      action: { type: "invalid" },
+    });
+  });
+
+  it("marks preset invocations with extra tokens as invalid", () => {
+    expect(parseStatusLineCommand("preset minimal extra")).toEqual({
+      kind: "preset",
+      action: { type: "invalid" },
+    });
+  });
 });

@@ -1290,6 +1290,146 @@ describe("/statusline notifications command", () => {
   });
 });
 
+describe("/statusline preset command", () => {
+  function setup(): {
+    pi: ExtensionAPI;
+    handlers: Map<string, Array<(event: unknown, ctx: ExtensionContext) => void>>;
+    registerCommandCalls: unknown[][];
+  } {
+    const harness = buildPiWithHandlers();
+    createExtension(harness.pi);
+    return harness;
+  }
+
+  it("persists the balanced preset to the global config file when the user confirms", async () => {
+    const configPath = join(agentDir, "extensions", "statusline.json");
+    mkdirSync(join(agentDir, "extensions"), { recursive: true });
+    const select = vi.fn(async () => "balanced");
+    const confirm = vi.fn(async () => true);
+    const notify = vi.fn();
+    const footerSpy = buildSetFooterSpy();
+    const { handlers, registerCommandCalls } = setup();
+    const ctx = createContext({
+      ui: {
+        ...createContext().ui,
+        select: select as unknown as ExtensionContext["ui"]["select"],
+        confirm: confirm as unknown as ExtensionContext["ui"]["confirm"],
+        notify: notify as unknown as ExtensionContext["ui"]["notify"],
+        setFooter: footerSpy.setFooter,
+      },
+    });
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+    const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
+
+    await handler("preset", ctx);
+
+    expect(JSON.parse(readFileSync(configPath, "utf8"))).toMatchObject({
+      zones: {
+        topLeft: ["model-with-reasoning", "run-state"],
+        topRight: ["context-remaining"],
+        bottomLeft: ["current-dir", "git-branch"],
+        bottomRight: ["five-hour-limit", "weekly-limit"],
+      },
+      completionNotifications: false,
+    });
+    expect(notify).toHaveBeenCalledWith("Applied balanced display preset.", "info");
+    expect(renderWithFactory(footerSpy.calls[footerSpy.calls.length - 1])).toContain("idle");
+  });
+
+  it("preserves existing config fields when a preset is saved", async () => {
+    const configPath = join(agentDir, "extensions", "statusline.json");
+    mkdirSync(join(agentDir, "extensions"), { recursive: true });
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        zones: { topLeft: ["model"], topRight: [], bottomLeft: [], bottomRight: [] },
+        extensionSegments: { hidden: ["alpha-status"] },
+        completionNotifications: true,
+      }),
+      "utf8",
+    );
+    const confirm = vi.fn(async () => true);
+    const { handlers, registerCommandCalls } = setup();
+    const ctx = createContext({
+      ui: {
+        ...createContext().ui,
+        confirm: confirm as unknown as ExtensionContext["ui"]["confirm"],
+      },
+    });
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+    const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
+
+    await handler("preset telemetry", ctx);
+
+    const saved = JSON.parse(readFileSync(configPath, "utf8"));
+    expect(saved.extensionSegments).toEqual({ hidden: ["alpha-status"] });
+    expect(saved.completionNotifications).toBe(true);
+    expect(saved.zones).toMatchObject({
+      topLeft: ["model-with-reasoning", "run-state", "turn-progress", "response-performance"],
+      topRight: ["context-used", "context-remaining"],
+    });
+  });
+
+  it("warns and keeps the live footer when saving over a malformed config fails", async () => {
+    const configPath = join(agentDir, "extensions", "statusline.json");
+    mkdirSync(join(agentDir, "extensions"), { recursive: true });
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        zones: { topLeft: ["model"], topRight: [], bottomLeft: [], bottomRight: [] },
+        extensionSegments: { hidden: [] },
+      }),
+      "utf8",
+    );
+    const confirm = vi.fn(async () => true);
+    const notify = vi.fn();
+    const footerSpy = buildSetFooterSpy();
+    const { handlers, registerCommandCalls } = setup();
+    const ctx = createContext({
+      ui: {
+        ...createContext().ui,
+        confirm: confirm as unknown as ExtensionContext["ui"]["confirm"],
+        notify: notify as unknown as ExtensionContext["ui"]["notify"],
+        setFooter: footerSpy.setFooter,
+      },
+    });
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+    writeFileSync(configPath, "{ bad", "utf8");
+
+    const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
+    await handler("preset minimal", ctx);
+
+    expect(notify).toHaveBeenCalledWith("Failed to apply display preset", "warning");
+    expect(notify).not.toHaveBeenCalledWith("Applied minimal display preset.", "info");
+    expect(renderWithFactory(footerSpy.calls[footerSpy.calls.length - 1])).toBe("GPT-5");
+  });
+
+  it("writes the selected layout when a preset is named directly", async () => {
+    const configPath = join(agentDir, "extensions", "statusline.json");
+    mkdirSync(join(agentDir, "extensions"), { recursive: true });
+    const confirm = vi.fn(async () => true);
+    const select = vi.fn();
+    const { handlers, registerCommandCalls } = setup();
+    const ctx = createContext({
+      ui: {
+        ...createContext().ui,
+        select: select as unknown as ExtensionContext["ui"]["select"],
+        confirm: confirm as unknown as ExtensionContext["ui"]["confirm"],
+      },
+    });
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+    const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
+
+    await handler("preset balanced", ctx);
+
+    expect(select).not.toHaveBeenCalled();
+    expect(JSON.parse(readFileSync(configPath, "utf8")).zones.bottomRight).toEqual([
+      "five-hour-limit",
+      "weekly-limit",
+    ]);
+  });
+});
+
 describe("extension wiring — completion notifications", () => {
   function enableNotifications(): void {
     const configPath = join(agentDir, "extensions", "statusline.json");
