@@ -14,6 +14,7 @@ import type {
   SessionMetrics,
   StatusLineSegmentId,
 } from "../shared/types.ts";
+import type { WorkspacePulseSnapshot } from "./workspace-pulse.ts";
 
 export type SnapshotInput = {
   model?: ModelLike;
@@ -33,6 +34,7 @@ export type SnapshotInput = {
   usageState?: FooterRenderInput["usageState"];
   extensionStatuses: ReadonlyMap<string, string>;
   activity?: FooterRenderInput["activity"];
+  workspacePulse?: WorkspacePulseSnapshot;
 };
 
 function finiteNonNegative(value: unknown): number | undefined {
@@ -128,6 +130,7 @@ export function buildSnapshot(
     usageState: input.usageState,
     extensionStatuses: input.extensionStatuses,
     activity: input.activity,
+    ...(input.workspacePulse ? { workspacePulse: input.workspacePulse } : {}),
   };
 }
 

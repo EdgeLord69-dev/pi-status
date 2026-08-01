@@ -7,7 +7,8 @@ import { buildSnapshot, resolveFooter } from "./core/resolve-footer.ts";
 import { createNotificationsWiring } from "./core/notifications-wiring.ts";
 import { createRuntimeStateMachine } from "./core/runtime-state.ts";
 import { createUsageRuntime } from "./core/usage-runtime.ts";
-import type { AccessType, PiStatusConfig } from "./shared/types.ts";
+import { createWorkspacePulseRuntime, type WorkspacePulseRuntime } from "./core/workspace-pulse.ts";
+import type { AccessType, PiStatusConfig, StatusLineZones } from "./shared/types.ts";
 import { createStatusLineEditor } from "./tui/editor.ts";
 import { parseStatusLineCommand } from "./tui/command-router.ts";
 import { handleDisplayPreset } from "./tui/preset-actions.ts";
@@ -74,14 +75,32 @@ export default function createExtension(pi: ExtensionAPI): void {
   function saveAndApplyConfig(next: PiStatusConfig): void {
     saveConfig(next);
     runtimeState.update({ type: "config_reload", config: next });
+    syncWorkspacePulse(next);
   }
 
   const usageRuntime = createUsageRuntime(pi);
   const activityRuntime = createActivityRuntime();
+  let workspacePulseRuntime: WorkspacePulseRuntime | undefined;
   const footerProviderState: FooterProviderState = {
     gitBranch: null,
     extensionStatuses: new Map(),
   };
+
+  function isWorkspacePulseEnabled(zones: StatusLineZones): boolean {
+    for (const zone of Object.values(zones) as ReadonlyArray<readonly string[]>) {
+      if (zone.includes("workspace-pulse")) return true;
+    }
+    return false;
+  }
+
+  function syncWorkspacePulse(config: PiStatusConfig): void {
+    if (!workspacePulseRuntime) return;
+    if (isWorkspacePulseEnabled(config.zones)) {
+      workspacePulseRuntime.start();
+    } else {
+      workspacePulseRuntime.stop();
+    }
+  }
 
   let notifications = createNotificationsWiring({
     events: pi.events,
@@ -115,11 +134,16 @@ export default function createExtension(pi: ExtensionAPI): void {
   function installFooter(ctx: ExtensionContext): void {
     if (ctx.mode !== "tui") return;
 
+    if (!workspacePulseRuntime) {
+      workspacePulseRuntime = createWorkspacePulseRuntime({ directory: ctx.cwd });
+    }
+
     const factory: FooterFactory = (tui, theme, footerData) => {
       const requestRender = () => tui.requestRender?.();
       runtimeState.onInvalidate(requestRender);
       usageRuntime.setOnChange(requestRender);
       activityRuntime.setOnChange(requestRender);
+      workspacePulseRuntime?.setOnChange(requestRender);
       const unsubscribe = footerData.onBranchChange?.(() => {
         refreshFooterProviderState(footerData);
         requestRender();
@@ -131,6 +155,7 @@ export default function createExtension(pi: ExtensionAPI): void {
           runtimeState.onInvalidate(undefined);
           usageRuntime.setOnChange(undefined);
           activityRuntime.setOnChange(undefined);
+          workspacePulseRuntime?.setOnChange(undefined);
         },
         invalidate() {
           requestRender();
@@ -155,6 +180,9 @@ export default function createExtension(pi: ExtensionAPI): void {
             usageState: usageRuntime.getState(),
             extensionStatuses: footerProviderState.extensionStatuses,
             activity: activityRuntime.snapshot(),
+            ...(workspacePulseRuntime
+              ? { workspacePulse: workspacePulseRuntime.snapshot() }
+              : {}),
           });
           return buildFooterRowsFromResolved(
             resolveFooter(snapshot, snap.config, statusTheme),
@@ -166,6 +194,7 @@ export default function createExtension(pi: ExtensionAPI): void {
     };
 
     ctx.ui.setFooter(factory as never);
+    syncWorkspacePulse(runtimeState.snapshot().config);
   }
 
   function installEmptyFooter(ctx: ExtensionContext): void {
@@ -275,6 +304,9 @@ export default function createExtension(pi: ExtensionAPI): void {
             usageState: usageRuntime.getState(),
             extensionStatuses: footerProviderState.extensionStatuses,
             activity: activityRuntime.snapshot(),
+            ...(workspacePulseRuntime
+              ? { workspacePulse: workspacePulseRuntime.snapshot() }
+              : {}),
           });
           return createStatusLineEditor({
             config: editorSnap.config,
@@ -356,6 +388,7 @@ export default function createExtension(pi: ExtensionAPI): void {
     notifications.notifyRunStarted(ctx);
     if (isActiveTuiSession(ctx, activeTuiSessionManager)) {
       activityRuntime.startTurn(event.turnIndex, event.timestamp);
+      workspacePulseRuntime?.refresh();
     }
   });
 
@@ -399,6 +432,7 @@ export default function createExtension(pi: ExtensionAPI): void {
   pi.on("tool_execution_end", (event, ctx) => {
     if (isActiveTuiSession(ctx, activeTuiSessionManager)) {
       activityRuntime.finishTool(event.toolCallId, event.isError);
+      workspacePulseRuntime?.scheduleRefresh();
     }
   });
 
@@ -420,6 +454,9 @@ export default function createExtension(pi: ExtensionAPI): void {
       notifications.dispose();
       activityRuntime.setOnChange(undefined);
       activityRuntime.reset();
+      workspacePulseRuntime?.setOnChange(undefined);
+      workspacePulseRuntime?.dispose();
+      workspacePulseRuntime = undefined;
       activeTuiSessionManager = undefined;
     }
     runtimeState.update({ type: "session_shutdown" });
