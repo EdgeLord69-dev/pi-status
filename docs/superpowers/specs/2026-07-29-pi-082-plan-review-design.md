@@ -62,7 +62,7 @@ Pass a mutable copy of the preset-name tuple to `ctx.ui.select`. Preset saves pr
 
 ### Phase 9: Workspace Pulse
 
-Parse and ignore standard `# branch.oid` metadata, including `(initial)`, instead of treating valid porcelain output as malformed. Start inspection and polling only in active TUI sessions whose effective configuration contains `workspace-pulse`; stop it when the segment is disabled, the session changes, or the runtime is disposed.
+Parse and ignore standard `# branch.oid` metadata, including `(initial)`, instead of treating valid porcelain output as malformed. Keep Workspace Pulse in a standalone session-scoped runtime: start inspection only in active TUI sessions whose effective configuration contains `workspace-pulse`, refresh on `turn_start` and debounced `tool_execution_end`, and stop it when the segment is disabled, the session changes, or the runtime is disposed. Do not add permanent polling or filesystem watchers.
 
 The privacy claim becomes precise: no changed-file paths are retained or displayed. Repository root and current-directory metadata remain part of the reusable workspace snapshot.
 
@@ -80,6 +80,6 @@ After editing, verify the complete plan set structurally and semantically:
 - Phase 6 uses the pi-questionnaire status event without a dependency.
 - Phase 7 uses authoritative turn index/timestamp and no speculative run/turn failure.
 - Phase 8 passes mutable selector options and preserves global-only notification ownership.
-- Phase 9 accepts branch OID records and gates polling on effective configuration.
+- Phase 9 accepts branch OID records and gates event-driven refresh on effective configuration.
 - `git diff --check` and per-file whitespace checks pass.
 - Only planning documentation changes; production and test files remain untouched.

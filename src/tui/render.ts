@@ -86,6 +86,7 @@ export type FooterRenderInput = {
   extensionSegments: ExtensionSegments;
   zones: StatusLineZones;
   activity?: LiveActivitySnapshot;
+  workspacePulse?: import("../core/workspace-pulse.ts").WorkspacePulseSnapshot;
 };
 
 export {

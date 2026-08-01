@@ -4,6 +4,7 @@ export type StatusLineSegmentId =
   | "project-name"
   | "current-dir"
   | "git-branch"
+  | "workspace-pulse"
   | "run-state"
   | "context-remaining"
   | "context-used"
@@ -58,6 +59,7 @@ export const KNOWN_SEGMENTS: readonly StatusLineSegmentId[] = [
   "project-name",
   "current-dir",
   "git-branch",
+  "workspace-pulse",
   "run-state",
   "context-remaining",
   "context-used",

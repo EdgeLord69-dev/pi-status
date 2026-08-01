@@ -11,6 +11,7 @@ const DROP_TIER = {
   "five-hour-limit": 1,
   "weekly-limit": 1,
   "response-performance": 1,
+  "workspace-pulse": 1,
   "current-dir": 2,
   "git-branch": 2,
   "used-tokens": 3,

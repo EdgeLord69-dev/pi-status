@@ -6,6 +6,7 @@ All notable changes to `@pi-vault/pi-status` are documented in this file.
 
 ### Added
 
+- Added opt-in `workspace-pulse` footer segment. It is a bounded, read-only Git workspace summary backed by two fixed-argv `git` commands (`rev-parse --show-toplevel`, `status --porcelain=v2 --branch --untracked-files=all`) and refreshes only on session start, every `turn_start`, and 250 ms after every `tool_execution_end`. The segment renders six states (`clean`, `changed`, `conflict`, `not-repository`, `unavailable`, `stale`) without ever retaining or displaying changed-file paths. RPC and non-TUI sessions never spawn Git.
 - Added `/statusline preset [minimal|balanced|telemetry]` with a native selector and confirmation prompt. Three curated four-zone layouts (`minimal`, `balanced`, `telemetry`) can be saved to `<Pi agent directory>/extensions/statusline.json` after a four-row preview and explicit confirmation; other config fields are preserved.
 - Added opt-in `turn-progress` and `response-performance` footer segments that observe the current TUI session only. `turn-progress` shows the active turn number, grouped active tools, or the newest completed tool with an elided duration. `response-performance` shows time-to-first-token and the current or final tokens-per-second, conservative during streaming and overridden by Pi's official assistant usage when the response completes.
 

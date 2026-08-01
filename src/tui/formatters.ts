@@ -1,4 +1,5 @@
 import type { StatusLineSegmentId } from "../shared/types.ts";
+import { formatWorkspacePulse } from "../core/workspace-pulse.ts";
 import type { FooterRenderColor, FooterRenderInput, ThemeLike } from "./render.ts";
 import {
   abbreviateHomeDir,
@@ -287,6 +288,25 @@ function formatTtft(ms: number): string {
   return `${(ms / 1_000).toFixed(1)}s`;
 }
 
+export function formatWorkspacePulseSegment(
+  input: FooterRenderInput,
+  _theme: ThemeLike,
+): [string, FooterRenderColor | null] | null {
+  const snapshot = input.workspacePulse;
+  if (!snapshot) return null;
+  const color: FooterRenderColor =
+    snapshot.status === "conflict"
+      ? "error"
+      : snapshot.status === "stale"
+        ? "dim"
+        : snapshot.status === "changed"
+          ? "warning"
+          : snapshot.status === "clean"
+            ? "success"
+            : "dim";
+  return [formatWorkspacePulse(snapshot), color];
+}
+
 export function formatResponsePerformance(
   input: FooterRenderInput,
   _theme: ThemeLike,
@@ -309,6 +329,7 @@ export const segmentFormatters = new Map<StatusLineSegmentId, SegmentFormatter>(
   ["current-dir", formatCurrentDir],
   ["project-name", formatProjectName],
   ["git-branch", formatGitBranch],
+  ["workspace-pulse", formatWorkspacePulseSegment],
   ["run-state", formatRunState],
   ["context-used", formatContextUsed],
   ["context-remaining", formatContextRemaining],

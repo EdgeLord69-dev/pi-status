@@ -385,4 +385,35 @@ describe("resolveFooter", () => {
     const result = resolveFooter(snapshot, config, identityTheme);
     expect(result.bottomRight).toEqual([]);
   });
+
+  it("propagates workspace-pulse snapshot through buildSnapshot and resolveFooter", () => {
+    const snapshot = buildSnapshot(
+      makeInput({
+        workspacePulse: {
+          status: "clean",
+          directory: "/repo",
+          root: "/repo",
+          branch: "main",
+          ahead: 0,
+          behind: 0,
+          counts: { staged: 0, unstaged: 0, untracked: 0, conflicts: 0 },
+          checkedAt: 1,
+        },
+      }),
+    );
+    const config = {
+      zones: {
+        topLeft: ["workspace-pulse" as const],
+        topRight: [],
+        bottomLeft: [],
+        bottomRight: [],
+      },
+      extensionSegments: { hidden: [] },
+      completionNotifications: false,
+    };
+    const result = resolveFooter(snapshot, config, identityTheme);
+    expect(result.topLeft).toEqual([
+      { key: "workspace-pulse", text: "Git ✓ main", color: "success" },
+    ]);
+  });
 });

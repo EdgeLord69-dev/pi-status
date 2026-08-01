@@ -46,13 +46,14 @@ function input(overrides?: Partial<FooterRenderInput>): FooterRenderInput {
 }
 
 describe("segmentFormatters registry", () => {
-  it("contains all 21 segment ids", () => {
+  it("contains all 22 segment ids", () => {
     const expectedIds = [
       "model",
       "model-with-reasoning",
       "current-dir",
       "project-name",
       "git-branch",
+      "workspace-pulse",
       "run-state",
       "context-used",
       "context-remaining",
@@ -73,13 +74,118 @@ describe("segmentFormatters registry", () => {
     for (const id of expectedIds) {
       expect(segmentFormatters.has(id as never), `missing formatter for "${id}"`).toBe(true);
     }
-    expect(segmentFormatters.size).toBe(21);
+    expect(segmentFormatters.size).toBe(22);
   });
 
   it("each registry value is a function", () => {
     for (const [id, fn] of segmentFormatters) {
       expect(typeof fn, `formatter for "${id}" is not a function`).toBe("function");
     }
+  });
+});
+
+describe("workspace pulse segment", () => {
+  function baseSnap(overrides?: Record<string, unknown>) {
+    return {
+      directory: "/Users/test/project",
+      status: "clean" as const,
+      counts: { staged: 0, unstaged: 0, untracked: 0, conflicts: 0 },
+      ahead: 0,
+      behind: 0,
+      checkedAt: 1,
+      ...overrides,
+    };
+  }
+
+  it("formats clean with check mark and branch", () => {
+    expect(
+      formatSegment(
+        "workspace-pulse",
+        input({ workspacePulse: baseSnap({ status: "clean", root: "/repo", branch: "main" }) }),
+        identityTheme,
+      ),
+    ).toEqual(["Git ✓ main", "success"]);
+  });
+
+  it("formats HEAD when detached", () => {
+    expect(
+      formatSegment(
+        "workspace-pulse",
+        input({ workspacePulse: baseSnap({ status: "clean", root: "/repo", branch: "HEAD" }) }),
+        identityTheme,
+      ),
+    ).toEqual(["Git ✓ HEAD", "success"]);
+  });
+
+  it("formats Git — when branch is missing on clean", () => {
+    expect(
+      formatSegment(
+        "workspace-pulse",
+        input({ workspacePulse: baseSnap({ status: "clean", root: "/repo" }) }),
+        identityTheme,
+      ),
+    ).toEqual(["Git ✓ —", "success"]);
+  });
+
+  it("formats conflict with conflict-first token ordering", () => {
+    expect(
+      formatSegment(
+        "workspace-pulse",
+        input({
+          workspacePulse: baseSnap({
+            status: "conflict",
+            root: "/repo",
+            branch: "feature/x",
+            counts: { staged: 2, unstaged: 3, untracked: 4, conflicts: 1 },
+            ahead: 5,
+            behind: 6,
+          }),
+        }),
+        identityTheme,
+      ),
+    ).toEqual(["Git !1 feature/x +2 ~3 ?4 ↑5 ↓6", "error"]);
+  });
+
+  it("omits workspace-pulse segment when snapshot is undefined", () => {
+    expect(formatSegment("workspace-pulse", input(), identityTheme)).toBeNull();
+  });
+
+  it("renders Git — for not-repository", () => {
+    expect(
+      formatSegment(
+        "workspace-pulse",
+        input({ workspacePulse: baseSnap({ status: "not-repository" }) }),
+        identityTheme,
+      ),
+    ).toEqual(["Git —", "dim"]);
+  });
+
+  it("renders Git ? for unavailable", () => {
+    expect(
+      formatSegment(
+        "workspace-pulse",
+        input({ workspacePulse: baseSnap({ status: "unavailable" }) }),
+        identityTheme,
+      ),
+    ).toEqual(["Git ?", "dim"]);
+  });
+
+  it("renders prior snapshot + stale marker for stale state, no check mark", () => {
+    expect(
+      formatSegment(
+        "workspace-pulse",
+        input({
+          workspacePulse: baseSnap({
+            status: "stale",
+            root: "/repo",
+            branch: "feature/z",
+            counts: { staged: 1, unstaged: 0, untracked: 0, conflicts: 0 },
+            staleSince: 100,
+          }),
+        }),
+        identityTheme,
+      ),
+    ).toEqual(["Git ◌ feature/z +1", "dim"]);
   });
 });
 
