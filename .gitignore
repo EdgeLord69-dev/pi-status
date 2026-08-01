@@ -143,4 +143,5 @@ vite.config.ts.timestamp-*
 .vite/
 
 # Local-only working storage (plans, scratch notes, etc.)
+.superpowers/
 tmp/
