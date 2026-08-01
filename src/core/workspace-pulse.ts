@@ -57,6 +57,10 @@ interface ParsedStatus {
 }
 
 const ZERO_COUNTS: WorkspacePulseCounts = { staged: 0, unstaged: 0, untracked: 0, conflicts: 0 };
+const XY_PATTERN = /^[.MTADRCU]{2}$/;
+const SUBMODULE_PATTERN = /^(?:N\.\.\.|S[C.][M.][U.])$/;
+const MODE_PATTERN = /^[0-7]{6}$/;
+const OID_PATTERN = /^[0-9a-f]+$/;
 
 export function parseGitStatusV2(text: string): ParsedStatus {
   const counts = { staged: 0, unstaged: 0, untracked: 0, conflicts: 0 };
@@ -75,7 +79,9 @@ export function parseGitStatusV2(text: string): ParsedStatus {
       const key = spaceIndex === -1 ? header : header.slice(0, spaceIndex);
       const value = spaceIndex === -1 ? "" : header.slice(spaceIndex + 1);
       if (key === "branch.oid") {
-        if (value.length === 0) throw new Error("malformed branch.oid");
+        if (!/^(?:\(initial\)|[0-9a-f]+)$/.test(value)) {
+          throw new Error("malformed branch.oid");
+        }
         sawOid = true;
         continue;
       }
@@ -85,14 +91,20 @@ export function parseGitStatusV2(text: string): ParsedStatus {
         continue;
       }
       if (key === "branch.upstream") {
+        if (value.length === 0) throw new Error("malformed branch.upstream");
         upstream = value;
         continue;
       }
       if (key === "branch.ab") {
         const match = /^\+(\d+) -(\d+)$/.exec(value);
         if (!match) throw new Error("malformed branch.ab");
-        ahead = Number(match[1]);
-        behind = Number(match[2]);
+        const nextAhead = Number(match[1]);
+        const nextBehind = Number(match[2]);
+        if (!Number.isSafeInteger(nextAhead) || !Number.isSafeInteger(nextBehind)) {
+          throw new Error("malformed branch.ab");
+        }
+        ahead = nextAhead;
+        behind = nextBehind;
         continue;
       }
       continue;
@@ -100,26 +112,46 @@ export function parseGitStatusV2(text: string): ParsedStatus {
 
     const recordType = line[0];
     if (recordType === "?") {
+      if (line[1] !== " " || line.length < 3) throw new Error("malformed untracked record");
       counts.untracked += 1;
       continue;
     }
     if (recordType === "!") {
+      if (line[1] !== " " || line.length < 3) throw new Error("malformed ignored record");
       continue;
     }
     if (recordType === "u") {
+      const fields = line.split(" ");
+      if (
+        fields.length < 11 ||
+        fields.slice(0, 11).some((field) => field.length === 0) ||
+        !XY_PATTERN.test(fields[1] ?? "") ||
+        !SUBMODULE_PATTERN.test(fields[2] ?? "") ||
+        !fields.slice(3, 7).every((field) => MODE_PATTERN.test(field)) ||
+        !fields.slice(7, 10).every((field) => OID_PATTERN.test(field))
+      ) {
+        throw new Error("malformed unmerged record");
+      }
       counts.conflicts += 1;
       continue;
     }
     if (recordType === "1" || recordType === "2") {
-      if (line.length < 4) throw new Error("unknown record: too short");
-      const xy = line.slice(2, 4);
-      const sub = line.slice(4, 5);
+      const fields = line.split(" ");
+      const requiredFields = recordType === "1" ? 9 : 10;
+      if (
+        fields.length < requiredFields ||
+        fields.slice(0, requiredFields).some((field) => field.length === 0) ||
+        !XY_PATTERN.test(fields[1] ?? "") ||
+        !SUBMODULE_PATTERN.test(fields[2] ?? "") ||
+        !fields.slice(3, 6).every((field) => MODE_PATTERN.test(field)) ||
+        !fields.slice(6, 8).every((field) => OID_PATTERN.test(field)) ||
+        (recordType === "2" && (!/^[RC]\d+$/.test(fields[8] ?? "") || !line.includes("\t")))
+      ) {
+        throw new Error("malformed tracked record");
+      }
+      const xy = fields[1] ?? "";
       const stagedActive = xy[0] !== "." && xy[0] !== " ";
       const unstagedActive = xy[1] !== "." && xy[1] !== " ";
-      if (stagedActive && sub !== ".") {
-        // rename/copy records use the staged sub to keep both X and Y flags distinct; sub markers
-        // other than the standard '.' are not surfaced as additional staging events.
-      }
       if (stagedActive) counts.staged += 1;
       if (unstagedActive) counts.unstaged += 1;
       continue;
@@ -189,6 +221,7 @@ function runGit(
   argv: readonly string[],
   cwd: string,
   signal: AbortSignal,
+  classifyNotRepository = false,
 ): Promise<string> {
   return new Promise<string>((resolve, reject) => {
     const options: ExecFileOptions = {
@@ -203,7 +236,7 @@ function runGit(
     exec("git", argv, options, (error, stdout, stderr) => {
       if (error) {
         if (isExecError(error)) {
-          if (typeof error.code === "number" && error.code === 128) {
+          if (classifyNotRepository && typeof error.code === "number" && error.code === 128) {
             const stderrText = typeof error.stderr === "string" ? error.stderr : stderr;
             const message = stderrText.trim();
             if (message.startsWith("fatal: not a git repository")) {
@@ -230,9 +263,9 @@ export async function defaultInspect(
     const exec: ExecFileFn = (file, args, options, cb) =>
       nodeExecFile(file, args as string[], options, cb) as unknown as Readable;
     let root: string;
-    runGit(exec, ["rev-parse", "--show-toplevel"], directory, signal)
+    runGit(exec, ["rev-parse", "--show-toplevel"], directory, signal, true)
       .then((stdout) => {
-        root = stdout.trim();
+        root = stdout.replace(/\r?\n$/, "");
         return runGit(
           exec,
           ["status", "--porcelain=v2", "--branch", "--untracked-files=all"],
@@ -313,23 +346,17 @@ export class WorkspacePulseRuntime {
   }
 
   stop(): void {
-    if (!this.state.active && !this.state.disposed) return;
+    if (!this.state.active) return;
     this.clearTimer();
     this.abortActive();
     this.state.generation += 1;
     this.state.active = false;
-    this.publish({
-      status: "unavailable",
-      directory: this.directory,
-      ahead: 0,
-      behind: 0,
-      counts: { ...ZERO_COUNTS },
-    });
   }
 
   dispose(): void {
-    this.stop();
+    if (this.state.disposed) return;
     this.listener = undefined;
+    this.stop();
     this.state.disposed = true;
   }
 

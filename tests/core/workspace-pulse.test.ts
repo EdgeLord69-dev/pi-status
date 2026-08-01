@@ -41,29 +41,12 @@ function fakeChild() {
   return child;
 }
 
-function okChild(stdout: string) {
-  const child = fakeChild();
-  process.nextTick(() => {
-    child.stdout.emit("data", Buffer.from(stdout, "utf8"));
-    child.emit("close", 0, null);
-  });
-  return child;
-}
-
 function failChild(stderr: string, code: number) {
   const child = fakeChild();
   process.nextTick(() => {
     child.stderr.emit("data", Buffer.from(stderr, "utf8"));
     child.emit("close", code, null);
   });
-  return child;
-}
-
-function spawnFail(message: string) {
-  const child = fakeChild();
-  const err = new Error(message);
-  child.on("error", () => {});
-  process.nextTick(() => child.emit("error", err));
   return child;
 }
 
@@ -197,7 +180,7 @@ describe("parseGitStatusV2", () => {
     const text = [
       "# branch.oid abc",
       "# branch.head main",
-      "# branch.oid something-extra\r\n",
+      "# future.metadata something-extra\r\n",
       "# branch.someOtherKey value",
       "? untracked.ts",
     ].join("\n");
@@ -221,12 +204,53 @@ describe("parseGitStatusV2", () => {
     expect(() =>
       parseGitStatusV2(["# branch.oid abc", "# branch.head main", "# branch.ab +1"].join("\n")),
     ).toThrow(/branch\.ab/);
+    expect(() =>
+      parseGitStatusV2(
+        ["# branch.oid abc", "# branch.head main", `# branch.ab +${"9".repeat(100)} -0`].join("\n"),
+      ),
+    ).toThrow(/branch\.ab/);
   });
 
   it("rejects unknown data record codes", () => {
     expect(() =>
       parseGitStatusV2(["# branch.oid abc", "# branch.head main", "9 ?? N... x"].join("\n")),
     ).toThrow(/unknown record/);
+  });
+
+  it.each([
+    ["invalid OID", ["# branch.oid not-an-oid", "# branch.head main"]],
+    ["empty upstream", ["# branch.oid abc", "# branch.head main", "# branch.upstream "]],
+    ["short ordinary record", ["# branch.oid abc", "# branch.head main", "1 M."]],
+    [
+      "invalid XY flags",
+      ["# branch.oid abc", "# branch.head main", "1 ZZ N... 100644 100644 100644 aaa aaa file.ts"],
+    ],
+    [
+      "invalid ordinary metadata",
+      ["# branch.oid abc", "# branch.head main", "1 M. bad 100644 100644 100644 aaa aaa file.ts"],
+    ],
+    ["short rename record", ["# branch.oid abc", "# branch.head main", "2 R."]],
+    [
+      "rename without original path",
+      [
+        "# branch.oid abc",
+        "# branch.head main",
+        "2 R. N... 100644 100644 100644 aaa bbb R100 file.ts",
+      ],
+    ],
+    ["short unmerged record", ["# branch.oid abc", "# branch.head main", "u UU"]],
+    [
+      "invalid unmerged metadata",
+      [
+        "# branch.oid abc",
+        "# branch.head main",
+        "u UU bad 100644 100644 100644 100644 aaa bbb ccc file.ts",
+      ],
+    ],
+    ["empty untracked path", ["# branch.oid abc", "# branch.head main", "? "]],
+    ["empty ignored path", ["# branch.oid abc", "# branch.head main", "! "]],
+  ])("rejects malformed known data: %s", (_label, lines) => {
+    expect(() => parseGitStatusV2(lines.join("\n"))).toThrow();
   });
 });
 
@@ -235,7 +259,7 @@ describe("WorkspacePulseRuntime — fixed-command inspector", () => {
     execFileMock
       .mockImplementationOnce(((...args: unknown[]) => {
         const cb = args[args.length - 1] as (err: unknown, stdout: string, stderr: string) => void;
-        cb(null, "/repo\n", "");
+        cb(null, "/repo with trailing space \n", "");
         return fakeChild();
       }) as never)
       .mockImplementationOnce(((...args: unknown[]) => {
@@ -268,7 +292,11 @@ describe("WorkspacePulseRuntime — fixed-command inspector", () => {
 
     const [, secondArgv, secondOptions] = execFileMock.mock.calls[1] ?? [];
     expect(secondArgv).toEqual(["status", "--porcelain=v2", "--branch", "--untracked-files=all"]);
-    expect(secondOptions).toMatchObject({ cwd: "/repo", timeout: 2_000, maxBuffer: 256 * 1024 });
+    expect(secondOptions).toMatchObject({
+      cwd: "/repo with trailing space ",
+      timeout: 2_000,
+      maxBuffer: 256 * 1024,
+    });
   });
 
   it("classifies root command exit 128 not-a-git-repository as not-repository", async () => {
@@ -288,6 +316,27 @@ describe("WorkspacePulseRuntime — fixed-command inspector", () => {
     expect(runtime.snapshot().status).toBe("not-repository");
   });
 
+  it("treats status exit 128 as a failed inspection, not a root classification", async () => {
+    execFileMock
+      .mockImplementationOnce(((...args: unknown[]) => {
+        const cb = args[args.length - 1] as (err: unknown, stdout: string, stderr: string) => void;
+        cb(null, "/repo\n", "");
+        return fakeChild();
+      }) as never)
+      .mockImplementationOnce(((...args: unknown[]) => {
+        const cb = args[args.length - 1] as (err: unknown, stdout: string, stderr: string) => void;
+        const stderr = "fatal: not a git repository";
+        cb(Object.assign(new Error("exit"), { code: 128, stderr }), "", stderr);
+        return failChild(stderr, 128);
+      }) as never);
+
+    const runtime = new WorkspacePulseRuntime({ directory: "/work" });
+    runtime.start();
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+    expect(runtime.snapshot().status).toBe("unavailable");
+  });
+
   it("classifies nonzero git exit as unavailable", async () => {
     execFileMock.mockImplementationOnce(((...args: unknown[]) => {
       const cb = args[args.length - 1] as (err: unknown, stdout: string, stderr: string) => void;
@@ -302,13 +351,27 @@ describe("WorkspacePulseRuntime — fixed-command inspector", () => {
     expect(runtime.snapshot().status).toBe("unavailable");
   });
 
-  it("classifies spawn failure as unavailable", async () => {
-    execFileMock.mockImplementationOnce(((..._args: unknown[]) => spawnFail("ENOENT")) as never);
+  it.each([
+    ["spawn failure", Object.assign(new Error("spawn git ENOENT"), { code: "ENOENT" })],
+    ["timeout", Object.assign(new Error("git timed out"), { killed: true, signal: "SIGTERM" })],
+    [
+      "max-buffer failure",
+      Object.assign(new RangeError("stdout maxBuffer length exceeded"), {
+        code: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER",
+      }),
+    ],
+  ])("classifies %s as unavailable", async (_label, error) => {
+    execFileMock.mockImplementationOnce(((...args: unknown[]) => {
+      const cb = args[args.length - 1] as (err: unknown, stdout: string, stderr: string) => void;
+      cb(error, "", "");
+      return fakeChild();
+    }) as never);
     const runtime = new WorkspacePulseRuntime({ directory: "/work" });
     runtime.start();
     await new Promise((r) => setImmediate(r));
     await new Promise((r) => setImmediate(r));
     expect(runtime.snapshot().status).toBe("unavailable");
+    expect(runtime.snapshot().checkedAt).toEqual(expect.any(Number));
   });
 });
 
@@ -341,15 +404,14 @@ describe("WorkspacePulseRuntime — event-driven refresh", () => {
 
   it("repeated start() does not duplicate refreshes", async () => {
     let calls = 0;
-    const inspector = (() => {
-      const d = deferred<WorkspaceInspection>();
-      d.resolve(cleanRepo());
-      calls++;
-      return { deferred: d, inspect: () => d.promise };
-    })();
+    const d = deferred<WorkspaceInspection>();
+    d.resolve(cleanRepo());
     const runtime = createWorkspacePulseRuntime({
       directory: "/repo",
-      inspect: inspector.inspect,
+      inspect: () => {
+        calls++;
+        return d.promise;
+      },
     });
     runtime.start();
     runtime.start();
@@ -613,11 +675,14 @@ describe("WorkspacePulseRuntime — failure and stale states", () => {
 });
 
 describe("WorkspacePulseRuntime — lifecycle", () => {
-  it("stop cancels debounce timer, aborts active signal, increments generation, is idempotent", async () => {
+  it("stop cancels pending work, retains the last snapshot, and is idempotent", async () => {
     const d1 = deferred<WorkspaceInspection>();
+    let calls = 0;
     const runtime = createWorkspacePulseRuntime({
       directory: "/repo",
       inspect: (_dir, signal) => {
+        calls++;
+        if (calls === 1) return Promise.resolve(cleanRepo());
         let onAbort: (() => void) | undefined;
         return new Promise<WorkspaceInspection>((res, rej) => {
           onAbort = () => rej(new Error("aborted"));
@@ -636,11 +701,17 @@ describe("WorkspacePulseRuntime — lifecycle", () => {
       },
     });
     runtime.start();
+    await flushMicrotasks();
+    await flushMicrotasks();
+    expect(runtime.snapshot().status).toBe("clean");
+
+    void runtime.refresh();
     runtime.scheduleRefresh();
     runtime.stop();
     await flushMicrotasks();
     const after = runtime.snapshot();
-    expect(after.status).toBe("unavailable");
+    expect(after.status).toBe("clean");
+    expect(after.branch).toBe("main");
     d1.resolve(
       Object.assign(cleanRepo(), {
         branch: "should-not-publish",
@@ -648,8 +719,8 @@ describe("WorkspacePulseRuntime — lifecycle", () => {
     );
     await flushMicrotasks();
     await flushMicrotasks();
-    expect(runtime.snapshot().branch).toBeUndefined();
-    expect(runtime.snapshot().status).toBe("unavailable");
+    expect(runtime.snapshot().branch).toBe("main");
+    expect(runtime.snapshot().status).toBe("clean");
 
     runtime.stop();
     runtime.stop();
@@ -657,12 +728,15 @@ describe("WorkspacePulseRuntime — lifecycle", () => {
   });
 
   it("dispose clears the change listener and blocks later start/refresh/scheduleRefresh", async () => {
+    const pending = deferred<WorkspaceInspection>();
     const runtime = createWorkspacePulseRuntime({
       directory: "/repo",
-      inspect: () => Promise.resolve(cleanRepo()),
+      inspect: () => pending.promise,
     });
     const listener = vi.fn();
     runtime.setOnChange(listener);
+    runtime.start();
+    await flushMicrotasks();
     runtime.dispose();
     runtime.start();
     await flushMicrotasks();
