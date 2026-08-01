@@ -2,9 +2,9 @@
 
 ## Goal
 
-Replace the standalone `/statusline` editor and its separate subcommands with one centered, five-tab dashboard. Port the `pi-usage` 0.7.0 dashboard shell and lifecycle faithfully while reusing `pi-status` configuration, rendering, session, tool, and persistence logic.
+Replace the standalone `/statusline` editor and its separate subcommands with one responsive, centered, five-tab dashboard. Port the `pi-usage` 0.7.0 dashboard's visual shell and lifecycle while reusing `pi-status` configuration, rendering, session, tool, and persistence logic.
 
-The dashboard must let users edit the footer without hiding or changing the saved live footer until they explicitly save.
+The dashboard must let users edit the footer without hiding or changing the saved live footer until they explicitly save. Switching tabs must never resize or move the overlay, and no tab may render beyond the terminal viewport.
 
 ## Reference Baselines
 
@@ -34,10 +34,13 @@ Port the reusable `pi-usage` shell primitives and visual contract rather than de
 
 - `ctx.ui.custom` uses `overlay: true`;
 - overlay options are exactly `{ anchor: "center", maxHeight: "85%", width: "92%" }`;
+- Pi's `center` anchor remains authoritative for both axes and recalculates placement after terminal resize;
 - the heavy box frame, two-column horizontal padding, ANSI-safe frame sizing, theme adapter, tab bar, blank body spacing, and contextual footer follow `pi-usage`;
 - the active tab is shown first when tab labels overflow, then neighboring tabs are fitted alternately with `‹` and `›` overflow markers;
 - Tab and Shift+Tab cycle through tabs with wraparound;
 - cleanup and close completion are idempotent.
+
+The `pi-usage` dashboard renders a content-dependent number of lines, and Pi 0.83 enforces `maxHeight` by slicing excess lines from the bottom. Copying that behavior could remove the footer or bottom border and would make tab switches move the centered overlay. `pi-status` therefore keeps the shell's appearance and host options but adds a shared, height-aware body viewport. The component always renders a complete frame within Pi's height limit.
 
 The dashboard does not replace the installed footer. The saved live footer remains visible behind the overlay. Only the Layout tab renders an internal preview of the draft configuration.
 
@@ -144,19 +147,28 @@ A clean dashboard closes immediately. A dirty dashboard opens a discard confirma
 
 Dialogs temporarily yield focus from the dashboard. Any cancelled or failed Rename, Compact, or discard dialog restores dashboard focus and requests a render.
 
-## Height and Scrolling
+## Responsive Size, Equal Tab Height, and Scrolling
 
-Each tab renderer receives the available body-row budget derived from the terminal height and the overlay's 85% maximum after subtracting frame, tab bar, blank spacing, and contextual footer rows.
+On every render, use the public `tui.terminal.columns` and `tui.terminal.rows` dimensions from Pi 0.83. Width remains 92% of the current terminal width and Pi's center anchor positions the final rendered box. Height is computed before rendering tab content:
 
-Long interactive lists use a selection-following viewport:
+1. Compute Pi's maximum overlay height as `max(1, floor(terminal rows × 0.85))`, matching Pi's clamp.
+2. Compute the natural framed height of every tab at the current content width, using each tab's unfiltered logical content so a search does not resize the overlay.
+3. Set one shared target height to the smaller of the longest tab's natural height and Pi's maximum overlay height.
+4. Subtract the fixed frame, tab bar, spacing, and footer chrome from that target to obtain one shared body-row budget.
+5. Every tab returns exactly that body-row count, padding short content with blank rows and viewporting long content.
 
-- the selected row is always visible;
+This gives all five tabs identical total height at a given terminal size. Tab changes cannot move the centered overlay. Terminal resize recomputes width, target height, wrapping, and viewport clamps; content or catalog refresh may recompute the shared target, but the active tab never receives a unique height.
+
+Every tab body is represented as logical rows inside the shared viewport, including non-interactive details and the Layout preview. Long content uses selection-following scrolling:
+
+- the selected interactive row is always visible;
+- Up/Down skips non-interactive rows while the viewport may include them;
 - moving above or below the viewport adjusts only that tab's offset;
-- offsets are clamped when filtering or content changes;
-- required tab controls and the dashboard footer remain visible;
-- no alternate narrow-terminal layout is introduced.
+- offsets are clamped after resize, filtering, catalog refresh, or content changes;
+- moving to `Save changes` scrolls it into view rather than pinning it outside the body budget;
+- frame, tab bar, contextual footer, and bottom border are never delegated to Pi's truncation.
 
-Width continues to use the `pi-usage` ANSI-safe truncation and padding primitives. Extremely narrow terminals degrade through tab overflow and content truncation rather than a separate screen.
+ANSI-safe truncation, padding, and intentional wrapping happen before height calculation, so no rendered line exceeds the current frame width. If the terminal is too short to fit the normal shell chrome, render a bounded centered `Terminal too short` fallback with a close hint instead of a partially sliced frame. The fallback also stays within the 85% height limit.
 
 ## Lifecycle and Failure Handling
 
@@ -170,9 +182,12 @@ Save and immediate-action failures are reported with warning notifications and l
 
 Add focused tests for:
 
-- exact overlay options, frame geometry, tab overflow, contextual footer, and idempotent lifecycle parity with `pi-usage`;
+- exact overlay options, centered anchor, frame geometry, tab overflow, contextual footer, and idempotent lifecycle parity with `pi-usage`;
+- equal rendered height for all five tabs at the same terminal dimensions, including filtered and empty states;
+- responsive recomputation after width and height changes without horizontal or vertical overflow;
+- complete frame/footer preservation at the 85% cap and the bounded too-short-terminal fallback;
 - tab cycling and independent cursor, query, and viewport state;
-- selection-following scrolling under constrained heights;
+- selection-following scrolling for every long tab body under constrained heights;
 - Layout presets, zone movement, segment toggling/reordering, final-segment protection, and production preview use;
 - Statuses fuzzy filtering, Save-row reachability, toggling, and preservation of undiscovered hidden keys;
 - Settings draft behavior;
@@ -186,9 +201,12 @@ Retain regression coverage for config normalization and migration, runtime state
 
 ## Acceptance Criteria
 
-- `/statusline` opens the five-tab dashboard in the exact `pi-usage` overlay shell.
+- `/statusline` opens the five-tab dashboard with the `pi-usage` visual shell, centered by Pi's overlay API.
 - All former configuration and immediate actions are reachable from their designated tabs.
 - Unsaved draft edits affect only the internal preview; the live footer changes only after Save.
+- At fixed terminal dimensions, every tab renders the same number of rows regardless of its content length or current query.
+- Terminal resize keeps the overlay centered and recomputes its bounded width, shared height, and viewports.
+- The longest tab scrolls within the body; it never causes Pi to truncate the frame, footer, or bottom border or renders beyond the screen.
 - Search, tab switching, close confirmation, dialogs, and long lists remain usable within the 92% × 85% overlay.
 - Tool and session operations have the specified immediate behavior and failure recovery.
 - Pi 0.83 typecheck, formatting, lint, full tests, package verification, dry-run packaging, and `git diff --check` pass.
