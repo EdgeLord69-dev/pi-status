@@ -102,7 +102,7 @@ describe("editor zones", () => {
       .filter((row): row is { type: "segment"; id: never } => row.type === "segment")
       .map((row) => row.id);
     expect(ids.slice(0, 4)).toEqual(["git-branch", "current-dir", "model", "run-state"]);
-    expect(ids.slice(4, 7)).toEqual(["model-with-reasoning", "project-name", "context-remaining"]);
+    expect(ids.slice(4, 7)).toEqual(["model-with-reasoning", "project-name", "workspace-pulse"]);
   });
 
   it("clamps navigation when selection or search results change", () => {

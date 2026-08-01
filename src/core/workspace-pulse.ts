@@ -1,4 +1,4 @@
-import { execFile as nodeExecFile } from "node:child_process";
+import { execFile as nodeExecFile, type ExecException } from "node:child_process";
 import type { Readable } from "node:stream";
 
 export type WorkspacePulseStatus =
@@ -62,7 +62,7 @@ interface ParsedStatus {
 const ZERO_COUNTS: WorkspacePulseCounts = { staged: 0, unstaged: 0, untracked: 0, conflicts: 0 };
 
 export function parseGitStatusV2(text: string): ParsedStatus {
-  const counts: WorkspacePulseCounts = { staged: 0, unstaged: 0, untracked: 0, conflicts: 0 };
+  const counts = { staged: 0, unstaged: 0, untracked: 0, conflicts: 0 };
   let branch: string | undefined;
   let upstream: string | undefined;
   let ahead = 0;
@@ -163,17 +163,10 @@ type ExecFileFn = (
   file: string,
   args: readonly string[],
   options: ExecFileOptions,
-  callback: (error: ExecFileError | null, stdout: string, stderr: string) => void,
+  callback: (error: ExecException | null, stdout: string, stderr: string) => void,
 ) => Readable;
 
-interface ExecFileError extends Error {
-  code?: string | number;
-  stderr?: string;
-  killed?: boolean;
-  signal?: string;
-}
-
-function isExecFileError(value: unknown): value is ExecFileError {
+function isExecError(value: unknown): value is ExecException {
   return !!value && typeof value === "object" && typeof (value as { message?: unknown }).message === "string";
 }
 
@@ -204,9 +197,10 @@ function runGit(
     };
     exec("git", argv, options, (error, stdout, stderr) => {
       if (error) {
-        if (isExecFileError(error)) {
+        if (isExecError(error)) {
           if (typeof error.code === "number" && error.code === 128) {
-            const message = (error.stderr ?? stderr ?? "").trim();
+            const stderrText = typeof error.stderr === "string" ? error.stderr : stderr;
+            const message = stderrText.trim();
             if (message.startsWith("fatal: not a git repository")) {
               reject(Object.assign(new Error("not-repository"), { kind: "not-repository" }));
               return;
@@ -250,7 +244,7 @@ export async function defaultInspect(
         });
       })
       .catch((error: unknown) => {
-        const kind = isExecFileError(error) ? (error as { kind?: string }).kind : undefined;
+        const kind = isExecError(error) ? (error as { kind?: string }).kind : undefined;
         if (kind === "not-repository") {
           resolve({ kind: "not-repository" });
           return;

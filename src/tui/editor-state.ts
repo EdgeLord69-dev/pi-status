@@ -26,6 +26,11 @@ const SEGMENT_ORDER: readonly SegmentMetadata[] = [
     label: "Git Branch",
     description: "Current Git branch (omitted when unavailable)",
   },
+  {
+    id: "workspace-pulse",
+    label: "Workspace Pulse",
+    description: "Bounded Git workspace summary (counts, ahead/behind, clean/stale)",
+  },
   { id: "run-state", label: "Run State", description: "Pi status (idle, queued, busy)" },
   {
     id: "context-remaining",
