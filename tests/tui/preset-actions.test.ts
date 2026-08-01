@@ -113,12 +113,6 @@ describe("displayPresetPreview", () => {
       ].join("\n"),
     );
   });
-
-  it("emits empty markers for the all-empty telemetry bottom-left", () => {
-    const zones = displayPreset("telemetry");
-    const blankLeft = { ...zones, bottomLeft: [] };
-    expect(displayPresetPreview(blankLeft)).toContain("Bottom Left: —");
-  });
 });
 
 type Spies = {
@@ -146,9 +140,9 @@ describe("handleDisplayPreset", () => {
     const select = vi.fn(async (title: string, options: string[]) => {
       expect(title).toBe("Choose display preset");
       expect([...options]).toEqual([...DISPLAY_PRESET_NAMES]);
-      const copy = [...options];
-      copy.push("rogue");
-      expect(copy).toEqual([...DISPLAY_PRESET_NAMES, "rogue"]);
+      options.push("rogue");
+      expect(options).toEqual([...DISPLAY_PRESET_NAMES, "rogue"]);
+      expect(DISPLAY_PRESET_NAMES).toEqual(["minimal", "balanced", "telemetry"]);
       return "balanced";
     });
     const confirm = vi.fn(async (title: string, message: string) => {

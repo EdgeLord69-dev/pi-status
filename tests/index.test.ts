@@ -1307,6 +1307,7 @@ describe("/statusline preset command", () => {
     const select = vi.fn(async () => "balanced");
     const confirm = vi.fn(async () => true);
     const notify = vi.fn();
+    const footerSpy = buildSetFooterSpy();
     const { handlers, registerCommandCalls } = setup();
     const ctx = createContext({
       ui: {
@@ -1314,6 +1315,7 @@ describe("/statusline preset command", () => {
         select: select as unknown as ExtensionContext["ui"]["select"],
         confirm: confirm as unknown as ExtensionContext["ui"]["confirm"],
         notify: notify as unknown as ExtensionContext["ui"]["notify"],
+        setFooter: footerSpy.setFooter,
       },
     });
     for (const h of handlers.get("session_start") ?? []) h({}, ctx);
@@ -1331,6 +1333,7 @@ describe("/statusline preset command", () => {
       completionNotifications: false,
     });
     expect(notify).toHaveBeenCalledWith("Applied balanced display preset.", "info");
+    expect(renderWithFactory(footerSpy.calls[footerSpy.calls.length - 1])).toContain("idle");
   });
 
   it("preserves existing config fields when a preset is saved", async () => {
@@ -1401,7 +1404,7 @@ describe("/statusline preset command", () => {
     expect(renderWithFactory(footerSpy.calls[footerSpy.calls.length - 1])).toBe("GPT-5");
   });
 
-  it("writes the preset name literally when called without a selector", async () => {
+  it("writes the selected layout when a preset is named directly", async () => {
     const configPath = join(agentDir, "extensions", "statusline.json");
     mkdirSync(join(agentDir, "extensions"), { recursive: true });
     const confirm = vi.fn(async () => true);
