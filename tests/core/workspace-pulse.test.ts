@@ -274,7 +274,10 @@ describe("WorkspacePulseRuntime — fixed-command inspector", () => {
   it("classifies root command exit 128 not-a-git-repository as not-repository", async () => {
     execFileMock.mockImplementationOnce(((...args: unknown[]) => {
       const cb = args[args.length - 1] as (err: unknown, stdout: string, stderr: string) => void;
-      const err = Object.assign(new Error("exit"), { code: 128, stderr: "fatal: not a git repository" });
+      const err = Object.assign(new Error("exit"), {
+        code: 128,
+        stderr: "fatal: not a git repository",
+      });
       cb(err, "", "fatal: not a git repository");
       return failChild("fatal: not a git repository", 128);
     }) as never);
@@ -413,7 +416,10 @@ describe("WorkspacePulseRuntime — event-driven refresh", () => {
     expect(calls).toBe(2);
 
     d1.resolve(
-      cleanRepo({ branch: "stale", counts: { staged: 9, unstaged: 0, untracked: 0, conflicts: 0 } }),
+      cleanRepo({
+        branch: "stale",
+        counts: { staged: 9, unstaged: 0, untracked: 0, conflicts: 0 },
+      }),
     );
     d2.resolve(cleanRepo({ branch: "fresh" }));
     await flushMicrotasks();
@@ -457,7 +463,10 @@ describe("WorkspacePulseRuntime — failure and stale states", () => {
         const current = calls === 1 ? d1 : d2;
         return new Promise<WorkspaceInspection>((res, rej) => {
           signal.addEventListener("abort", () => rej(new Error("aborted")));
-          current.promise.then((v) => res(v), (e) => rej(e));
+          current.promise.then(
+            (v) => res(v),
+            (e) => rej(e),
+          );
         });
       },
     });
@@ -489,7 +498,11 @@ describe("WorkspacePulseRuntime — failure and stale states", () => {
 
   it("preserves the original staleSince across repeated failures", async () => {
     let calls = 0;
-    const deferreds = [deferred<WorkspaceInspection>(), deferred<WorkspaceInspection>(), deferred<WorkspaceInspection>()];
+    const deferreds = [
+      deferred<WorkspaceInspection>(),
+      deferred<WorkspaceInspection>(),
+      deferred<WorkspaceInspection>(),
+    ];
     const runtime = createWorkspacePulseRuntime({
       directory: "/repo",
       inspect: (_dir, signal) => {
@@ -754,15 +767,11 @@ describe("formatWorkspacePulse", () => {
   });
 
   it("renders Git ? for unavailable without a branch", () => {
-    expect(
-      formatWorkspacePulse({ ...base, status: "unavailable", checkedAt: 1 }),
-    ).toBe("Git ?");
+    expect(formatWorkspacePulse({ ...base, status: "unavailable", checkedAt: 1 })).toBe("Git ?");
   });
 
   it("renders not-repository as Git —", () => {
-    expect(
-      formatWorkspacePulse({ ...base, status: "not-repository", checkedAt: 1 }),
-    ).toBe("Git —");
+    expect(formatWorkspacePulse({ ...base, status: "not-repository", checkedAt: 1 })).toBe("Git —");
   });
 
   it("preserves prior snapshot and adds stale marker for stale state", () => {

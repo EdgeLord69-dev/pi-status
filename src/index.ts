@@ -180,9 +180,7 @@ export default function createExtension(pi: ExtensionAPI): void {
             usageState: usageRuntime.getState(),
             extensionStatuses: footerProviderState.extensionStatuses,
             activity: activityRuntime.snapshot(),
-            ...(workspacePulseRuntime
-              ? { workspacePulse: workspacePulseRuntime.snapshot() }
-              : {}),
+            ...(workspacePulseRuntime ? { workspacePulse: workspacePulseRuntime.snapshot() } : {}),
           });
           return buildFooterRowsFromResolved(
             resolveFooter(snapshot, snap.config, statusTheme),
@@ -304,9 +302,7 @@ export default function createExtension(pi: ExtensionAPI): void {
             usageState: usageRuntime.getState(),
             extensionStatuses: footerProviderState.extensionStatuses,
             activity: activityRuntime.snapshot(),
-            ...(workspacePulseRuntime
-              ? { workspacePulse: workspacePulseRuntime.snapshot() }
-              : {}),
+            ...(workspacePulseRuntime ? { workspacePulse: workspacePulseRuntime.snapshot() } : {}),
           });
           return createStatusLineEditor({
             config: editorSnap.config,

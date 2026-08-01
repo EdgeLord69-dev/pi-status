@@ -65,6 +65,7 @@ You can compose the footer from these segment IDs:
 - `project-name`
 - `current-dir`
 - `git-branch`
+- `workspace-pulse`
 - `run-state`
 - `context-remaining`
 - `context-used`
@@ -87,6 +88,30 @@ You can compose the footer from these segment IDs:
 The five telemetry segments are opt-in; none are enabled by default. Session token totals include assistant, tool-result, branch-summary, and compaction usage from all session entries. `cache-hit` reflects only the latest assistant prompt, `access-type` is `subscription` for OAuth or `kimi-coding` models and `metered` otherwise, and `session-cost` is best-effort telemetry rather than billing-grade data.
 
 The two live activity segments are also opt-in. They observe the current TUI session only and are session-local — nothing is persisted and nothing leaves the runtime. `turn-progress` renders values such as `Run 2s · Turn 3 1s · read×2 +1`; when no tool is active, it shows the most recently completed tool. `response-performance` renders values such as `TTFT 320ms · ~42.5 tok/s` and is omitted until TTFT is known. TTFT runs from provider dispatch to the first positive full assistant-message estimate, so thinking or tool-call content can establish the boundary before visible text. Streaming TPS is an estimate measured from that first token and may lag a throughput spike; when the response completes, Pi's official output usage replaces the estimate.
+
+### Workspace Pulse
+
+`workspace-pulse` is an opt-in, read-only Git workspace summary. Place it in any zone you want; it is disabled by default and never starts in RPC or non-TUI sessions. It runs only two bounded Git porcelain v2 commands — `git rev-parse --show-toplevel` and `git status --porcelain=v2 --branch --untracked-files=all` — each with a 2-second timeout, a 256 KiB output cap, locale-stable C output, and `GIT_OPTIONAL_LOCKS=0` so it never blocks other Git operations. The segment refreshes on session start, immediately on every `turn_start`, and 250 ms after every `tool_execution_end`. It never polls or watches the filesystem; edits made outside Pi are observed at the next turn. Coexist with `git-branch`: both segments can render simultaneously.
+
+Output tokens (always in this order, omitting any that are zero or unknown):
+
+- `Git` anchor + branch name (`HEAD` for detached, `—` when the branch is missing on a clean repository, `?` for unavailable without a branch)
+- `✓` check for a clean working tree
+- `!N` conflict count (conflict always wins over changed)
+- `+N` staged changes, `~N` unstaged edits, `?N` untracked files
+- `↑N` ahead of upstream, `↓N` behind upstream
+- `◌` stale marker when the segment cannot refresh after a successful inspection — the prior branch, counts, and ahead/behind remain visible until the next successful refresh
+
+State values:
+
+- `clean` — clean working tree, default branch known
+- `changed` — staged/unstaged/untracked work, no conflicts
+- `conflict` — unmerged entries exist (also implies changed)
+- `not-repository` — `cwd` is not inside a Git repository; terminal until the directory changes
+- `unavailable` — Git is missing, the process failed, the output exceeded the cap, or the inspection timed out
+- `stale` — the last known state is shown with a stale marker because a subsequent inspection failed
+
+Changed-file paths are never retained or displayed, the formatter never embeds internal error text or stack frames, and `unavailable` and `stale` never render the clean check.
 
 ## Session Actions
 

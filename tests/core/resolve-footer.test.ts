@@ -412,6 +412,8 @@ describe("resolveFooter", () => {
       completionNotifications: false,
     };
     const result = resolveFooter(snapshot, config, identityTheme);
-    expect(result.topLeft).toEqual([{ key: "workspace-pulse", text: "Git ✓ main", color: "success" }]);
+    expect(result.topLeft).toEqual([
+      { key: "workspace-pulse", text: "Git ✓ main", color: "success" },
+    ]);
   });
 });

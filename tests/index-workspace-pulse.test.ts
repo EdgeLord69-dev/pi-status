@@ -14,12 +14,7 @@ vi.mock("node:child_process", async (importOriginal) => {
   return {
     ...actual,
     execFile: vi.fn(
-      (
-        _file: string,
-        _args: readonly string[],
-        _options: unknown,
-        cb: ExecCb,
-      ): EventEmitter => {
+      (_file: string, _args: readonly string[], _options: unknown, cb: ExecCb): EventEmitter => {
         const child = new EventEmitter() as EventEmitter & {
           stdout: EventEmitter;
           stderr: EventEmitter;
@@ -124,11 +119,7 @@ describe("workspace pulse wiring", () => {
         cb: (err: unknown, stdout: string, stderr: string) => void,
       ) => {
         process.nextTick(() =>
-          cb(
-            null,
-            "# branch.oid abc\n# branch.head main\n# branch.ab +0 -0\n",
-            "",
-          ),
+          cb(null, "# branch.oid abc\n# branch.head main\n# branch.ab +0 -0\n", ""),
         );
       }) as never);
 

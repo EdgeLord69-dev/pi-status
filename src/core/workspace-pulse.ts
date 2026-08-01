@@ -31,10 +31,7 @@ export interface WorkspacePulseSnapshot {
 
 export interface WorkspacePulseRuntimeOptions {
   directory: string;
-  inspect?: (
-    directory: string,
-    signal: AbortSignal,
-  ) => Promise<WorkspaceInspection>;
+  inspect?: (directory: string, signal: AbortSignal) => Promise<WorkspaceInspection>;
 }
 
 export type WorkspaceInspection =
@@ -134,7 +131,11 @@ export function parseGitStatusV2(text: string): ParsedStatus {
   if (branch === undefined) throw new Error("missing branch.head");
 
   const status: "clean" | "changed" | "conflict" =
-    counts.conflicts > 0 ? "conflict" : counts.staged + counts.unstaged + counts.untracked > 0 ? "changed" : "clean";
+    counts.conflicts > 0
+      ? "conflict"
+      : counts.staged + counts.unstaged + counts.untracked > 0
+        ? "changed"
+        : "clean";
 
   return {
     branch,
@@ -167,7 +168,11 @@ type ExecFileFn = (
 ) => Readable;
 
 function isExecError(value: unknown): value is ExecException {
-  return !!value && typeof value === "object" && typeof (value as { message?: unknown }).message === "string";
+  return (
+    !!value &&
+    typeof value === "object" &&
+    typeof (value as { message?: unknown }).message === "string"
+  );
 }
 
 function buildEnv(): NodeJS.ProcessEnv {
@@ -228,7 +233,12 @@ export async function defaultInspect(
     runGit(exec, ["rev-parse", "--show-toplevel"], directory, signal)
       .then((stdout) => {
         root = stdout.trim();
-        return runGit(exec, ["status", "--porcelain=v2", "--branch", "--untracked-files=all"], root, signal);
+        return runGit(
+          exec,
+          ["status", "--porcelain=v2", "--branch", "--untracked-files=all"],
+          root,
+          signal,
+        );
       })
       .then((stdout) => {
         const parsed = parseGitStatusV2(stdout);
@@ -276,8 +286,7 @@ export class WorkspacePulseRuntime {
 
   constructor(options: WorkspacePulseRuntimeOptions) {
     this.directory = options.directory;
-    this.inspect =
-      options.inspect ?? ((dir, signal) => defaultInspect(dir, signal));
+    this.inspect = options.inspect ?? ((dir, signal) => defaultInspect(dir, signal));
     this.state = {
       snapshot: {
         status: "unavailable",
@@ -438,10 +447,7 @@ export function formatWorkspacePulse(snapshot: WorkspacePulseSnapshot): string {
   if (isStale) tokens.push("Git", "◌");
   else tokens.push("Git");
 
-  const branchLabel =
-    snapshot.status === "unavailable"
-      ? "?"
-      : snapshot.branch ?? "—";
+  const branchLabel = snapshot.status === "unavailable" ? "?" : (snapshot.branch ?? "—");
 
   if (snapshot.status === "clean") {
     tokens.push("✓", branchLabel);
