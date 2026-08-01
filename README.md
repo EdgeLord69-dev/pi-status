@@ -111,7 +111,7 @@ The two live activity segments are also opt-in. They observe the current TUI ses
 - `/statusline preset` opens a selector titled `Choose display preset`; the choices are `minimal`, `balanced`, and `telemetry`. Cancelling the selector leaves every config field untouched.
 - `/statusline preset minimal|balanced|telemetry` skips the selector. An unknown name or extra tokens show `Usage: /statusline preset [minimal|balanced|telemetry]`.
 - Each preset replaces every segment in all four zones. The preview lists the exact IDs that will be written, with `—` for empty zones. Segments whose backing data is unavailable render blank until their source has data.
-- Persistence path: `<Pi agent directory>/extensions/statusline.json` (overridable via `$PI_CODING_AGENT_DIR`). The footer field, completion-notification preference, and extension-status hidden list are preserved unchanged.
+- Persistence path: `<Pi agent directory>/extensions/statusline.json` (overridable via `$PI_CODING_AGENT_DIR`). Other config fields—the completion-notification preference and extension-status hidden list—are preserved unchanged.
 
 ### Preset Layouts
 
