@@ -329,6 +329,9 @@ export default function createExtension(pi: ExtensionAPI): void {
   });
 
   pi.on("session_start", (_event, ctx) => {
+    workspacePulseRuntime?.setOnChange(undefined);
+    workspacePulseRuntime?.dispose();
+    workspacePulseRuntime = undefined;
     resetFooterProviderState();
     activityRuntime.setOnChange(undefined);
     activityRuntime.reset();

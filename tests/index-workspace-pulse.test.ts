@@ -5,8 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import createExtension from "../src/index.ts";
-import { buildSetFooterSpy, createBus, createContext, buildPiWithHandlers } from "./helpers.ts";
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { buildSetFooterSpy, createContext, buildPiWithHandlers } from "./helpers.ts";
 
 vi.mock("node:child_process", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:child_process")>();
@@ -43,7 +42,7 @@ afterEach(() => {
 
 const execFileMock = vi.mocked(execFile);
 
-function repoOutput(stdout: string): EventEmitter {
+function fakeChild(): EventEmitter {
   const child = new EventEmitter() as EventEmitter & {
     stdout: EventEmitter;
     stderr: EventEmitter;
@@ -62,12 +61,6 @@ function writeConfig(zones: unknown): void {
     JSON.stringify({ zones, extensionSegments: { hidden: [] } }),
     "utf8",
   );
-}
-
-function setupHarness() {
-  const harness = buildPiWithHandlers();
-  createExtension(harness.pi);
-  return harness;
 }
 
 function withEnabledZone(zones: Record<string, readonly string[]>) {
@@ -133,6 +126,42 @@ describe("workspace pulse wiring", () => {
     expect(execFileMock).toHaveBeenCalledTimes(2);
   });
 
+  it("creates a fresh runtime for a replacement session cwd", async () => {
+    withEnabledZone({ bottomLeft: ["workspace-pulse"] });
+    execFileMock.mockImplementation(((
+      _file: string,
+      args: readonly string[],
+      options: { cwd: string },
+      cb: (err: unknown, stdout: string, stderr: string) => void,
+    ) => {
+      process.nextTick(() =>
+        cb(
+          null,
+          args[0] === "rev-parse" ? `${options.cwd}\n` : "# branch.oid abc\n# branch.head main\n",
+          "",
+        ),
+      );
+      return fakeChild();
+    }) as never);
+
+    const { pi, handlers } = buildPiWithHandlers();
+    createExtension(pi);
+    const first = createContext({ cwd: "/repo/one" });
+    const second = createContext({ cwd: "/repo/two" });
+
+    for (const h of handlers.get("session_start") ?? []) h({}, first);
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+    for (const h of handlers.get("session_start") ?? []) h({}, second);
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+
+    const rootCwds = execFileMock.mock.calls
+      .filter(([, args]) => (args as readonly string[])[0] === "rev-parse")
+      .map(([, , options]) => (options as { cwd: string }).cwd);
+    expect(rootCwds).toEqual(["/repo/one", "/repo/two"]);
+  });
+
   it("does not restart the inspection when the segment moves between zones", async () => {
     withEnabledZone({ bottomLeft: ["workspace-pulse"] });
     execFileMock
@@ -170,6 +199,45 @@ describe("workspace pulse wiring", () => {
     for (const h of handlers.get("session_tree") ?? []) h({}, ctx);
     await new Promise((r) => setImmediate(r));
     expect(execFileMock.mock.calls.length).toBe(callsAfterStart);
+  });
+
+  it("stops lifecycle refreshes when workspace-pulse is removed", async () => {
+    withEnabledZone({ bottomLeft: ["workspace-pulse"] });
+    execFileMock.mockImplementation(((
+      _file: string,
+      args: readonly string[],
+      options: { cwd: string },
+      cb: (err: unknown, stdout: string, stderr: string) => void,
+    ) => {
+      process.nextTick(() =>
+        cb(
+          null,
+          args[0] === "rev-parse" ? `${options.cwd}\n` : "# branch.oid abc\n# branch.head main\n",
+          "",
+        ),
+      );
+      return fakeChild();
+    }) as never);
+
+    const { pi, handlers } = buildPiWithHandlers();
+    createExtension(pi);
+    const ctx = createContext();
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+
+    withEnabledZone({ bottomLeft: ["model"] });
+    for (const h of handlers.get("session_tree") ?? []) h({}, ctx);
+    const callsAfterRemoval = execFileMock.mock.calls.length;
+
+    for (const h of handlers.get("turn_start") ?? []) {
+      h({ turnIndex: 0, timestamp: Date.now() }, ctx);
+    }
+    for (const h of handlers.get("tool_execution_end") ?? []) {
+      h({ toolCallId: "t1", isError: false }, ctx);
+    }
+    await new Promise((r) => setTimeout(r, 260));
+    expect(execFileMock).toHaveBeenCalledTimes(callsAfterRemoval);
   });
 
   it("schedules a debounced refresh on tool_execution_end", async () => {
