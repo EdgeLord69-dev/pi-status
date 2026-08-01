@@ -903,6 +903,35 @@ describe("formatSegment — weekly-limit", () => {
 });
 
 describe("buildFooterRows", () => {
+  it("keeps workspace pulse ahead of directory and branch as width narrows", () => {
+    const configured = segmentInput({
+      model: { id: "m", name: "M" },
+      cwd: "/work",
+      gitBranch: "main",
+      workspacePulse: {
+        status: "clean",
+        directory: "/work",
+        root: "/work",
+        branch: "main",
+        ahead: 0,
+        behind: 0,
+        counts: { staged: 0, unstaged: 0, untracked: 0, conflicts: 0 },
+      },
+      zones: {
+        topLeft: ["model", "workspace-pulse", "current-dir", "git-branch"],
+        topRight: [],
+        bottomLeft: [],
+        bottomRight: [],
+      },
+    });
+
+    expect(buildFooterRows(configured, identityTheme, 200)).toEqual([
+      "M · Git ✓ main · /work · main",
+    ]);
+    expect(buildFooterRows(configured, identityTheme, 14)).toEqual(["M · Git ✓ main"]);
+    expect(buildFooterRows(configured, identityTheme, 1)).toEqual(["M"]);
+  });
+
   it("retains configured telemetry at wide widths and tier-zero anchors as space narrows", () => {
     const configured = segmentInput({
       model: { id: "gpt-5", name: "GPT-5" },
