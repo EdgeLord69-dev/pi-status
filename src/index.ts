@@ -9,13 +9,13 @@ import { createRuntimeStateMachine } from "./core/runtime-state.ts";
 import { createUsageRuntime } from "./core/usage-runtime.ts";
 import { createWorkspacePulseRuntime, type WorkspacePulseRuntime } from "./core/workspace-pulse.ts";
 import type { AccessType, PiStatusConfig, StatusLineZones } from "./shared/types.ts";
-import { createStatusLineEditor } from "./tui/editor.ts";
 import { parseStatusLineCommand } from "./tui/command-router.ts";
 import { handleDisplayPreset } from "./tui/preset-actions.ts";
 import { openToolControls } from "./tui/tool-controls.ts";
 import { handleSessionActions } from "./tui/session-actions.ts";
 import { buildFooterRowsFromResolved } from "./tui/render.ts";
-import { fromPiTheme, noColorRequested, noTheme, type StatusLineTheme } from "./tui/theme.ts";
+import { fromPiTheme, noColorRequested, noTheme } from "./tui/theme.ts";
+import { openStatusLineDashboard, type StatusLineDashboardComponent } from "./tui/dashboard.ts";
 
 type FooterComponent = {
   render: (width: number) => string[];
@@ -40,18 +40,8 @@ type FooterProviderState = {
   extensionStatuses: Map<string, string>;
 };
 
-const EMPTY_FOOTER_FACTORY: FooterFactory = () => ({
-  render(): string[] {
-    return [];
-  },
-  invalidate(): void {},
-  dispose(): void {},
-});
-
-function isLiveTheme(value: unknown): boolean {
-  if (!value || typeof value !== "object") return false;
-  const candidate = value as { fg?: unknown; bold?: unknown };
-  return typeof candidate.fg === "function" && typeof candidate.bold === "function";
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function getAccessType(ctx: ExtensionContext): AccessType | undefined {
@@ -76,6 +66,35 @@ export default function createExtension(pi: ExtensionAPI): void {
     saveConfig(next);
     runtimeState.update({ type: "config_reload", config: next });
     syncWorkspacePulse(next);
+  }
+
+  let dashboardOpen = false;
+  let activeDashboard: StatusLineDashboardComponent | undefined;
+
+  function closeActiveDashboard(): void {
+    activeDashboard?.close();
+    activeDashboard = undefined;
+  }
+
+  function currentFooterInput(ctx: ExtensionContext) {
+    const snap = runtimeState.snapshot();
+    const activeCtx = snap.ctx ?? ctx;
+    return buildSnapshot({
+      model: activeCtx.model,
+      cwd: activeCtx.cwd,
+      thinkingLevel: snap.thinkingLevel,
+      gitBranch: footerProviderState.gitBranch,
+      isIdle: activeCtx.isIdle(),
+      hasPendingMessages: activeCtx.hasPendingMessages(),
+      contextUsage: activeCtx.getContextUsage(),
+      entries: activeCtx.sessionManager.getEntries() as unknown[],
+      accessType: getAccessType(activeCtx),
+      sessionId: activeCtx.sessionManager.getSessionId(),
+      usageState: usageRuntime.getState(),
+      extensionStatuses: footerProviderState.extensionStatuses,
+      activity: activityRuntime.snapshot(),
+      ...(workspacePulseRuntime ? { workspacePulse: workspacePulseRuntime.snapshot() } : {}),
+    });
   }
 
   const usageRuntime = createUsageRuntime(pi);
@@ -166,22 +185,7 @@ export default function createExtension(pi: ExtensionAPI): void {
           const snap = runtimeState.snapshot();
           const activeCtx = snap.ctx ?? ctx;
           const statusTheme = noColorRequested() ? noTheme : fromPiTheme(theme);
-          const snapshot = buildSnapshot({
-            model: activeCtx.model,
-            cwd: activeCtx.cwd,
-            thinkingLevel: snap.thinkingLevel,
-            gitBranch: footerProviderState.gitBranch,
-            isIdle: activeCtx.isIdle(),
-            hasPendingMessages: activeCtx.hasPendingMessages(),
-            contextUsage: activeCtx.getContextUsage(),
-            entries: activeCtx.sessionManager.getEntries() as unknown[],
-            accessType: getAccessType(activeCtx),
-            sessionId: activeCtx.sessionManager.getSessionId(),
-            usageState: usageRuntime.getState(),
-            extensionStatuses: footerProviderState.extensionStatuses,
-            activity: activityRuntime.snapshot(),
-            ...(workspacePulseRuntime ? { workspacePulse: workspacePulseRuntime.snapshot() } : {}),
-          });
+          const snapshot = currentFooterInput(ctx);
           return buildFooterRowsFromResolved(
             resolveFooter(snapshot, snap.config, statusTheme),
             statusTheme,
@@ -195,8 +199,9 @@ export default function createExtension(pi: ExtensionAPI): void {
     syncWorkspacePulse(runtimeState.snapshot().config);
   }
 
-  function installEmptyFooter(ctx: ExtensionContext): void {
-    if (ctx.mode === "tui") ctx.ui.setFooter(EMPTY_FOOTER_FACTORY as never);
+  function installEmptyFooter(_ctx: ExtensionContext): void {
+    // Retained for backwards compatibility; the dashboard overlay no longer
+    // replaces the live footer while open.
   }
 
   function handleNotificationsCommand(
@@ -272,63 +277,47 @@ export default function createExtension(pi: ExtensionAPI): void {
         ctx.ui.notify("/statusline requires interactive UI", "warning");
         return;
       }
+      if (dashboardOpen) return;
+      dashboardOpen = true;
 
       const discovered = [...footerProviderState.extensionStatuses.keys()].sort((a, b) =>
         a.localeCompare(b),
       );
 
-      let result: PiStatusConfig | null = null;
       try {
-        installEmptyFooter(ctx);
-        result = await ctx.ui.custom<PiStatusConfig | null>((tui, theme, _keys, done) => {
-          const editorSnap = runtimeState.snapshot();
-          const activeCtx = editorSnap.ctx ?? ctx;
-          const menuTheme: StatusLineTheme = noColorRequested()
-            ? noTheme
-            : isLiveTheme(theme)
-              ? fromPiTheme(theme)
-              : noTheme;
-          const snapshot = buildSnapshot({
-            model: activeCtx.model,
-            cwd: activeCtx.cwd,
-            thinkingLevel: editorSnap.thinkingLevel,
-            gitBranch: footerProviderState.gitBranch,
-            isIdle: activeCtx.isIdle(),
-            hasPendingMessages: activeCtx.hasPendingMessages(),
-            contextUsage: activeCtx.getContextUsage(),
-            entries: activeCtx.sessionManager.getEntries() as unknown[],
-            accessType: getAccessType(activeCtx),
-            sessionId: activeCtx.sessionManager.getSessionId(),
-            usageState: usageRuntime.getState(),
-            extensionStatuses: footerProviderState.extensionStatuses,
-            activity: activityRuntime.snapshot(),
-            ...(workspacePulseRuntime ? { workspacePulse: workspacePulseRuntime.snapshot() } : {}),
-          });
-          return createStatusLineEditor({
-            config: editorSnap.config,
-            discoveredStatuses: discovered,
-            previewInput: snapshot,
-            theme: menuTheme,
-            done,
-            requestRender: () => tui.requestRender?.(),
-            usageAvailable: usageRuntime.getAvailable(),
-          });
+        await openStatusLineDashboard({
+          pi,
+          ctx,
+          config: runtimeState.snapshot().config,
+          discoveredStatuses: discovered,
+          usageAvailable: usageRuntime.getAvailable(),
+          getPreviewInput: () => currentFooterInput(ctx),
+          save: (next) => {
+            try {
+              saveAndApplyConfig(next);
+            } catch {
+              ctx.ui.notify("Failed to save statusline config", "warning");
+              throw new Error("save failed");
+            }
+          },
+          onComponent(component) {
+            activeDashboard = component;
+          },
+          onClosed() {
+            activeDashboard = undefined;
+          },
         });
+      } catch (error) {
+        ctx.ui.notify(`Could not open statusline dashboard: ${errorText(error)}`, "warning");
       } finally {
-        installFooter(ctx);
-      }
-
-      if (!result) return;
-
-      try {
-        saveAndApplyConfig(result);
-      } catch {
-        ctx.ui.notify("Failed to save statusline config", "warning");
+        dashboardOpen = false;
+        activeDashboard = undefined;
       }
     },
   });
 
   pi.on("session_start", (_event, ctx) => {
+    closeActiveDashboard();
     workspacePulseRuntime?.setOnChange(undefined);
     workspacePulseRuntime?.dispose();
     workspacePulseRuntime = undefined;
@@ -349,6 +338,7 @@ export default function createExtension(pi: ExtensionAPI): void {
   });
 
   pi.on("session_tree", (_event, ctx) => {
+    closeActiveDashboard();
     resetFooterProviderState();
     activityRuntime.setOnChange(undefined);
     activityRuntime.reset();
@@ -445,6 +435,7 @@ export default function createExtension(pi: ExtensionAPI): void {
   pi.on("session_shutdown", (_event, ctx) => {
     const activeCtx = runtimeState.snapshot().ctx;
     if (activeCtx && activeCtx.sessionManager !== ctx.sessionManager) return;
+    closeActiveDashboard();
     resetFooterProviderState();
     if (
       activeTuiSessionManager === undefined ||

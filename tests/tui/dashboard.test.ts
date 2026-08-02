@@ -254,9 +254,7 @@ describe("StatusLineDashboardComponent", () => {
     component.handleInput("\r"); // Toggle notifications (first row)
     component.handleInput("\x1b[B"); // Move to Save
     component.handleInput("\r"); // Activate Save
-    expect(save).toHaveBeenCalledWith(
-      expect.objectContaining({ completionNotifications: true }),
-    );
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({ completionNotifications: true }));
     expect(component.getState().draft.completionNotifications).toBe(true);
     expect(component.getState().baseline.completionNotifications).toBe(true);
   });
@@ -373,10 +371,7 @@ describe("StatusLineDashboardComponent", () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(handle.focus).toHaveBeenCalled();
-    expect(ctx.ui.notify).not.toHaveBeenCalledWith(
-      expect.stringContaining("renamed"),
-      "info",
-    );
+    expect(ctx.ui.notify).not.toHaveBeenCalledWith(expect.stringContaining("renamed"), "info");
   });
 
   it("keeps the dashboard open when rename input is blank", async () => {
@@ -448,10 +443,7 @@ describe("StatusLineDashboardComponent", () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(pi.setSessionName).not.toHaveBeenCalled();
-    expect(ctx.ui.notify).not.toHaveBeenCalledWith(
-      expect.stringContaining("renamed"),
-      "info",
-    );
+    expect(ctx.ui.notify).not.toHaveBeenCalledWith(expect.stringContaining("renamed"), "info");
     expect(handle.focus).not.toHaveBeenCalled();
   });
 
@@ -484,16 +476,16 @@ describe("openStatusLineDashboard", () => {
     handle: OverlayHandle;
     callDone: (value: unknown) => void;
     capturedComponent: () => unknown;
-    options: Parameters<
-      typeof import("../../src/tui/dashboard.ts").openStatusLineDashboard
-    >[0];
+    options: Parameters<typeof import("../../src/tui/dashboard.ts").openStatusLineDashboard>[0];
   }
 
-  function setupOpenHost(extraOverrides: {
-    ctxOverrides?: Partial<ExtensionCommandContext>;
-    piOverrides?: Partial<ExtensionAPI>;
-    input?: Promise<string | undefined>;
-  } = {}): OpenHost {
+  function setupOpenHost(
+    extraOverrides: {
+      ctxOverrides?: Partial<ExtensionCommandContext>;
+      piOverrides?: Partial<ExtensionAPI>;
+      input?: Promise<string | undefined>;
+    } = {},
+  ): OpenHost {
     const handle = {
       focus: vi.fn(),
       hide: vi.fn(),
@@ -546,15 +538,10 @@ describe("openStatusLineDashboard", () => {
               handleInput?: (d: string) => void;
               setOverlayHandle?: (h: OverlayHandle) => void;
             }
-          )(
-            fakeTui,
-            null,
-            {},
-            (value: unknown) => {
-              component.dispose();
-              resolveCustom?.(value);
-            },
-          );
+          )(fakeTui, null, {}, (value: unknown) => {
+            component.dispose();
+            resolveCustom?.(value);
+          });
           ctxState.component = component;
           if (options?.onHandle) options.onHandle(handle);
           return customPromise;
@@ -589,8 +576,7 @@ describe("openStatusLineDashboard", () => {
       config: config(),
       discoveredStatuses: ["build"],
       usageAvailable: true,
-      getPreviewInput: () =>
-        previewInput as Omit<FooterRenderInput, "zones" | "extensionSegments">,
+      getPreviewInput: () => previewInput as Omit<FooterRenderInput, "zones" | "extensionSegments">,
       save: vi.fn(),
     };
     return {

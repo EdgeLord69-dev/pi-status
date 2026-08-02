@@ -1,4 +1,8 @@
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ExtensionCommandContext,
+  ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
 import { vi } from "vitest";
 import type { ConfigStore } from "../src/shared/types.ts";
 import { DEFAULT_ZONES } from "../src/shared/types.ts";
@@ -16,13 +20,15 @@ export function withDefaults(
   };
 }
 
-export function createContext(overrides?: Partial<ExtensionContext>): ExtensionContext {
+export function createContext(
+  overrides?: Partial<ExtensionCommandContext>,
+): ExtensionCommandContext {
   return {
     ui: {
       select: async () => undefined,
       confirm: async () => false,
       input: async () => undefined,
-      notify: () => {},
+      notify: vi.fn(),
       setStatus: () => {},
       setWorkingMessage: () => {},
       setWorkingVisible: () => {},
@@ -54,27 +60,37 @@ export function createContext(overrides?: Partial<ExtensionContext>): ExtensionC
     } as unknown as ExtensionContext["sessionManager"],
     modelRegistry: { isUsingOAuth: () => false } as unknown as ExtensionContext["modelRegistry"],
     model: { id: "gpt-5", name: "GPT-5", provider: "anthropic", reasoning: true } as never,
+    scopedModels: [],
+    isProjectTrusted: () => true,
+    signal: undefined,
     isIdle: () => true,
     abort: () => {},
     hasPendingMessages: () => false,
     shutdown: () => {},
     getContextUsage: () => undefined,
-    compact: () => {},
+    compact: vi.fn(),
     getSystemPrompt: () => "",
+    getSystemPromptOptions: () => ({}) as never,
+    waitForIdle: async () => {},
+    newSession: async () => ({ cancelled: false }),
+    fork: async () => ({ cancelled: false }),
+    navigateTree: async () => ({ cancelled: false }),
+    switchSession: async () => ({ cancelled: false }),
+    reload: async () => {},
     ...overrides,
-  } as ExtensionContext;
+  } as ExtensionCommandContext;
 }
 
 export function getRegisteredCommand(
   calls: readonly (readonly unknown[])[],
   name: string,
 ): {
-  handler: (args: string, ctx: ExtensionContext) => Promise<void> | void;
+  handler: (args: string, ctx: ExtensionCommandContext) => Promise<void> | void;
 } {
   const command = calls.find(([registeredName]) => registeredName === name);
   if (!command) throw new Error(`Command not registered: ${name}`);
   return command[1] as {
-    handler: (args: string, ctx: ExtensionContext) => Promise<void> | void;
+    handler: (args: string, ctx: ExtensionCommandContext) => Promise<void> | void;
   };
 }
 
@@ -114,6 +130,11 @@ export function buildPiWithHandlers(options: { thinkingLevel?: string } = {}) {
     getThinkingLevel: () => options.thinkingLevel ?? "medium",
     getSessionName: vi.fn(() => undefined),
     setSessionName: vi.fn(),
+    getAllTools: vi.fn(() => [
+      { name: "read", description: "Read files", parameters: {} as never },
+    ]),
+    getActiveTools: vi.fn(() => ["read"]),
+    setActiveTools: vi.fn(),
   } as unknown as ExtensionAPI;
   return { pi, handlers, registerCommandCalls: registerCommand.calls, events };
 }
