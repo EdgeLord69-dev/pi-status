@@ -25,6 +25,7 @@ The architecture remains valid, but the plan must correct these execution contra
 4. Dashboard integration fixtures must provide `ExtensionCommandContext` and complete tool, session, dialog, and compaction APIs.
 5. State work must extend the existing `structuredClone` path rather than a nonexistent `cloneState()` helper.
 6. Replacing the old no-argument editor path must explicitly remove declarations and imports that become dead.
+7. Printable-key handling must decode Kitty CSI-u input; comparing raw terminal data with `"q"` is insufficient under Pi 0.83's keyboard protocol.
 
 `fromPiTheme()` already validates unknown themes and falls back to `noTheme`; no second theme guard is needed. Existing null or incomplete-theme coverage moves to the new dashboard boundary.
 
@@ -77,6 +78,8 @@ It owns dashboard state, a nullable `OverlayHandle`, busy state, and closed stat
 `close()` marks the component closed and calls `done()` once. Pi then disposes the component. `invalidate()` and `dispose()` perform cleanup only and are idempotent. Confirmed compaction closes first, producing the observable order `done -> dispose -> compact` under the host-realistic test fake.
 
 ### Keyboard and effects
+
+At the start of input handling, derive an optional printable ASCII character with Pi 0.83's public `decodeKittyPrintable(data)` and a raw one-character ASCII fallback. Use this decoded character for both the global `q` decision and searchable-tab text input. Do not depend on `data === "q"` or `data.length === 1`, because Kitty CSI-u sequences encode printable keys as multi-byte terminal input. Space and other action keys still use `matchesKey()` before generic printable insertion.
 
 Keyboard precedence remains:
 
@@ -146,6 +149,7 @@ Tests cover:
 - `done -> dispose -> compact` ordering;
 - initial partial snapshot failures;
 - terminal resizing and bounded equal heights;
+- raw and Kitty CSI-u printable input, including `q` as query text on searchable tabs and as close on other tabs;
 - lifecycle closure while rename or compact dialogs are pending, followed by resolution with no stale host mutation.
 
 Index tests use dashboard-specific `ExtensionCommandContext` fixtures and a deferred custom overlay mock. They cover exact overlay options, footer continuity, duplicate-open suppression, in-place saving, open failure and retry, non-TUI rejection, lifecycle closure, and unchanged legacy argument routes.
