@@ -9,6 +9,7 @@ import {
   StatusLineDashboardComponent,
   type StatusLineDashboardOptions,
 } from "../../src/tui/dashboard.ts";
+import { isDashboardDirty } from "../../src/tui/dashboard-state.ts";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -102,14 +103,14 @@ function makeDashboard(overrides: DashboardOverrides = {}): DashboardHarness {
       notify: vi.fn(),
       custom: vi.fn(async () => undefined),
     },
-    compact:
-      overrides.compact ??
-      ((options?: { onComplete?: () => void; onError?: (e: Error) => void }) => {
-        order.push("compact");
-        try {
-          options?.onComplete?.();
-        } catch {}
-      }),
+    compact: overrides.compact
+      ? vi.fn(overrides.compact)
+      : vi.fn((options?: { onComplete?: () => void; onError?: (e: Error) => void }) => {
+          order.push("compact");
+          try {
+            options?.onComplete?.();
+          } catch {}
+        }),
     ...overrides.ctxOverrides,
   } as unknown as ExtensionCommandContext;
 
@@ -287,5 +288,184 @@ describe("StatusLineDashboardComponent", () => {
     expect(pi.setActiveTools).not.toHaveBeenCalled();
     expect(component.getState().tools[0]?.enabled).toBe(true);
     expect(ctx.ui.notify).toHaveBeenCalledWith("At least one tool must remain active", "warning");
+  });
+
+  it("closes cleanly via q", () => {
+    const { component, done, order } = makeDashboard();
+    component.handleInput("q");
+    expect(done).toHaveBeenCalledTimes(1);
+    expect(order).toEqual(["done", "dispose"]);
+  });
+
+  it("preserves state on cancelled dirty close", async () => {
+    const { component, handle, order } = makeDashboard();
+    component.handleInput("\x1b[Z"); // Settings
+    component.handleInput("\r"); // toggle notifications
+    expect(isDashboardDirty(component.getState())).toBe(true);
+    component.handleInput("q"); // request close
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(handle.focus).toHaveBeenCalled();
+    expect(order).toEqual(["handle.focus"]);
+    expect(isDashboardDirty(component.getState())).toBe(true);
+  });
+
+  it("closes after dirty confirmation", async () => {
+    const { component, handle, order } = makeDashboard({ confirm: true });
+    component.handleInput("\x1b[Z");
+    component.handleInput("\r");
+    component.handleInput("q");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(order).toContain("done");
+    expect(handle.focus).not.toHaveBeenCalled();
+  });
+
+  it("idempotent close/invalidate/dispose", () => {
+    const { component, done, handle } = makeDashboard();
+    component.close();
+    component.close();
+    component.close();
+    component.invalidate();
+    component.invalidate();
+    component.dispose();
+    component.dispose();
+    expect(done).toHaveBeenCalledTimes(1);
+    expect(handle.focus).not.toHaveBeenCalled();
+  });
+
+  it("renames the session snapshot and restores overlay focus", async () => {
+    const input = deferred<string | undefined>();
+    const { component, ctx, pi, handle } = makeDashboard({ input: input.promise });
+    component.handleInput("\t"); // Statuses
+    component.handleInput("\t"); // Session
+    component.handleInput("\r"); // Rename (first row)
+    input.resolve("  Release work  ");
+    await input.promise;
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(pi.setSessionName).toHaveBeenCalledWith("Release work");
+    expect(component.getState().session?.name).toBe("Release work");
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Session renamed to Release work", "info");
+    expect(handle.focus).toHaveBeenCalled();
+  });
+
+  it("closes and disposes before confirmed compaction starts", async () => {
+    const { component, ctx, order } = makeDashboard({ confirm: true });
+    component.handleInput("\t"); // Statuses
+    component.handleInput("\t"); // Session
+    component.handleInput("\x1b[B"); // Compact
+    component.handleInput("\r"); // Activate
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(ctx.compact).toHaveBeenCalledOnce();
+    expect(order).toEqual(["done", "dispose", "compact"]);
+  });
+
+  it("focuses the overlay when rename is cancelled", async () => {
+    const input = deferred<string | undefined>();
+    const { component, handle, ctx } = makeDashboard({ input: input.promise });
+    component.handleInput("\t");
+    component.handleInput("\t");
+    component.handleInput("\r");
+    input.resolve(undefined);
+    await input.promise;
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(handle.focus).toHaveBeenCalled();
+    expect(ctx.ui.notify).not.toHaveBeenCalledWith(
+      expect.stringContaining("renamed"),
+      "info",
+    );
+  });
+
+  it("keeps the dashboard open when rename input is blank", async () => {
+    const input = deferred<string | undefined>();
+    const { component, pi, handle } = makeDashboard({ input: input.promise });
+    component.handleInput("\t");
+    component.handleInput("\t");
+    component.handleInput("\r");
+    input.resolve("   ");
+    await input.promise;
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(pi.setSessionName).not.toHaveBeenCalled();
+    expect(handle.focus).toHaveBeenCalled();
+  });
+
+  it("warns and keeps open when setSessionName throws", async () => {
+    const input = deferred<string | undefined>();
+    const { component, ctx, pi, handle } = makeDashboard({
+      input: input.promise,
+      piOverrides: {
+        setSessionName: vi.fn(() => {
+          throw new Error("rename failed");
+        }),
+      },
+    });
+    component.handleInput("\t");
+    component.handleInput("\t");
+    component.handleInput("\r");
+    input.resolve("New name");
+    await input.promise;
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(pi.setSessionName).toHaveBeenCalledWith("New name");
+    expect(ctx.ui.notify).toHaveBeenCalledWith("rename failed", "warning");
+    expect(handle.focus).toHaveBeenCalled();
+  });
+
+  it("warns but does not focus when compact throws after close", async () => {
+    const { component, ctx, handle, order } = makeDashboard({
+      confirm: true,
+      compact: () => {
+        order.push("compact");
+        throw new Error("compact boom");
+      },
+    });
+    component.handleInput("\t");
+    component.handleInput("\t");
+    component.handleInput("\x1b[B");
+    component.handleInput("\r");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(ctx.compact).toHaveBeenCalledOnce();
+    expect(ctx.ui.notify).toHaveBeenCalledWith("compact boom", "warning");
+    expect(order).toContain("done");
+    expect(handle.focus).not.toHaveBeenCalled();
+  });
+
+  it("ignores stale rename when closed before dialog resolves", async () => {
+    const input = deferred<string | undefined>();
+    const { component, pi, ctx, handle, order } = makeDashboard({ input: input.promise });
+    component.handleInput("\t");
+    component.handleInput("\t");
+    component.handleInput("\r");
+    component.close();
+    expect(order).toEqual(["done", "dispose"]);
+    input.resolve("Late");
+    await input.promise;
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(pi.setSessionName).not.toHaveBeenCalled();
+    expect(ctx.ui.notify).not.toHaveBeenCalledWith(
+      expect.stringContaining("renamed"),
+      "info",
+    );
+    expect(handle.focus).not.toHaveBeenCalled();
+  });
+
+  it("ignores stale compact when closed before dialog resolves", async () => {
+    const { component, ctx, handle, order } = makeDashboard();
+    component.handleInput("\t");
+    component.handleInput("\t");
+    component.handleInput("\x1b[B");
+    component.handleInput("\r");
+    component.close();
+    expect(order).toEqual(["done", "dispose"]);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(ctx.compact).not.toHaveBeenCalled();
+    expect(handle.focus).not.toHaveBeenCalled();
   });
 });
