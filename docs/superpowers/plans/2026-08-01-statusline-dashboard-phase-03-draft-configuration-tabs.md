@@ -232,6 +232,20 @@ describe("dashboard draft initialization", () => {
     expect(configsEqual(first, config({ zones: zones({ topLeft: ["current-dir", "model-with-reasoning"] }) }))).toBe(false);
   });
 
+  it("preserves assigned unavailable usage segments while hiding their controls", () => {
+    const state = initDashboardState(
+      config({ zones: zones({ topLeft: ["five-hour-limit", "model"] }) }),
+      [],
+      false,
+    );
+    expect(state.draft.zones.topLeft).toEqual(["five-hour-limit", "model"]);
+    expect(state.visibleSegmentIds).not.toContain("five-hour-limit");
+    expect(selectableRows(state)).not.toContainEqual({
+      type: "segment",
+      id: "five-hour-limit",
+    });
+  });
+
   it("keeps Save reachable when status search has no matches", () => {
     const state = initDashboardState(config(), ["alpha"], true);
     state.activeTab = "statuses";
@@ -375,9 +389,26 @@ function includesFuzzy(haystack: string, needle: string): boolean {
   return queryIndex === query.length;
 }
 
-function presetForZones(zones: PiStatusConfig["zones"]): PresetDisplay {
+function visiblePreset(
+  name: (typeof DISPLAY_PRESET_NAMES)[number],
+  visibleSegmentIds: readonly StatusLineSegmentId[],
+): StatusLineZones {
+  const preset = displayPreset(name);
+  return {
+    topLeft: preset.topLeft.filter((id) => visibleSegmentIds.includes(id)),
+    topRight: preset.topRight.filter((id) => visibleSegmentIds.includes(id)),
+    bottomLeft: preset.bottomLeft.filter((id) => visibleSegmentIds.includes(id)),
+    bottomRight: preset.bottomRight.filter((id) => visibleSegmentIds.includes(id)),
+  };
+}
+
+function presetForZones(
+  zones: PiStatusConfig["zones"],
+  visibleSegmentIds: readonly StatusLineSegmentId[],
+): PresetDisplay {
   for (const name of DISPLAY_PRESET_NAMES) {
-    if (STATUS_LINE_ZONE_ORDER.every((zone) => sameArray(zones[zone], displayPreset(name)[zone]))) {
+    const preset = visiblePreset(name, visibleSegmentIds);
+    if (STATUS_LINE_ZONE_ORDER.every((zone) => sameArray(zones[zone], preset[zone]))) {
       return name;
     }
   }
@@ -392,16 +423,17 @@ export function initDashboardState(
   usageAvailable = true,
 ): DashboardState {
   const baseline = cloneConfig(config);
+  const visibleSegmentIds = SEGMENT_ORDER.map(({ id }) => id).filter(
+    (id) => usageAvailable || !isUsageSegment(id),
+  );
   return {
     activeTab: "layout",
     baseline,
     draft: cloneConfig(config),
     activeZone: "topLeft",
-    preset: presetForZones(config.zones),
+    preset: presetForZones(config.zones, visibleSegmentIds),
     discoveredStatuses: [...new Set(discoveredStatuses)].sort((a, b) => a.localeCompare(b)),
-    visibleSegmentIds: SEGMENT_ORDER.map(({ id }) => id).filter(
-      (id) => usageAvailable || !isUsageSegment(id),
-    ),
+    visibleSegmentIds,
     navigation: {
       layout: emptyNavigation(),
       statuses: emptyNavigation(),
@@ -511,9 +543,10 @@ it("cycles tabs while preserving independent navigation", () => {
 
 it("applies presets to draft only and marks manual edits custom", () => {
   let state = initDashboardState(config(), [], true);
-  state = dispatch(state, { type: "adjust", delta: 1 });
   expect(state.preset).toBe("minimal");
-  expect(state.draft.zones).toEqual(displayPreset("minimal"));
+  state = dispatch(state, { type: "adjust", delta: 1 });
+  expect(state.preset).toBe("balanced");
+  expect(state.draft.zones).toEqual(displayPreset("balanced"));
   expect(state.baseline.zones).toEqual(zones());
 
   state.navigation.layout.selectedIndex = 2;
@@ -532,6 +565,38 @@ it("moves and reorders segments while protecting the final segment", () => {
   state = dispatch(state, { type: "activate" });
   expect(state.draft.zones.topLeft).toContain("current-dir");
   expect(state.draft.zones.bottomLeft).toEqual([]);
+});
+
+it("keeps or resets status selection safely when filtering", () => {
+  let state = initDashboardState(config(), ["alpha", "beta"], true);
+  state.activeTab = "statuses";
+  state.navigation.statuses.selectedIndex = 1;
+
+  state = dispatch(state, { type: "type_char", char: "b" });
+  expect(selectableRows(state)[state.navigation.statuses.selectedIndex]).toEqual({
+    type: "status",
+    key: "beta",
+  });
+
+  state = dispatch(state, { type: "type_char", char: "z" });
+  expect(selectableRows(state)[state.navigation.statuses.selectedIndex]).toEqual({
+    type: "save",
+  });
+  expect(state.navigation.statuses.selectedIndex).toBe(0);
+});
+
+it("filters unavailable usage segments out of applied presets", () => {
+  let state = initDashboardState(config(), [], false);
+  state = dispatch(state, { type: "adjust", delta: 1 });
+  expect(state.preset).toBe("balanced");
+  expect(state.draft.zones).toEqual({
+    topLeft: ["model-with-reasoning", "run-state"],
+    topRight: ["context-remaining"],
+    bottomLeft: ["current-dir", "git-branch"],
+    bottomRight: [],
+  });
+  expect(state.visibleSegmentIds).not.toContain("five-hour-limit");
+  expect(state.visibleSegmentIds).not.toContain("weekly-limit");
 });
 
 it("preserves hidden undiscovered statuses across a discovered toggle", () => {
@@ -670,6 +735,19 @@ function keepSegmentSelected(
   return clampSelection(state);
 }
 
+function reconcileStatusSelection(
+  state: DashboardState,
+  previous: DashboardSelectableRow | undefined,
+): DashboardState {
+  const index = previous?.type === "status"
+    ? selectableRows(state).findIndex(
+        (row) => row.type === "status" && row.key === previous.key,
+      )
+    : -1;
+  activeNavigation(state).selectedIndex = index >= 0 ? index : 0;
+  return clampSelection(state);
+}
+
 function cloneState(state: DashboardState): DashboardState {
   return {
     ...state,
@@ -704,16 +782,33 @@ export function reduceDashboardState(
     return { state: clampSelection(state) };
   }
   if (action.type === "type_char") {
+    const previous = currentRow(state);
     if (state.activeTab === "statuses") activeNavigation(state).query += action.char;
-    return { state: clampSelection(state) };
+    return {
+      state: state.activeTab === "statuses"
+        ? reconcileStatusSelection(state, previous)
+        : clampSelection(state),
+    };
   }
   if (action.type === "backspace") {
-    if (state.activeTab === "statuses") activeNavigation(state).query = activeNavigation(state).query.slice(0, -1);
-    return { state: clampSelection(state) };
+    const previous = currentRow(state);
+    if (state.activeTab === "statuses") {
+      activeNavigation(state).query = activeNavigation(state).query.slice(0, -1);
+    }
+    return {
+      state: state.activeTab === "statuses"
+        ? reconcileStatusSelection(state, previous)
+        : clampSelection(state),
+    };
   }
   if (action.type === "clear_query") {
+    const previous = currentRow(state);
     activeNavigation(state).query = "";
-    return { state: clampSelection(state) };
+    return {
+      state: state.activeTab === "statuses"
+        ? reconcileStatusSelection(state, previous)
+        : clampSelection(state),
+    };
   }
   if (action.type === "set_offset") {
     state.navigation[action.tab].offset = Math.max(0, action.offset);
@@ -722,7 +817,7 @@ export function reduceDashboardState(
   if (action.type === "saved") {
     state.baseline = cloneConfig(action.config);
     state.draft = cloneConfig(action.config);
-    state.preset = presetForZones(action.config.zones);
+    state.preset = presetForZones(action.config.zones, state.visibleSegmentIds);
     return { state: clampSelection(state) };
   }
 
@@ -732,7 +827,7 @@ export function reduceDashboardState(
     if (row.type === "preset") {
       const index = state.preset === "custom" ? (action.delta > 0 ? -1 : 0) : DISPLAY_PRESET_NAMES.indexOf(state.preset);
       const name = DISPLAY_PRESET_NAMES[(index + action.delta + DISPLAY_PRESET_NAMES.length) % DISPLAY_PRESET_NAMES.length];
-      state.draft.zones = displayPreset(name);
+      state.draft.zones = visiblePreset(name, state.visibleSegmentIds);
       state.preset = name;
     } else if (row.type === "zone") {
       const index = STATUS_LINE_ZONE_ORDER.indexOf(state.activeZone);
@@ -775,7 +870,7 @@ export function reduceDashboardState(
     } else if (assignedCount > 1) {
       state.draft.zones[assignment.zone].splice(assignment.index, 1);
     }
-    state.preset = presetForZones(state.draft.zones);
+    state.preset = presetForZones(state.draft.zones, state.visibleSegmentIds);
     return { state: keepSegmentSelected(state, row.id) };
   }
   return { state: clampSelection(state) };
@@ -783,6 +878,8 @@ export function reduceDashboardState(
 ```
 
 Phase 4 must apply `set_offset` directly with `reduceDashboardState()` from `render()` and assign the returned state without calling the component's render-requesting `dispatch()`. This preserves pure transitions while avoiding a render loop.
+
+The `saved` action is a synchronous acknowledgement: Phase 4's `save(config): void` call returns before `saved` is dispatched, and input is not processed between the save effect and acknowledgement. Replacing both baseline and draft is therefore intentional; do not add speculative asynchronous-save state.
 
 - [ ] **Step 4: Verify and commit transitions**
 
