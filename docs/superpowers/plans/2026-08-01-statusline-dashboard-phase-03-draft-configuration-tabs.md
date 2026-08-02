@@ -454,13 +454,14 @@ In `src/tui/editor-state.ts`, delete its original metadata/order/assignment defi
 import {
   type SegmentMetadata,
   SEGMENT_METADATA,
+  SEGMENT_ORDER,
   findSegmentAssignment,
 } from "./dashboard-state.ts";
 
 export { SEGMENT_METADATA, findSegmentAssignment };
 ```
 
-The old editor reducer continues to use these imports unchanged until Phase 5 removes it.
+The old editor reducer continues to use these imports unchanged until Phase 5 removes it. Keep `SEGMENT_ORDER` imported but not re-exported because it was private before this move; `SEGMENT_METADATA` and `findSegmentAssignment` retain their existing editor-state exports.
 
 - [ ] **Step 4: Verify initialization and commit**
 
@@ -577,6 +578,18 @@ it("keeps the same segment selected after moving and reordering it", () => {
     type: "segment",
     id: "session-cost",
   });
+});
+
+it("stores viewport offsets through a pure transition", () => {
+  const state = initDashboardState(config(), [], true);
+  const result = reduceDashboardState(state, {
+    type: "set_offset",
+    tab: "layout",
+    offset: 4,
+  });
+  expect(result.state.navigation.layout.offset).toBe(4);
+  expect(state.navigation.layout.offset).toBe(0);
+  expect(result.effect).toBeUndefined();
 });
 
 it("does not mutate reducer input or alias save effects", () => {
@@ -768,6 +781,8 @@ export function reduceDashboardState(
   return { state: clampSelection(state) };
 }
 ```
+
+Phase 4 must apply `set_offset` directly with `reduceDashboardState()` from `render()` and assign the returned state without calling the component's render-requesting `dispatch()`. This preserves pure transitions while avoiding a render loop.
 
 - [ ] **Step 4: Verify and commit transitions**
 
@@ -1129,7 +1144,7 @@ pnpm lint
 git diff --check
 ```
 
-Expected: all tabs have one height at fixed dimensions; selected Save scrolls into view; last line retains the bottom border; every line fits width.
+Expected: all tabs have one height at fixed dimensions; selected Save scrolls into view; last line retains the bottom border; every line fits width. The fallback assertion intentionally uses Phase 2's shipped `Terminal too small` string; the older design phrase `Terminal too short` is descriptive, not a second UI contract.
 
 - [ ] **Step 5: Commit rendering**
 
