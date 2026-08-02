@@ -5,6 +5,8 @@ import type {
   StatusLineZones,
 } from "../shared/types.ts";
 import { isUsageSegment, STATUS_LINE_ZONE_ORDER } from "../shared/types.ts";
+import type { SessionDetails } from "./session-actions.ts";
+import type { DashboardTool } from "./tool-controls.ts";
 import { DISPLAY_PRESET_NAMES, displayPreset } from "./preset-actions.ts";
 
 export const DASHBOARD_TABS = [
@@ -33,6 +35,8 @@ export interface DashboardState {
   discoveredStatuses: string[];
   visibleSegmentIds: StatusLineSegmentId[];
   navigation: Record<DashboardTabId, TabNavigation>;
+  tools: DashboardTool[];
+  session?: SessionDetails;
 }
 
 export type DashboardSelectableRow =
@@ -40,6 +44,9 @@ export type DashboardSelectableRow =
   | { type: "zone" }
   | { type: "segment"; id: StatusLineSegmentId }
   | { type: "status"; key: string }
+  | { type: "tool"; name: string }
+  | { type: "rename_session" }
+  | { type: "compact_session" }
   | { type: "notifications" }
   | { type: "save" };
 
@@ -213,11 +220,14 @@ export function initDashboardState(
   config: PiStatusConfig,
   discoveredStatuses: string[],
   usageAvailable = true,
+  options: { tools?: DashboardTool[]; session?: SessionDetails } = {},
 ): DashboardState {
   const baseline = structuredClone(config);
   const visibleSegmentIds = SEGMENT_ORDER.map(({ id }) => id).filter(
     (id) => usageAvailable || !isUsageSegment(id),
   );
+  const tools = structuredClone(options.tools ?? []);
+  const session = options.session ? structuredClone(options.session) : undefined;
   return {
     activeTab: "layout",
     baseline,
@@ -233,6 +243,8 @@ export function initDashboardState(
       tools: emptyNavigation(),
       settings: emptyNavigation(),
     },
+    tools,
+    ...(session ? { session } : {}),
   };
 }
 
@@ -263,6 +275,17 @@ export function selectableRows(
       { type: "save" },
     ];
   }
+  if (tab === "session") {
+    return state.session ? [{ type: "rename_session" }, { type: "compact_session" }] : [];
+  }
+  if (tab === "tools") {
+    const query = state.navigation.tools.query;
+    return state.tools
+      .filter(
+        ({ name, description }) => includesFuzzy(name, query) || includesFuzzy(description, query),
+      )
+      .map(({ name }) => ({ type: "tool" as const, name }));
+  }
   if (tab === "settings") return [{ type: "notifications" }, { type: "save" }];
   return [];
 }
@@ -277,9 +300,15 @@ export type DashboardAction =
   | { type: "backspace" }
   | { type: "clear_query" }
   | { type: "set_offset"; tab: DashboardTabId; offset: number }
+  | { type: "replace_tools"; tools: DashboardTool[] }
+  | { type: "replace_session"; session: SessionDetails }
   | { type: "saved"; config: PiStatusConfig };
 
-export type DashboardEffect = { type: "save"; config: PiStatusConfig };
+export type DashboardEffect =
+  | { type: "save"; config: PiStatusConfig }
+  | { type: "toggle_tool"; name: string; enabled: boolean }
+  | { type: "rename_session" }
+  | { type: "compact_session" };
 export type DashboardTransition = { state: DashboardState; effect?: DashboardEffect };
 
 function activeNavigation(state: DashboardState): TabNavigation {
@@ -293,6 +322,38 @@ function clampSelection(state: DashboardState): DashboardState {
     rows.length === 0 ? 0 : Math.max(0, Math.min(nav.selectedIndex, rows.length - 1));
   nav.offset = Math.max(0, nav.offset);
   return state;
+}
+
+function isSearchableTab(tab: DashboardTabId): tab is "statuses" | "tools" {
+  return tab === "statuses" || tab === "tools";
+}
+
+function reconcileToolSelection(
+  state: DashboardState,
+  previous: DashboardSelectableRow | undefined,
+): DashboardState {
+  const rows = selectableRows(state, "tools");
+  const index =
+    previous?.type === "tool"
+      ? rows.findIndex((row) => row.type === "tool" && row.name === previous.name)
+      : -1;
+  const navigation = state.navigation.tools;
+  if (index >= 0) navigation.selectedIndex = index;
+  navigation.selectedIndex =
+    rows.length === 0 ? 0 : Math.max(0, Math.min(navigation.selectedIndex, rows.length - 1));
+  navigation.offset = Math.max(0, navigation.offset);
+  return state;
+}
+
+function reconcileSearchSelection(
+  state: DashboardState,
+  previous: DashboardSelectableRow | undefined,
+): DashboardState {
+  return state.activeTab === "statuses"
+    ? reconcileStatusSelection(state, previous)
+    : state.activeTab === "tools"
+      ? reconcileToolSelection(state, previous)
+      : clampSelection(state);
 }
 
 function currentRow(state: DashboardState): DashboardSelectableRow | undefined {
@@ -336,39 +397,35 @@ export function reduceDashboardState(
   }
   if (action.type === "type_char") {
     const previous = currentRow(state);
-    if (state.activeTab === "statuses") activeNavigation(state).query += action.char;
-    return {
-      state:
-        state.activeTab === "statuses"
-          ? reconcileStatusSelection(state, previous)
-          : clampSelection(state),
-    };
+    if (isSearchableTab(state.activeTab)) {
+      activeNavigation(state).query += action.char;
+    }
+    return { state: reconcileSearchSelection(state, previous) };
   }
   if (action.type === "backspace") {
     const previous = currentRow(state);
-    if (state.activeTab === "statuses") {
+    if (isSearchableTab(state.activeTab)) {
       activeNavigation(state).query = activeNavigation(state).query.slice(0, -1);
     }
-    return {
-      state:
-        state.activeTab === "statuses"
-          ? reconcileStatusSelection(state, previous)
-          : clampSelection(state),
-    };
+    return { state: reconcileSearchSelection(state, previous) };
   }
   if (action.type === "clear_query") {
     const previous = currentRow(state);
-    activeNavigation(state).query = "";
-    return {
-      state:
-        state.activeTab === "statuses"
-          ? reconcileStatusSelection(state, previous)
-          : clampSelection(state),
-    };
+    if (isSearchableTab(state.activeTab)) activeNavigation(state).query = "";
+    return { state: reconcileSearchSelection(state, previous) };
   }
   if (action.type === "set_offset") {
     state.navigation[action.tab].offset = Math.max(0, action.offset);
     return { state };
+  }
+  if (action.type === "replace_tools") {
+    const previous = selectableRows(state, "tools")[state.navigation.tools.selectedIndex];
+    state.tools = structuredClone(action.tools);
+    return { state: reconcileToolSelection(state, previous) };
+  }
+  if (action.type === "replace_session") {
+    state.session = structuredClone(action.session);
+    return { state: clampSelection(state) };
   }
   if (action.type === "saved") {
     state.baseline = structuredClone(action.config);
@@ -426,6 +483,15 @@ export function reduceDashboardState(
     state.draft.extensionSegments.hidden = hidden.includes(row.key)
       ? hidden.filter((key) => key !== row.key)
       : [...hidden, row.key];
+  } else if (row.type === "tool") {
+    const tool = state.tools.find(({ name }) => name === row.name);
+    return tool
+      ? { state, effect: { type: "toggle_tool", name: tool.name, enabled: !tool.enabled } }
+      : { state: clampSelection(state) };
+  } else if (row.type === "rename_session") {
+    return { state, effect: { type: "rename_session" } };
+  } else if (row.type === "compact_session") {
+    return { state, effect: { type: "compact_session" } };
   } else if (row.type === "segment") {
     const assignment = findSegmentAssignment(state.draft.zones, row.id);
     const assignedCount = STATUS_LINE_ZONE_ORDER.reduce(

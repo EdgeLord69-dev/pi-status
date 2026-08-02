@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { SettingsListTheme } from "@earendil-works/pi-tui";
 import { calculateToolChange } from "../../src/tui/tool-controls.ts";
-import { openToolControls } from "../../src/tui/tool-controls.ts";
+import { openToolControls, readToolSnapshot, toggleLiveTool } from "../../src/tui/tool-controls.ts";
 
 // ── Theme mock ───────────────────────────────────────────────────────────────
 
@@ -114,6 +114,58 @@ describe("calculateToolChange", () => {
       type: "apply",
       names: ["read"],
     });
+  });
+
+  it("reads the current catalog in Pi order and ignores unknown active names", () => {
+    const { pi, setHostActive } = makePi();
+    setHostActive(["bash", "removed", "read"]);
+
+    expect(readToolSnapshot(pi)).toEqual([
+      { name: "read", description: "Read files", enabled: true },
+      { name: "write", description: "Write files", enabled: false },
+      { name: "bash", description: "Run shell commands", enabled: true },
+    ]);
+  });
+
+  it("refreshes both host lists before applying a live toggle", () => {
+    const { pi, setHostTools, setHostActive, setActiveTools } = makePi();
+    setHostTools([
+      { name: "read", description: "Read files" },
+      { name: "dynamic", description: "Added later" },
+    ]);
+    setHostActive(["read", "dynamic"]);
+
+    expect(toggleLiveTool(pi, "read", false)).toEqual({
+      type: "applied",
+      tools: [
+        { name: "read", description: "Read files", enabled: false },
+        { name: "dynamic", description: "Added later", enabled: true },
+      ],
+    });
+    expect(setActiveTools).toHaveBeenCalledWith(["dynamic"]);
+  });
+
+  it("returns the refreshed snapshot for an ignored live toggle", () => {
+    const { pi, setHostActive, setActiveTools } = makePi();
+    setHostActive(["bash"]);
+
+    expect(toggleLiveTool(pi, "removed", true)).toEqual({
+      type: "ignore",
+      tools: [
+        { name: "read", description: "Read files", enabled: false },
+        { name: "write", description: "Write files", enabled: false },
+        { name: "bash", description: "Run shell commands", enabled: true },
+      ],
+    });
+    expect(setActiveTools).not.toHaveBeenCalled();
+  });
+
+  it("rejects disabling the final live tool without mutating Pi", () => {
+    const { pi, setHostActive, setActiveTools } = makePi();
+    setHostActive(["read"]);
+
+    expect(toggleLiveTool(pi, "read", false)).toEqual({ type: "reject-last-active" });
+    expect(setActiveTools).not.toHaveBeenCalled();
   });
 });
 
@@ -300,6 +352,21 @@ describe("openToolControls", () => {
 
     expect(custom).not.toHaveBeenCalled();
     expect(setActiveTools).not.toHaveBeenCalled();
+    expect(ctx.ui.notify).toHaveBeenCalledWith("No tools are available", "warning");
+  });
+
+  it("preserves the empty-catalog warning when active tools are unavailable", async () => {
+    const { pi } = makePi();
+    vi.mocked(pi.getAllTools).mockReturnValue([]);
+    vi.mocked(pi.getActiveTools).mockImplementation(() => {
+      throw new Error("Active tools unavailable");
+    });
+    const { ctx, custom } = makeContext();
+
+    await openToolControls(pi, ctx);
+
+    expect(pi.getActiveTools).not.toHaveBeenCalled();
+    expect(custom).not.toHaveBeenCalled();
     expect(ctx.ui.notify).toHaveBeenCalledWith("No tools are available", "warning");
   });
 

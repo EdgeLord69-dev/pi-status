@@ -265,7 +265,7 @@ Expected: FAIL because `dashboard-state.ts` does not exist.
 
 - [ ] **Step 3: Implement cloning, comparison, filtering, and row selection**
 
-Create `src/tui/dashboard-state.ts` with the required contracts above. Move `SegmentMetadata`, the full canonical `SEGMENT_ORDER`, `SEGMENT_METADATA`, and `findSegmentAssignment()` from `src/tui/editor-state.ts` into this file without changing any ID, label, description, order, or zone lookup behavior. Export all four so Phase 5 can delete the compatibility editor without another ownership change:
+Create `src/tui/dashboard-state.ts` with the required contracts above. Move `SegmentMetadata`, the full canonical `SEGMENT_ORDER`, `SEGMENT_METADATA`, and `findSegmentAssignment()` from `src/tui/editor-state.ts` into this file without changing any ID, label, description, order, or zone lookup behavior. Export all four so Phase 6 can delete the compatibility editor without another ownership change:
 
 ```ts
 export type SegmentMetadata = {
@@ -493,7 +493,7 @@ import {
 export { SEGMENT_METADATA, findSegmentAssignment };
 ```
 
-The old editor reducer continues to use these imports unchanged until Phase 5 removes it. Keep `SEGMENT_ORDER` imported but not re-exported because it was private before this move; `SEGMENT_METADATA` and `findSegmentAssignment` retain their existing editor-state exports.
+The old editor reducer continues to use these imports unchanged until Phase 6 removes it. Keep `SEGMENT_ORDER` imported but not re-exported because it was private before this move; `SEGMENT_METADATA` and `findSegmentAssignment` retain their existing editor-state exports.
 
 - [ ] **Step 4: Verify initialization and commit**
 

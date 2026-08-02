@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PiStatusConfig, StatusLineZones } from "../../src/shared/types.ts";
+import type { DashboardTool } from "../../src/tui/tool-controls.ts";
+import type { SessionDetails } from "../../src/tui/session-actions.ts";
 import {
   configsEqual,
   initDashboardState,
@@ -285,14 +287,132 @@ describe("dashboard transitions", () => {
       state.navigation[tab].selectedIndex = selectableRows(state, tab).length - 1;
 
       const result = reduceDashboardState(state, { type: "activate" });
-      expect(result.effect).toEqual({ type: "save", config: result.state.draft });
+      expect(result.effect?.type).toBe("save");
+      if (result.effect?.type !== "save") throw new Error("expected save effect");
+      expect(result.effect.config).toEqual(result.state.draft);
       expect(isDashboardDirty(result.state)).toBe(true);
 
       const saved = reduceDashboardState(result.state, {
         type: "saved",
-        config: result.effect?.config ?? config(),
+        config: result.effect.config,
       }).state;
       expect(isDashboardDirty(saved)).toBe(false);
     },
   );
+});
+
+describe("dashboard live snapshots", () => {
+  const tools: DashboardTool[] = [
+    { name: "read", description: "Read files", enabled: true },
+    { name: "bash", description: "Run shell commands", enabled: false },
+  ];
+
+  const session: SessionDetails = {
+    name: "Work",
+    id: "session-1",
+    file: "In memory",
+    directory: "/work",
+    model: "anthropic/claude",
+  };
+
+  it("clones initial tool and session snapshots", () => {
+    const inputTools = structuredClone(tools);
+    const inputSession = structuredClone(session);
+    const state = initDashboardState(config(), [], true, {
+      tools: inputTools,
+      session: inputSession,
+    });
+    const firstTool = inputTools[0];
+    if (!firstTool) throw new Error("missing first tool");
+    firstTool.enabled = false;
+    inputSession.name = "Changed outside";
+
+    expect(state.tools[0]?.enabled).toBe(true);
+    expect(state.session?.name).toBe("Work");
+  });
+
+  it("filters tools fuzzily by name or description", () => {
+    const state = initDashboardState(config(), [], true, { tools, session });
+    state.activeTab = "tools";
+    state.navigation.tools.query = "bh";
+    expect(selectableRows(state)).toEqual([{ type: "tool", name: "bash" }]);
+
+    state.navigation.tools.query = "rf";
+    expect(selectableRows(state)).toEqual([{ type: "tool", name: "read" }]);
+  });
+
+  it("exposes Rename then Compact only when session details exist", () => {
+    const available = initDashboardState(config(), [], true, { session });
+    expect(selectableRows(available, "session")).toEqual([
+      { type: "rename_session" },
+      { type: "compact_session" },
+    ]);
+    expect(selectableRows(initDashboardState(config(), [], true), "session")).toEqual([]);
+  });
+
+  it("emits live effects without dirtying persisted config", () => {
+    const state = initDashboardState(config(), [], true, { tools, session });
+    state.activeTab = "tools";
+    expect(reduceDashboardState(state, { type: "activate" }).effect).toEqual({
+      type: "toggle_tool",
+      name: "read",
+      enabled: false,
+    });
+
+    state.activeTab = "session";
+    expect(reduceDashboardState(state, { type: "activate" }).effect).toEqual({
+      type: "rename_session",
+    });
+    state.navigation.session.selectedIndex = 1;
+    expect(reduceDashboardState(state, { type: "activate" }).effect).toEqual({
+      type: "compact_session",
+    });
+    expect(isDashboardDirty(state)).toBe(false);
+  });
+
+  it("preserves selected tool by name across replacement", () => {
+    let state = initDashboardState(config(), [], true, { tools, session });
+    state.activeTab = "tools";
+    state.navigation.tools.selectedIndex = 1;
+    state = dispatch(state, {
+      type: "replace_tools",
+      tools: [
+        { name: "dynamic", description: "Added", enabled: true },
+        { name: "bash", description: "Run shell commands", enabled: true },
+      ],
+    });
+    expect(selectableRows(state)[state.navigation.tools.selectedIndex]).toEqual({
+      type: "tool",
+      name: "bash",
+    });
+  });
+
+  it("preserves selected tool by name when replacement arrives off-tab", () => {
+    let state = initDashboardState(config(), [], true, { tools, session });
+    state.navigation.tools.selectedIndex = 1;
+    state = dispatch(state, {
+      type: "replace_tools",
+      tools: [
+        { name: "bash", description: "Run shell commands", enabled: true },
+        { name: "dynamic", description: "Added", enabled: true },
+      ],
+    });
+
+    expect(state.navigation.tools.selectedIndex).toBe(0);
+    expect(selectableRows(state, "tools")[state.navigation.tools.selectedIndex]).toEqual({
+      type: "tool",
+      name: "bash",
+    });
+  });
+
+  it("clamps tool selection when the selected name disappears", () => {
+    let state = initDashboardState(config(), [], true, { tools, session });
+    state.activeTab = "tools";
+    state.navigation.tools.selectedIndex = 1;
+    state = dispatch(state, {
+      type: "replace_tools",
+      tools: [{ name: "read", description: "Read files", enabled: true }],
+    });
+    expect(state.navigation.tools.selectedIndex).toBe(0);
+  });
 });

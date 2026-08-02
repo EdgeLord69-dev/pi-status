@@ -27,8 +27,9 @@ Execute all phases sequentially in one isolated worktree. Before execution, use 
 | 1 | Existing footer/editor/commands pass unchanged on the Pi 0.83 development baseline | Approved spec | [`phase-01-pi-083-baseline`](2026-08-01-statusline-dashboard-phase-01-pi-083-baseline.md) |
 | 2 | Tested `pi-usage` visual shell plus responsive, equal-height, overflow-safe layout primitives; shipped behavior remains unchanged | Phase 1 | [`phase-02-responsive-shell`](2026-08-01-statusline-dashboard-phase-02-responsive-shell.md) |
 | 3 | Complete testable Layout, Statuses, and Settings draft dashboard with all-save semantics; existing `/statusline` remains available until host actions are integrated | Phase 2 | [`phase-03-draft-configuration-tabs`](2026-08-01-statusline-dashboard-phase-03-draft-configuration-tabs.md) |
-| 4 | Plain `/statusline` opens the full five-tab dashboard with immediate Tools and Session actions; legacy argument routes remain temporarily functional | Phase 3 | [`phase-04-dashboard-actions-and-lifecycle`](2026-08-01-statusline-dashboard-phase-04-dashboard-actions-and-lifecycle.md) |
-| 5 | `/statusline` is the sole dashboard entry point; old subcommands/screens are removed and all acceptance, docs, and package gates pass | Phase 4 | [`phase-05-command-consolidation`](2026-08-01-statusline-dashboard-phase-05-command-consolidation.md) |
+| 4 | Live Session and Tools snapshots, effects, and rendering are complete in the pure dashboard engine; shipped commands remain unchanged | Phase 3 | [`phase-04-live-session-and-tools-tabs`](2026-08-02-statusline-dashboard-phase-04-live-session-and-tools-tabs.md) |
+| 5 | Plain `/statusline` opens the full five-tab dashboard with immediate Tools and Session actions; legacy argument routes remain temporarily functional | Phase 4 | [`phase-05-dashboard-actions-and-lifecycle`](2026-08-02-statusline-dashboard-phase-05-dashboard-actions-and-lifecycle.md) |
+| 6 | `/statusline` is the sole dashboard entry point; old subcommands/screens are removed and all acceptance, docs, and package gates pass | Phase 5 | [`phase-06-command-consolidation`](2026-08-02-statusline-dashboard-phase-06-command-consolidation.md) |
 
 The order is fixed from lowest-risk compatibility work to the highest-risk command/lifecycle migration. Every phase must leave the repository green and releasable. Do not merge phases or add sidebar work.
 
@@ -47,8 +48,8 @@ The order is fixed from lowest-risk compatibility work to the highest-risk comma
 - `package.json`, `pnpm-lock.yaml`: Pi agent/TUI 0.83 development ranges and lock resolution; wildcard peers stay unchanged.
 - `src/tui/theme.ts`: add the `bg` and `inverse` methods required by the ported tab pills without creating a second theme adapter.
 - `src/tui/editor-state.ts`: temporarily re-export moved segment metadata/helpers, then disappear after old editor removal.
-- `src/tui/tool-controls.ts`: retain pure tool transition/reconciliation helpers; remove its standalone overlay entry point in Phase 5.
-- `src/tui/session-actions.ts`: retain session detail and safe compaction helpers; remove its standalone selector entry point in Phase 5.
+- `src/tui/tool-controls.ts`: retain pure tool transition/reconciliation helpers; remove its standalone overlay entry point in Phase 6.
+- `src/tui/session-actions.ts`: retain session detail and safe compaction helpers; remove its standalone selector entry point in Phase 6.
 - `src/index.ts`: factor current footer snapshot creation, keep footer installed, own the active-dashboard guard, wire save/apply, and close stale dashboards on session replacement/shutdown.
 - `README.md`, `CHANGELOG.md`: replace subcommand/editor documentation with the dashboard workflow and Pi 0.83 compatibility.
 
@@ -88,7 +89,7 @@ Keep `src/tui/preset-actions.ts` only if the final dashboard still imports its p
 
 6. At fixed terminal dimensions every tab renders the same number of rows. Use the largest unfiltered tab body, capped by `max(1, floor(tui.terminal.rows * 0.85))`; short bodies pad, long bodies viewport.
 7. Never rely on Pi's `maxHeight` slicing. At widths of seven columns or more, the component returns a complete frame no taller than the cap. Smaller widths or insufficient heights return a bounded `Terminal too small · Esc` fallback.
-8. Statuses and Tools consume printable input, including `q`; Esc clears a query before close. Other tabs use `q`/Esc for close.
+8. Statuses and Tools consume raw and Kitty CSI-u printable input, including `q`; Esc clears a query before close. Other tabs use decoded `q`/Esc for close.
 9. Dirty close uses Pi confirmation and restores overlay focus on cancellation. Rename returns and refreshes. Confirmed compaction closes before calling `ctx.compact`.
 10. All overlay close paths and session lifecycle cleanup are idempotent.
 11. Use only public Pi APIs. Do not patch `TUI.render`, reserve sidebar width, add a dependency, or introduce a generic settings framework.
