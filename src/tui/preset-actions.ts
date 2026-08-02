@@ -1,9 +1,9 @@
 import type { StatusLineSegmentId, StatusLineZones } from "../shared/types.ts";
 
 export const DISPLAY_PRESET_NAMES = ["minimal", "balanced", "telemetry"] as const;
-export type DisplayPresetName = (typeof DISPLAY_PRESET_NAMES)[number];
+type DisplayPresetName = (typeof DISPLAY_PRESET_NAMES)[number];
 
-export const DISPLAY_PRESETS = {
+const DISPLAY_PRESETS = {
   minimal: {
     topLeft: ["model-with-reasoning"],
     topRight: [],

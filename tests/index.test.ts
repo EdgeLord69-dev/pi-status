@@ -169,7 +169,7 @@ describe("extension wiring", () => {
     expect(getThinkingLevel).not.toHaveBeenCalled();
   });
 
-  it("uses noTheme for live footer and editor whenever NO_COLOR is present", async () => {
+  it("uses noTheme for the live footer and dashboard whenever NO_COLOR is present", async () => {
     vi.stubEnv("NO_COLOR", "");
     const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
     let footerFactory: ((...args: unknown[]) => { render(width: number): string[] }) | undefined;
@@ -1123,7 +1123,7 @@ describe("/statusline dashboard wiring", () => {
     };
   }
 
-  it("opens with exact overlay options without replacing the live footer", async () => {
+  it("opens whitespace-only input with exact overlay options without replacing the live footer", async () => {
     const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
     const footerSpy = buildSetFooterSpy();
     createExtension(pi);
@@ -1138,7 +1138,7 @@ describe("/statusline dashboard wiring", () => {
     for (const h of handlers.get("session_start") ?? []) h({}, ctx);
     const footerCallsBeforeOpen = footerSpy.calls.length;
     const commandPromise = getRegisteredCommand(registerCommandCalls, "statusline").handler(
-      "",
+      " \t ",
       ctx,
     );
     await new Promise((resolve) => setImmediate(resolve));

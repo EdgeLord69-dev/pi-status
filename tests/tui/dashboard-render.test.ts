@@ -103,7 +103,12 @@ describe("dashboard render", () => {
     expect(statuses.lines.join("\n")).toContain("build broken");
   });
 
-  it("renders all tabs at the exact capped height without mutating queries", () => {
+  it.each([
+    { columns: 160, rows: 50 },
+    { columns: 100, rows: 30 },
+    { columns: 60, rows: 18 },
+    { columns: 30, rows: 8 },
+  ])("bounds every tab at $columns x $rows without mutating queries", ({ columns, rows }) => {
     const tools = Array.from({ length: 40 }, (_, index) => ({
       name: `tool-${index}`,
       description: `Tool ${index}`,
@@ -117,17 +122,27 @@ describe("dashboard render", () => {
     );
     state.navigation.statuses.query = "no-match";
     state.navigation.tools.query = "no-match";
-    const heights = DASHBOARD_TABS.map(({ id }) => {
+    const width = Math.max(1, Math.floor(columns * 0.92));
+    const results = DASHBOARD_TABS.map(({ id }) => {
       state.activeTab = id;
-      const result = renderDashboard(state, preview, noTheme, 100, 24);
-      if (id === "statuses") {
+      const result = renderDashboard(state, preview, noTheme, width, rows);
+      if (rows > 8 && id === "statuses") {
         expect(result.lines.join("\n")).toContain("No matching statuses.");
-      } else if (id === "tools") {
+      } else if (rows > 8 && id === "tools") {
         expect(result.lines.join("\n")).toContain("No matching tools.");
       }
-      return result.lines.length;
+      expect(result.lines.every((line) => visibleWidth(line) <= width)).toBe(true);
+      return result;
     });
-    expect(new Set(heights)).toEqual(new Set([20]));
+    expect(new Set(results.map(({ lines }) => lines.length)).size).toBe(1);
+    if (rows === 8) {
+      expect(results.every(({ lines }) => lines.join("\n").includes("Terminal too small"))).toBe(
+        true,
+      );
+    } else {
+      expect(results.every(({ lines }) => lines[0]?.includes("┏"))).toBe(true);
+      expect(results.every(({ lines }) => lines.at(-1)?.includes("┗"))).toBe(true);
+    }
     expect(state.navigation.statuses.query).toBe("no-match");
     expect(state.navigation.tools.query).toBe("no-match");
   });

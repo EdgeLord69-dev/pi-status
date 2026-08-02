@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 
-export function notifyIfActive(
+function notifyIfActive(
   ctx: ExtensionCommandContext,
   message: string,
   type: "info" | "warning",
@@ -34,8 +34,8 @@ export function renameCurrentSession(
   pi: ExtensionAPI,
   ctx: ExtensionCommandContext,
   input: string,
-  details = readSessionDetails(pi, ctx),
 ): SessionDetails {
+  const details = readSessionDetails(pi, ctx);
   const name = input.trim();
   if (!name) return details;
   pi.setSessionName(name);

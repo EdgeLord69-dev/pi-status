@@ -30,31 +30,52 @@ function config(overrides: Partial<PiStatusConfig> = {}): PiStatusConfig {
 }
 
 describe("dashboard draft initialization", () => {
-  it("moves the complete canonical segment registry without changing order", () => {
-    expect(SEGMENT_ORDER.map(({ id }) => id)).toEqual([
-      "model",
-      "model-with-reasoning",
-      "project-name",
-      "current-dir",
-      "git-branch",
-      "workspace-pulse",
-      "run-state",
-      "context-remaining",
-      "context-used",
-      "used-tokens",
-      "total-input-tokens",
-      "total-output-tokens",
-      "session-id",
-      "five-hour-limit",
-      "weekly-limit",
-      "cache-read-tokens",
-      "cache-write-tokens",
-      "cache-hit",
-      "session-cost",
-      "access-type",
-      "turn-progress",
-      "response-performance",
+  it("owns the complete canonical segment registry with exact labels", () => {
+    expect(SEGMENT_ORDER.map(({ id, label }) => [id, label])).toEqual([
+      ["model", "Model"],
+      ["model-with-reasoning", "Model + Reasoning"],
+      ["project-name", "Project Name"],
+      ["current-dir", "Current Dir"],
+      ["git-branch", "Git Branch"],
+      ["workspace-pulse", "Workspace Pulse"],
+      ["run-state", "Run State"],
+      ["context-remaining", "Context Remaining"],
+      ["context-used", "Context Used"],
+      ["used-tokens", "Used Tokens"],
+      ["total-input-tokens", "Input Tokens"],
+      ["total-output-tokens", "Output Tokens"],
+      ["session-id", "Session ID"],
+      ["five-hour-limit", "5h Limit"],
+      ["weekly-limit", "Weekly Limit"],
+      ["cache-read-tokens", "Cache Read Tokens"],
+      ["cache-write-tokens", "Cache Write Tokens"],
+      ["cache-hit", "Cache Hit"],
+      ["session-cost", "Session Cost"],
+      ["access-type", "Access Type"],
+      ["turn-progress", "Turn Progress"],
+      ["response-performance", "Response Performance"],
     ]);
+  });
+
+  it("orders assigned rows by zone followed by canonical unassigned rows", () => {
+    const state = initDashboardState(
+      config({
+        zones: zones({
+          topLeft: ["git-branch"],
+          topRight: ["current-dir"],
+          bottomLeft: ["model"],
+          bottomRight: ["run-state"],
+        }),
+      }),
+      [],
+      true,
+    );
+    const ids = selectableRows(state)
+      .filter((row) => row.type === "segment")
+      .map((row) => row.id);
+
+    expect(ids.slice(0, 4)).toEqual(["git-branch", "current-dir", "model", "run-state"]);
+    expect(ids.slice(4, 7)).toEqual(["model-with-reasoning", "project-name", "workspace-pulse"]);
   });
 
   it("deep-clones baseline and draft and starts clean", () => {
@@ -86,17 +107,22 @@ describe("dashboard draft initialization", () => {
   });
 
   it("preserves assigned unavailable usage segments while hiding their controls", () => {
-    const state = initDashboardState(
+    let state = initDashboardState(
       config({ zones: zones({ topLeft: ["five-hour-limit", "model"] }) }),
       [],
       false,
     );
+    expect(state.baseline.zones.topLeft).toEqual(["five-hour-limit", "model"]);
     expect(state.draft.zones.topLeft).toEqual(["five-hour-limit", "model"]);
     expect(state.visibleSegmentIds).not.toContain("five-hour-limit");
     expect(selectableRows(state)).not.toContainEqual({
       type: "segment",
       id: "five-hour-limit",
     });
+
+    state = reduceDashboardState(state, { type: "saved", config: state.draft }).state;
+    expect(state.baseline.zones.topLeft).toEqual(["five-hour-limit", "model"]);
+    expect(state.draft.zones.topLeft).toEqual(["five-hour-limit", "model"]);
   });
 
   it("keeps Save reachable when status search has no matches", () => {
@@ -157,6 +183,31 @@ describe("dashboard transitions", () => {
     expect(state.draft.zones.bottomLeft).toEqual([]);
   });
 
+  it("keeps boundary and wrong-zone reorders as no-ops", () => {
+    let state = initDashboardState(
+      config({ zones: zones({ topLeft: ["model", "git-branch"], bottomLeft: [] }) }),
+      [],
+      true,
+    );
+    const original = structuredClone(state.draft.zones);
+
+    state.navigation.layout.selectedIndex = selectableRows(state).findIndex(
+      (row) => row.type === "segment" && row.id === "model",
+    );
+    state = dispatch(state, { type: "adjust", delta: -1 });
+    expect(state.draft.zones).toEqual(original);
+
+    state.navigation.layout.selectedIndex = selectableRows(state).findIndex(
+      (row) => row.type === "segment" && row.id === "git-branch",
+    );
+    state = dispatch(state, { type: "adjust", delta: 1 });
+    expect(state.draft.zones).toEqual(original);
+
+    state.activeZone = "topRight";
+    state = dispatch(state, { type: "adjust", delta: -1 });
+    expect(state.draft.zones).toEqual(original);
+  });
+
   it("protects the final visible segment when unavailable usage segments stay assigned", () => {
     let state = initDashboardState(
       config({ zones: zones({ topLeft: ["five-hour-limit", "model"], bottomLeft: [] }) }),
@@ -204,13 +255,18 @@ describe("dashboard transitions", () => {
     expect(state.visibleSegmentIds).not.toContain("weekly-limit");
   });
 
-  it("preserves hidden undiscovered statuses across a discovered toggle", () => {
+  it("fuzzily matches statuses and preserves hidden undiscovered keys when toggled", () => {
     let state = initDashboardState(
-      config({ extensionSegments: { hidden: ["missing-extension", "alpha"] } }),
-      ["alpha", "beta"],
+      config({ extensionSegments: { hidden: ["missing-extension", "alpha-build"] } }),
+      ["alpha-build", "beta"],
       true,
     );
     state.activeTab = "statuses";
+    state.navigation.statuses.query = "ab";
+    expect(selectableRows(state)).toEqual([
+      { type: "status", key: "alpha-build" },
+      { type: "save" },
+    ]);
     state = dispatch(state, { type: "activate" });
     expect(state.draft.extensionSegments.hidden).toEqual(["missing-extension"]);
   });

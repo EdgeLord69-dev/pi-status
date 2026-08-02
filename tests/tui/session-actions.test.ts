@@ -28,8 +28,7 @@ describe("dashboard session helpers", () => {
     }));
   it("trims rename without rereading details", () => {
     const api = pi();
-    const details = readSessionDetails(api, ctx());
-    expect(renameCurrentSession(api, ctx(), " New ", details).name).toBe("New");
+    expect(renameCurrentSession(api, ctx(), " New ").name).toBe("New");
     expect(api.setSessionName).toHaveBeenCalledWith("New");
     expect(api.getSessionName).toHaveBeenCalledOnce();
   });
@@ -45,5 +44,19 @@ describe("dashboard session helpers", () => {
     expect(options).toBeDefined();
     options?.onComplete?.({} as never);
     expect(context.ui.notify).toHaveBeenCalledWith("Session compacted", "info");
+
+    options?.onError?.(new Error("compact failed"));
+    expect(context.ui.notify).toHaveBeenCalledWith("compact failed", "warning");
+  });
+  it("contains stale notification contexts", () => {
+    const context = ctx();
+    vi.mocked(context.ui.notify).mockImplementation(() => {
+      throw new Error("stale context");
+    });
+    startSessionCompaction(context);
+    const options = vi.mocked(context.compact).mock.calls[0]?.[0];
+
+    expect(() => options?.onComplete?.({} as never)).not.toThrow();
+    expect(() => options?.onError?.(new Error("ignored"))).not.toThrow();
   });
 });
