@@ -26,6 +26,86 @@
 - Do not remove: `src/tui/command-router.ts`, old editor source/tests, standalone tool/session/preset wrappers, or legacy argument routes
 - Remove from `src/index.ts` only when made dead by plain-command rewiring: editor import, `EMPTY_FOOTER_FACTORY`, `installEmptyFooter()`, `isLiveTheme()`, and editor-only type imports/declarations
 
+## Audited reference baselines
+
+- Phase 4 product baseline: `pi-status` at `deab7423e02bc80544b76817d51fc9164da2a9e5`
+- Dashboard geometry reference: `/Users/lanh/Developer/pi-vault/pi-usage` 0.7.0 at `152b377522a24a72543029965860527b94b5fca5`
+- Installed host contract: `/Users/lanh/Developer/pi-packages/pi` tag `v0.83.0` at `845d6ff1f6643aba440341cce877ce1c43ebbc39`
+- Current host cross-check: `/Users/lanh/Developer/pi-packages/pi` main at `583f153d502aa8e958eefdb9af0fbd3344e68f95`
+
+Pi 0.83's `showExtensionCustom()` resolves `done()`, then synchronously calls the component's optional `dispose()` before promise continuations run. Its public TUI package exports `decodeKittyPrintable` and `OverlayHandle`, and its custom UI options support `onHandle` plus percentage overlay dimensions. `pi-usage` supplies the proven centered `92%` width / `85%` maximum-height geometry; Phase 5 adds lifecycle ownership and dialogs that `pi-usage` does not have.
+
+## Task 0: Record and validate the execution base
+
+No tracked files change in this task.
+
+- [ ] **Step 1: Record the clean Phase 5 base**
+
+```bash
+set -e
+PRODUCT_BASE=deab7423e02bc80544b76817d51fc9164da2a9e5
+BASE_FILE=.superpowers/statusline-dashboard-phase-05-base
+
+test -z "$(git status --short)"
+git cat-file -e "$PRODUCT_BASE^{commit}"
+git merge-base --is-ancestor "$PRODUCT_BASE" HEAD
+mkdir -p .superpowers
+git rev-parse HEAD > "$BASE_FILE"
+git check-ignore -q "$BASE_FILE"
+PHASE_BASE=$(cat "$BASE_FILE")
+printf 'PRODUCT_BASE=%s\nPHASE_BASE=%s\n' "$PRODUCT_BASE" "$PHASE_BASE"
+```
+
+Expected: `PRODUCT_BASE` prints as `deab7423e02bc80544b76817d51fc9164da2a9e5`; `PHASE_BASE` prints the clean committed replan HEAD; the ignored base file does not dirty the worktree.
+
+- [ ] **Step 2: Verify the frozen runtime and dependency graph**
+
+```bash
+set -e
+node -e 'const [major, minor] = process.versions.node.split(".").map(Number); if (major < 24 || (major === 24 && minor < 15)) process.exit(1); console.log(process.version)'
+pnpm install --frozen-lockfile
+node --input-type=module <<'NODE'
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+
+const version = async (name) =>
+  JSON.parse(await readFile(`node_modules/${name}/package.json`, "utf8")).version;
+assert.equal(await version("@earendil-works/pi-coding-agent"), "0.83.0");
+assert.equal(await version("@earendil-works/pi-tui"), "0.83.0");
+assert.equal(await version("@pi-vault/pi-usage"), "0.7.0");
+console.log("Phase 5 dependency graph verified");
+NODE
+```
+
+Expected: Node 24.15.0 or newer and `Phase 5 dependency graph verified`.
+
+- [ ] **Step 3: Verify the pinned overlay, keyboard, and lifecycle contracts**
+
+```bash
+set -e
+PI_USAGE=/Users/lanh/Developer/pi-vault/pi-usage
+PI=/Users/lanh/Developer/pi-packages/pi
+PI_USAGE_REF=152b377522a24a72543029965860527b94b5fca5
+PI_083_REF=845d6ff1f6643aba440341cce877ce1c43ebbc39
+PI_MAIN_REF=583f153d502aa8e958eefdb9af0fbd3344e68f95
+
+git -C "$PI_USAGE" cat-file -e "$PI_USAGE_REF^{commit}"
+git -C "$PI" cat-file -e "$PI_083_REF^{commit}"
+git -C "$PI" cat-file -e "$PI_MAIN_REF^{commit}"
+usage_source=$(git -C "$PI_USAGE" show "$PI_USAGE_REF:src/tui/dashboard.ts")
+grep -F 'maxHeight: "85%"' <<<"$usage_source"
+grep -F 'width: "92%"' <<<"$usage_source"
+host_source=$(git -C "$PI" show "$PI_083_REF:packages/coding-agent/src/modes/interactive/interactive-mode.ts")
+resolve_line=$(grep -n -m1 'resolve(result);' <<<"$host_source" | cut -d: -f1)
+dispose_line=$(grep -n -m1 'component?.dispose?.();' <<<"$host_source" | cut -d: -f1)
+test "$resolve_line" -lt "$dispose_line"
+git -C "$PI" show "$PI_083_REF:packages/tui/src/index.ts" | grep -F 'decodeKittyPrintable,'
+git -C "$PI" show "$PI_083_REF:packages/coding-agent/src/core/extensions/types.ts" | grep -F 'onHandle?: (handle: OverlayHandle) => void;'
+printf 'Pi 0.83 done/dispose lines: %s/%s\n' "$resolve_line" "$dispose_line"
+```
+
+Expected: every command exits 0, the `pi-usage` dimensions and public exports print, and the `done()` resolve line precedes component disposal.
+
 ## Task 1: Create a host-realistic component harness and component shell
 
 **Files:**
@@ -392,7 +472,7 @@ it("keeps confirmed rows and warns when the final tool is rejected", () => {
 });
 ```
 
-Also add one thrown refresh/write case asserting the previously confirmed `component.getState().tools` remains unchanged and the warning is `Could not update Pi tools: <message>`.
+Also add one thrown snapshot-read case and one thrown write case. Each must preserve the previously confirmed `component.getState().tools` and warn with `Could not update Pi tools: <message>`. `toggleLiveTool()` rereads the host immediately before mutation, then derives returned rows from the accepted active-name list; do not add a speculative post-write host read.
 
 - [ ] **Step 3: Run the tests and verify keyboard/effect methods are missing**
 
@@ -518,7 +598,7 @@ Calling `component.close()` three times, then `invalidate()` and `dispose()` twi
 Cover:
 
 ```ts
-it("renames, refreshes details, and restores overlay focus", async () => {
+it("renames the session snapshot and restores overlay focus", async () => {
   const input = deferred<string | undefined>();
   const { component, ctx, pi, handle, tui } = makeDashboard({ input: input.promise });
   component.handleInput("\t");
@@ -548,7 +628,7 @@ it("closes and disposes before confirmed compaction starts", async () => {
 });
 ```
 
-In the test fake, `ctx.compact` must push `"compact"` into `order`. Add cancellation and synchronous rename/compaction failure tests: cancellation stays open and focuses; failures warn, stay open when possible, and focus.
+In the test fake, `ctx.compact` must push `"compact"` into `order`. Add cancellation and synchronous failure tests. Rename cancellation stays open and focuses. A thrown `setSessionName()` warns with the thrown message, stays open, and focuses. A thrown `ctx.compact()` occurs only after the required close, so it warns with the thrown message, remains closed, and does not refocus or retry.
 
 - [ ] **Step 3: Add lifecycle closure while dialogs are pending**
 
@@ -667,7 +747,7 @@ git commit -m "feat: add lifecycle-safe dashboard dialogs"
 
 - [ ] **Step 1: Add failing exact-overlay and handle-order tests**
 
-Add a custom host harness that captures factory/options, can call `onHandle` before or after the factory, and calls component `dispose()` synchronously when `done()` runs. Assert both orders attach the handle and dialogs focus it. Assert exact options:
+Add a custom host harness that captures factory/options and calls component `dispose()` synchronously when `done()` runs, matching Pi 0.83. The real host invokes the factory before `onHandle`; also run the harness in reversed callback order to keep the opener race-safe. Assert both orders attach the handle and dialogs focus it. Assert exact options:
 
 ```ts
 expect(options).toEqual({
@@ -807,7 +887,7 @@ In `tests/index-save.test.ts`, replace the custom mock that returns a saved conf
 
 - [ ] **Step 5: Add failing lifecycle integration tests**
 
-For each of replacement `session_start`, `session_tree`, and matching `session_shutdown`, open a dashboard, start a deferred rename and a deferred compact in separate parameterized cases, invoke the handler, then resolve the dialog. Assert one `done`, no rename/compact, and a later plain command can reopen. Add stale unrelated shutdown coverage asserting it does not close the active dashboard.
+For each of replacement `session_start`, `session_tree`, and matching `session_shutdown`, open a dashboard, start a deferred rename and a deferred compact in separate parameterized cases, invoke the handler, then resolve the dialog. Await the original command promise after resolution before invoking plain `/statusline` again. Assert one `done`, no rename/compact, and the later plain command reopens. Add stale unrelated shutdown coverage asserting it does not close the active dashboard.
 
 - [ ] **Step 6: Run index suites and verify the old editor wiring fails**
 
@@ -953,6 +1033,10 @@ Expected: save, tools, dialogs, raw/Kitty input, focus, resize, overlay, stale-s
 - [ ] **Step 2: Run the complete shared gate**
 
 ```bash
+set -e
+PHASE_BASE=$(cat .superpowers/statusline-dashboard-phase-05-base)
+git cat-file -e "$PHASE_BASE^{commit}"
+git merge-base --is-ancestor "$PHASE_BASE" HEAD
 node -e 'const [major, minor] = process.versions.node.split(".").map(Number); if (major < 24 || (major === 24 && minor < 15)) process.exit(1); console.log(process.version)'
 pnpm format:check
 pnpm lint
@@ -986,6 +1070,8 @@ Record any skipped manual item and its remaining risk in execution notes.
 - [ ] **Step 4: Review scope and cleanliness**
 
 ```bash
+set -e
+PHASE_BASE=$(cat .superpowers/statusline-dashboard-phase-05-base)
 git diff --name-only "$PHASE_BASE"..HEAD
 git status --short
 git log --oneline -8
