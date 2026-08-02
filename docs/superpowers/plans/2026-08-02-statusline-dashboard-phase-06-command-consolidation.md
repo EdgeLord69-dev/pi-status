@@ -174,15 +174,15 @@ git commit -m "refactor: remove superseded statusline editor"
 
 - [ ] **Step 1: Reduce preset actions**
 
-Keep only `DISPLAY_PRESET_NAMES`, `DisplayPresetName`, one `DISPLAY_PRESETS` registry, and `displayPreset(name)` returning fresh arrays for all four zones. Remove validation, preview, action/result, selector, confirmation, and save-callback code. Retain exact minimal/balanced/telemetry layout and clone tests; remove UI-flow tests.
+Keep only `DISPLAY_PRESET_NAMES`, a private `DisplayPresetName`, one private `DISPLAY_PRESETS` registry, and `displayPreset(name)` returning fresh arrays for all four zones. Remove validation, preview, action/result, selector, confirmation, and save-callback code. Retain exact minimal/balanced/telemetry layout and clone tests; remove UI-flow tests.
 
 - [ ] **Step 2: Reduce tool controls**
 
-Remove SettingsList/getSettingsListTheme imports, overlay options, notification wrappers, and `openToolControls()`. Retain `calculateToolChange`, `DashboardTool`, `readToolSnapshot`, `LiveToolToggle`, and `toggleLiveTool`. Retain tests for catalog order, stale/duplicate active names, unknown names/values, empty active sets, final-active rejection, live reconciliation, ignored toggles, and accepted `setActiveTools` output. Dashboard tests own UI and thrown-host behavior.
+Remove SettingsList/getSettingsListTheme imports, overlay options, notification wrappers, `openToolControls()`, and the string-based `calculateToolChange()` adapter used by that deleted UI. Retain `DashboardTool`, `readToolSnapshot`, and `toggleLiveTool` with an inferred result union. Retain tests for catalog order, stale/duplicate active names, unknown names, empty active sets, final-active rejection, live reconciliation, ignored toggles, and accepted `setActiveTools` output. Dashboard tests own UI and thrown-host behavior.
 
 - [ ] **Step 3: Reduce session actions**
 
-Remove `handleSessionActions()` and selector/confirmation orchestration. Retain `notifyIfActive`, `SessionDetails`, `readSessionDetails`, `renameCurrentSession`, and `startSessionCompaction`. Retain detail extraction, trim/no-op rename, no-reread-after-rename, callback notification, stale-safe notification, and synchronous-start tests. Dashboard tests own dialogs and focus.
+Remove `handleSessionActions()` and selector/confirmation orchestration. Retain private `notifyIfActive`, `SessionDetails`, `readSessionDetails`, `renameCurrentSession`, and `startSessionCompaction`; do not expose injectable snapshot state that has no production caller. Retain detail extraction, trim/no-op rename, one-read rename, callback notification, stale-safe notification, and synchronous-start tests. Dashboard tests own dialogs and focus.
 
 - [ ] **Step 4: Run retained helper suites and static search**
 
@@ -190,11 +190,11 @@ Remove `handleSessionActions()` and selector/confirmation orchestration. Retain 
 pnpm vitest run tests/tui/preset-actions.test.ts tests/tui/tool-controls.test.ts tests/tui/session-actions.test.ts tests/tui/dashboard.test.ts
 pnpm typecheck
 pnpm lint
-rg -n 'openToolControls|handleSessionActions|handleDisplayPreset|SettingsList|getSettingsListTheme|ui\.select' src/tui tests/tui
+rg -n 'openToolControls|handleSessionActions|handleDisplayPreset|calculateToolChange|ToolChange|LiveToolToggle|SettingsList|getSettingsListTheme|ui\.select' src/tui tests/tui
 git diff --check
 ```
 
-Expected: tests pass and the search returns no obsolete wrapper/settings-list usage.
+Expected: tests pass and the search returns no obsolete wrapper, string transition, or settings-list usage.
 
 - [ ] **Step 5: Commit helper reduction**
 
@@ -259,7 +259,7 @@ git commit -m "docs: describe the statusline dashboard"
 - [ ] **Step 1: Prove obsolete source is absent**
 
 ```bash
-rg -n 'parseStatusLineCommand|createStatusLineEditor|openToolControls|handleSessionActions|handleDisplayPreset|installEmptyFooter|EMPTY_FOOTER|command-router|editor-state|editor-render' src tests
+rg -n 'parseStatusLineCommand|createStatusLineEditor|openToolControls|handleSessionActions|handleDisplayPreset|calculateToolChange|ToolChange|LiveToolToggle|installEmptyFooter|EMPTY_FOOTER|command-router|editor-state|editor-render' src tests
 ```
 
 Expected: no matches. Historical references under docs/superpowers are allowed.
