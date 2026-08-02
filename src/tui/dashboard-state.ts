@@ -457,7 +457,8 @@ export function reduceDashboardState(
   } else if (row.type === "segment") {
     const assignment = findSegmentAssignment(state.draft.zones, row.id);
     const assignedCount = STATUS_LINE_ZONE_ORDER.reduce(
-      (count, zone) => count + state.draft.zones[zone].length,
+      (count, zone) =>
+        count + state.draft.zones[zone].filter((id) => state.visibleSegmentIds.includes(id)).length,
       0,
     );
     if (!assignment) state.draft.zones[state.activeZone].push(row.id);

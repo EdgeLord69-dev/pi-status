@@ -155,6 +155,21 @@ describe("dashboard transitions", () => {
     expect(state.draft.zones.bottomLeft).toEqual([]);
   });
 
+  it("protects the final visible segment when unavailable usage segments stay assigned", () => {
+    let state = initDashboardState(
+      config({ zones: zones({ topLeft: ["five-hour-limit", "model"], bottomLeft: [] }) }),
+      [],
+      false,
+    );
+    state.navigation.layout.selectedIndex = selectableRows(state).findIndex(
+      (row) => row.type === "segment" && row.id === "model",
+    );
+
+    state = dispatch(state, { type: "activate" });
+
+    expect(state.draft.zones.topLeft).toEqual(["five-hour-limit", "model"]);
+  });
+
   it("keeps or resets status selection safely when filtering", () => {
     let state = initDashboardState(config(), ["alpha", "beta"], true);
     state.activeTab = "statuses";
