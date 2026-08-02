@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import type { OverlayHandle, TUI } from "@earendil-works/pi-tui";
+import type { TUI } from "@earendil-works/pi-tui";
 import type { PiStatusConfig } from "../src/shared/types.ts";
 import type { StatusLineDashboardComponent } from "../src/tui/dashboard.ts";
 import { isDashboardDirty } from "../src/tui/dashboard-state.ts";
@@ -30,22 +30,7 @@ function config(): PiStatusConfig {
   };
 }
 
-interface DeferredCustomHost {
-  custom: ReturnType<typeof vi.fn>;
-  resolveCustom: (value: unknown) => void;
-  component: () => StatusLineDashboardComponent;
-  done: ReturnType<typeof vi.fn>;
-}
-
-function deferredCustomHost(): DeferredCustomHost {
-  const handle = {
-    focus: vi.fn(),
-    hide: vi.fn(),
-    setHidden: vi.fn(),
-    isHidden: vi.fn(() => false),
-    unfocus: vi.fn(),
-    isFocused: vi.fn(() => true),
-  } as unknown as OverlayHandle;
+function deferredCustomHost() {
   let resolveCustom!: (value: unknown) => void;
   let component!: StatusLineDashboardComponent;
   const customPromise = new Promise((resolve) => {
@@ -55,19 +40,18 @@ function deferredCustomHost(): DeferredCustomHost {
     component.dispose();
     resolveCustom(value);
   });
-  const custom = vi.fn((factory, options) => {
+  const custom = vi.fn((factory) => {
     component = factory(
       { terminal: { columns: 80, rows: 30 }, requestRender: vi.fn() } as unknown as TUI,
       null,
       {},
       done,
     ) as StatusLineDashboardComponent;
-    options?.onHandle?.(handle);
     return customPromise;
   });
   return {
     custom,
-    resolveCustom: (value) => done(value),
+    resolveCustom: (value: unknown) => done(value),
     component: () => component,
     done,
   };

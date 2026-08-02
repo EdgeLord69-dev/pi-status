@@ -35,15 +35,6 @@ type FooterFactory = (
   footerData: FooterDataLike,
 ) => FooterComponent;
 
-type FooterProviderState = {
-  gitBranch: string | null;
-  extensionStatuses: Map<string, string>;
-};
-
-function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 function getAccessType(ctx: ExtensionContext): AccessType | undefined {
   if (!ctx.model) return undefined;
   return ctx.model.provider === "kimi-coding" || ctx.modelRegistry.isUsingOAuth(ctx.model)
@@ -100,16 +91,13 @@ export default function createExtension(pi: ExtensionAPI): void {
   const usageRuntime = createUsageRuntime(pi);
   const activityRuntime = createActivityRuntime();
   let workspacePulseRuntime: WorkspacePulseRuntime | undefined;
-  const footerProviderState: FooterProviderState = {
-    gitBranch: null,
-    extensionStatuses: new Map(),
+  const footerProviderState = {
+    gitBranch: null as string | null,
+    extensionStatuses: new Map<string, string>(),
   };
 
   function isWorkspacePulseEnabled(zones: StatusLineZones): boolean {
-    for (const zone of Object.values(zones) as ReadonlyArray<readonly string[]>) {
-      if (zone.includes("workspace-pulse")) return true;
-    }
-    return false;
+    return Object.values(zones).some((zone) => zone.includes("workspace-pulse"));
   }
 
   function syncWorkspacePulse(config: PiStatusConfig): void {
@@ -290,12 +278,10 @@ export default function createExtension(pi: ExtensionAPI): void {
           onComponent(component) {
             activeDashboard = component;
           },
-          onClosed() {
-            activeDashboard = undefined;
-          },
         });
       } catch (error) {
-        ctx.ui.notify(`Could not open statusline dashboard: ${errorText(error)}`, "warning");
+        const message = error instanceof Error ? error.message : String(error);
+        ctx.ui.notify(`Could not open statusline dashboard: ${message}`, "warning");
       } finally {
         dashboardOpen = false;
         activeDashboard = undefined;

@@ -45,8 +45,8 @@ function errorText(error: unknown): string {
 }
 
 function printableAscii(data: string): string | undefined {
-  const value = decodeKittyPrintable(data) ?? (/^[\x20-\x7e]$/.test(data) ? data : undefined);
-  return value && /^[\x20-\x7e]$/.test(value) ? value : undefined;
+  const value = decodeKittyPrintable(data) ?? data;
+  return /^[\x20-\x7e]$/.test(value) ? value : undefined;
 }
 
 function isSearchable(state: DashboardState): boolean {
@@ -112,53 +112,27 @@ export class StatusLineDashboardComponent implements Component {
     if (this.busy || this.closed) return;
     const printable = printableAscii(data);
 
-    if (matchesKey(data, "shift+tab")) {
-      this.dispatch({ type: "previous_tab" });
-      return;
-    }
-    if (matchesKey(data, Key.tab)) {
-      this.dispatch({ type: "next_tab" });
-      return;
-    }
+    if (matchesKey(data, "shift+tab")) return void this.dispatch({ type: "previous_tab" });
+    if (matchesKey(data, Key.tab)) return void this.dispatch({ type: "next_tab" });
     if (matchesKey(data, Key.escape)) {
       if (isSearchable(this.state) && this.state.navigation[this.state.activeTab].query) {
-        this.dispatch({ type: "clear_query" });
-        return;
+        return void this.dispatch({ type: "clear_query" });
       }
-      this.requestClose();
-      return;
+      return void this.requestClose();
     }
     if (printable === "q") {
       if (isSearchable(this.state)) {
-        this.dispatch({ type: "type_char", char: printable });
-        return;
+        return void this.dispatch({ type: "type_char", char: printable });
       }
-      this.requestClose();
-      return;
+      return void this.requestClose();
     }
-    if (matchesKey(data, Key.up)) {
-      this.dispatch({ type: "move", delta: -1 });
-      return;
-    }
-    if (matchesKey(data, Key.down)) {
-      this.dispatch({ type: "move", delta: 1 });
-      return;
-    }
-    if (matchesKey(data, Key.left)) {
-      this.dispatch({ type: "adjust", delta: -1 });
-      return;
-    }
-    if (matchesKey(data, Key.right)) {
-      this.dispatch({ type: "adjust", delta: 1 });
-      return;
-    }
-    if (matchesKey(data, Key.backspace)) {
-      this.dispatch({ type: "backspace" });
-      return;
-    }
+    if (matchesKey(data, Key.up)) return void this.dispatch({ type: "move", delta: -1 });
+    if (matchesKey(data, Key.down)) return void this.dispatch({ type: "move", delta: 1 });
+    if (matchesKey(data, Key.left)) return void this.dispatch({ type: "adjust", delta: -1 });
+    if (matchesKey(data, Key.right)) return void this.dispatch({ type: "adjust", delta: 1 });
+    if (matchesKey(data, Key.backspace)) return void this.dispatch({ type: "backspace" });
     if (matchesKey(data, Key.space) || matchesKey(data, Key.enter)) {
-      this.dispatch({ type: "activate" });
-      return;
+      return void this.dispatch({ type: "activate" });
     }
     if (printable && isSearchable(this.state)) {
       this.dispatch({ type: "type_char", char: printable });
@@ -281,34 +255,29 @@ export class StatusLineDashboardComponent implements Component {
 export async function openStatusLineDashboard(
   options: Omit<StatusLineDashboardOptions, "tui" | "theme" | "done"> & {
     onComponent?(component: StatusLineDashboardComponent): void;
-    onClosed?(): void;
   },
 ): Promise<void> {
   let component: StatusLineDashboardComponent | undefined;
   let handle: OverlayHandle | undefined;
-  try {
-    await options.ctx.ui.custom<void>(
-      (tui, piTheme, _keys, done) => {
-        component = new StatusLineDashboardComponent({
-          ...options,
-          tui,
-          theme: noColorRequested() ? noTheme : fromPiTheme(piTheme),
-          done,
-        });
-        if (handle) component.setOverlayHandle(handle);
-        options.onComponent?.(component);
-        return component;
+  await options.ctx.ui.custom<void>(
+    (tui, piTheme, _keys, done) => {
+      component = new StatusLineDashboardComponent({
+        ...options,
+        tui,
+        theme: noColorRequested() ? noTheme : fromPiTheme(piTheme),
+        done,
+      });
+      if (handle) component.setOverlayHandle(handle);
+      options.onComponent?.(component);
+      return component;
+    },
+    {
+      overlay: true,
+      overlayOptions: { anchor: "center", maxHeight: "85%", width: "92%" },
+      onHandle(next) {
+        handle = next;
+        component?.setOverlayHandle(next);
       },
-      {
-        overlay: true,
-        overlayOptions: { anchor: "center", maxHeight: "85%", width: "92%" },
-        onHandle(next) {
-          handle = next;
-          component?.setOverlayHandle(next);
-        },
-      },
-    );
-  } finally {
-    options.onClosed?.();
-  }
+    },
+  );
 }

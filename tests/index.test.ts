@@ -596,53 +596,6 @@ describe("extension wiring", () => {
     expect(pkg.pi.extensions).toEqual(["./src/index.ts"]);
   });
 
-  it("opens plain /statusline through Pi custom overlay with default options", async () => {
-    const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => void>>();
-    const events = createBus();
-    const registerCommand = vi.fn();
-    let capturedOptions: Record<string, unknown> | undefined;
-    let resolveCustom!: (value: unknown) => void;
-    const customMock = vi.fn((_factory: unknown, options: unknown) => {
-      capturedOptions = options as Record<string, unknown>;
-      return new Promise((resolve) => {
-        resolveCustom = resolve;
-      });
-    });
-
-    const pi = {
-      events,
-      on(event: string, handler: (event: unknown, ctx: ExtensionContext) => void) {
-        handlers.set(event, [...(handlers.get(event) ?? []), handler]);
-      },
-      registerCommand,
-      getThinkingLevel: () => "medium",
-    } as unknown as ExtensionAPI;
-
-    createExtension(pi);
-
-    const ctx = createContext({
-      ui: {
-        ...createContext().ui,
-        custom: customMock as unknown as ExtensionContext["ui"]["custom"],
-      },
-    });
-
-    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
-
-    const { handler } = getRegisteredCommand(registerCommand.mock.calls, "statusline");
-
-    const commandPromise = handler("", ctx);
-    await new Promise((resolve) => setImmediate(resolve));
-    expect(customMock).toHaveBeenCalledTimes(1);
-    expect(capturedOptions).toEqual({
-      overlay: true,
-      overlayOptions: { anchor: "center", maxHeight: "85%", width: "92%" },
-      onHandle: expect.any(Function),
-    });
-    resolveCustom?.(undefined);
-    await commandPromise;
-  });
-
   it("persists /statusline result to the direct config file when user saves", async () => {
     const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
     const customMock = vi.fn();
@@ -769,93 +722,6 @@ describe("extension wiring", () => {
     resolveCustom?.(undefined);
     await commandPromise;
     expect(renderWithFactory(footerSpy.calls.at(-1))).toContain("GPT-5");
-  });
-
-  it("keeps the live footer installed while the dashboard overlay is open", async () => {
-    const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
-    const customMock = vi.fn();
-    const footerSpy = buildSetFooterSpy();
-    createExtension(pi);
-    const ctx = createContext({
-      ui: { ...createContext().ui, setFooter: footerSpy.setFooter, custom: customMock },
-    });
-    for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
-    const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
-    const footerCallsBeforeOpen = footerSpy.calls.length;
-    let resolveCustom!: (value: unknown) => void;
-    const customPromise = new Promise((resolve) => {
-      resolveCustom = resolve;
-    });
-    customMock.mockImplementationOnce(() => customPromise);
-    const commandPromise = handler("", ctx);
-    await new Promise((resolve) => setImmediate(resolve));
-    expect(footerSpy.calls.length).toBe(footerCallsBeforeOpen);
-    resolveCustom?.(undefined);
-    await commandPromise;
-  });
-
-  it("keeps the live footer installed while the dashboard opens and closes", async () => {
-    const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
-    const customMock = vi.fn();
-    const footerSpy = buildSetFooterSpy();
-    createExtension(pi);
-    const ctx = createContext({
-      ui: { ...createContext().ui, setFooter: footerSpy.setFooter, custom: customMock },
-    });
-    for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
-    const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
-    let resolveCustom!: (value: unknown) => void;
-    const customPromise = new Promise((resolve) => {
-      resolveCustom = resolve;
-    });
-    customMock.mockImplementationOnce(() => customPromise);
-    const commandPromise = handler("", ctx);
-    await new Promise((resolve) => setImmediate(resolve));
-    resolveCustom?.(undefined);
-    await commandPromise;
-    expect(renderWithFactory(footerSpy.calls.at(-1))).toContain("GPT-5 [med]");
-  });
-
-  it("keeps the live footer when ctx.ui.custom rejects the dashboard", async () => {
-    const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => void>>();
-    const events = createBus();
-    const registerCommand = vi.fn();
-    const customMock = vi.fn().mockRejectedValueOnce(new Error("custom UI failed"));
-    const footerSpy = buildSetFooterSpy();
-
-    const pi = {
-      events,
-      on(event: string, handler: (event: unknown, ctx: ExtensionContext) => void) {
-        handlers.set(event, [...(handlers.get(event) ?? []), handler]);
-      },
-      registerCommand,
-      getThinkingLevel: () => "medium",
-    } as unknown as ExtensionAPI;
-
-    createExtension(pi);
-
-    const ctx = createContext({
-      ui: {
-        ...createContext().ui,
-        setFooter: footerSpy.setFooter,
-        custom: customMock as unknown as ExtensionContext["ui"]["custom"],
-      },
-    });
-
-    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
-
-    expect(footerSpy.calls).toHaveLength(1);
-    expect(renderWithFactory(footerSpy.calls[0])).toContain("GPT-5 [med]");
-
-    const { handler } = getRegisteredCommand(registerCommand.mock.calls, "statusline");
-    await handler("", ctx);
-
-    expect(footerSpy.calls).toHaveLength(1);
-    expect(renderWithFactory(footerSpy.calls.at(-1))).toContain("GPT-5 [med]");
-    expect(ctx.ui.notify).toHaveBeenCalledWith(
-      "Could not open statusline dashboard: custom UI failed",
-      "warning",
-    );
   });
 
   it("uses the host thinking level initially and event level over a stale getter", () => {
@@ -1103,21 +969,18 @@ describe("/statusline theme adaptation", () => {
     expect(fgCalls.some(([color]) => color === "borderAccent")).toBe(true);
   });
 
-  it("falls back to noTheme when the runtime theme is missing fg", async () => {
+  it.each([
+    ["missing fg", { bold: (_text: string) => "should-not-be-called" }],
+    ["missing bold", { fg: (_color: string, text: string) => text }],
+    ["null", null],
+  ])("falls back to noTheme for a %s runtime theme", async (_case, runtimeTheme) => {
     const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
     const customMock = vi.fn();
-    const incompleteTheme = {
-      bold: (_text: string) => "should-not-be-called",
-    };
-
     createExtension(pi);
 
-    const ctx = createContext({
-      ui: { ...createContext().ui, custom: customMock },
-    });
+    const ctx = createContext({ ui: { ...createContext().ui, custom: customMock } });
     for (const h of handlers.get("session_start") ?? []) h({}, ctx);
 
-    const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
     let renderOutput: string[] = [];
     let resolveCustom!: (value: unknown) => void;
     const customPromise = new Promise((resolve) => {
@@ -1128,7 +991,7 @@ describe("/statusline theme adaptation", () => {
         factory as (...args: unknown[]) => { render: (width: number) => string[] }
       )(
         { terminal: { columns: 80, rows: 30 }, requestRender: () => {} },
-        incompleteTheme,
+        runtimeTheme,
         {},
         () => {},
       );
@@ -1136,79 +999,12 @@ describe("/statusline theme adaptation", () => {
       return customPromise;
     });
 
+    const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
     const commandPromise = handler("", ctx);
     await new Promise((resolve) => setImmediate(resolve));
     resolveCustom?.(undefined);
     await commandPromise;
     expect(renderOutput.length).toBeGreaterThan(0);
-  });
-
-  it("falls back to noTheme when the runtime theme is missing bold", async () => {
-    const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
-    const customMock = vi.fn();
-    const incompleteTheme = {
-      fg: (_color: string, text: string) => text,
-    };
-
-    createExtension(pi);
-
-    const ctx = createContext({
-      ui: { ...createContext().ui, custom: customMock },
-    });
-    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
-
-    const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
-    let resolveCustom!: (value: unknown) => void;
-    const customPromise = new Promise((resolve) => {
-      resolveCustom = resolve;
-    });
-    customMock.mockImplementationOnce((factory: (...args: unknown[]) => unknown) => {
-      const component = (
-        factory as (...args: unknown[]) => { render: (width: number) => string[] }
-      )(
-        { terminal: { columns: 80, rows: 30 }, requestRender: () => {} },
-        incompleteTheme,
-        {},
-        () => {},
-      );
-      component.render(200);
-      return customPromise;
-    });
-
-    const commandPromise = handler("", ctx);
-    await new Promise((resolve) => setImmediate(resolve));
-    resolveCustom?.(undefined);
-    await commandPromise;
-  });
-
-  it("falls back to noTheme when ctx.ui.custom passes null as the theme", async () => {
-    const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
-    const customMock = vi.fn();
-
-    createExtension(pi);
-
-    const ctx = createContext({
-      ui: { ...createContext().ui, custom: customMock },
-    });
-    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
-
-    const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
-    let resolveCustom!: (value: unknown) => void;
-    const customPromise = new Promise((resolve) => {
-      resolveCustom = resolve;
-    });
-    customMock.mockImplementationOnce((factory: (...args: unknown[]) => unknown) => {
-      const component = (
-        factory as (...args: unknown[]) => { render: (width: number) => string[] }
-      )({ terminal: { columns: 80, rows: 30 }, requestRender: () => {} }, null, {}, () => {});
-      component.render(200);
-      return customPromise;
-    });
-
-    const commandPromise = handler("", ctx);
-    await new Promise((resolve) => setImmediate(resolve));
-    resolveCustom?.(undefined);
-    await commandPromise;
   });
 });
 
@@ -1585,20 +1381,12 @@ describe("extension wiring — completion notifications", () => {
 });
 
 describe("/statusline dashboard wiring", () => {
-  interface Deferred<T> {
-    promise: Promise<T>;
-    resolve: (value: T) => void;
-    reject: (error: unknown) => void;
-  }
-
-  function deferred<T>(): Deferred<T> {
+  function deferred<T>() {
     let resolve!: (value: T) => void;
-    let reject!: (error: unknown) => void;
-    const promise = new Promise<T>((res, rej) => {
+    const promise = new Promise<T>((res) => {
       resolve = res;
-      reject = rej;
     });
-    return { promise, resolve, reject };
+    return { promise, resolve };
   }
 
   interface DeferredCustomHost {
@@ -1652,7 +1440,7 @@ describe("/statusline dashboard wiring", () => {
     };
   }
 
-  it("opens plain /statusline through Pi custom overlay with exact options", async () => {
+  it("opens with exact overlay options without replacing the live footer", async () => {
     const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
     const footerSpy = buildSetFooterSpy();
     createExtension(pi);
@@ -1680,30 +1468,8 @@ describe("/statusline dashboard wiring", () => {
     expect(footerSpy.calls).toHaveLength(footerCallsBeforeOpen);
     host.resolveCustom(undefined);
     await commandPromise;
-  });
-
-  it("does not install an empty footer while the dashboard is open", async () => {
-    const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
-    const footerSpy = buildSetFooterSpy();
-    createExtension(pi);
-    const host = deferredCustomHost();
-    const ctx = createContext({
-      ui: {
-        ...createContext().ui,
-        setFooter: footerSpy.setFooter,
-        custom: host.custom as unknown as ExtensionContext["ui"]["custom"],
-      },
-    });
-    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
-    const footerCallsBeforeOpen = footerSpy.calls.length;
-    const commandPromise = getRegisteredCommand(registerCommandCalls, "statusline").handler(
-      "",
-      ctx,
-    );
-    await new Promise((resolve) => setImmediate(resolve));
     expect(footerSpy.calls).toHaveLength(footerCallsBeforeOpen);
-    host.resolveCustom(undefined);
-    await commandPromise;
+    expect(renderWithFactory(footerSpy.calls.at(-1))).toContain("GPT-5 [med]");
   });
 
   it("ignores a second plain invocation while the dashboard is pending", async () => {
@@ -1746,7 +1512,7 @@ describe("/statusline dashboard wiring", () => {
     expect(ctx.ui.notify).toHaveBeenCalledWith("/statusline requires interactive UI", "warning");
   });
 
-  it("warns on custom rejection and retries on a later invocation", async () => {
+  it("warns on custom rejection and retries without replacing the footer", async () => {
     const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
     const footerSpy = buildSetFooterSpy();
     const custom = vi.fn().mockRejectedValueOnce(new Error("Overlay rejected"));
@@ -1759,6 +1525,7 @@ describe("/statusline dashboard wiring", () => {
       },
     });
     for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+    const footerCallsBeforeOpen = footerSpy.calls.length;
     await getRegisteredCommand(registerCommandCalls, "statusline").handler("", ctx);
     expect(ctx.ui.notify).toHaveBeenCalledWith(
       "Could not open statusline dashboard: Overlay rejected",
@@ -1766,6 +1533,8 @@ describe("/statusline dashboard wiring", () => {
     );
     await getRegisteredCommand(registerCommandCalls, "statusline").handler("", ctx);
     expect(custom).toHaveBeenCalledTimes(2);
+    expect(footerSpy.calls).toHaveLength(footerCallsBeforeOpen);
+    expect(renderWithFactory(footerSpy.calls.at(-1))).toContain("GPT-5 [med]");
   });
 
   it.each([

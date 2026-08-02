@@ -6,6 +6,7 @@ import { buildSnapshot } from "../../src/core/resolve-footer.ts";
 import type { PiStatusConfig } from "../../src/shared/types.ts";
 import type { FooterRenderInput } from "../../src/tui/render.ts";
 import {
+  openStatusLineDashboard,
   StatusLineDashboardComponent,
   type StatusLineDashboardOptions,
 } from "../../src/tui/dashboard.ts";
@@ -13,12 +14,10 @@ import { isDashboardDirty } from "../../src/tui/dashboard-state.ts";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  let reject!: (error: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
+  const promise = new Promise<T>((res) => {
     resolve = res;
-    reject = rej;
   });
-  return { promise, resolve, reject };
+  return { promise, resolve };
 }
 
 function config(): PiStatusConfig {
@@ -531,30 +530,13 @@ describe("StatusLineDashboardComponent", () => {
 });
 
 describe("openStatusLineDashboard", () => {
-  interface OpenHost {
-    ctx: ExtensionCommandContext;
-    capturedFactory: () => ((...args: unknown[]) => unknown) | undefined;
-    capturedOptions: () =>
-      | {
-          overlay?: boolean;
-          overlayOptions?: { anchor?: string; maxHeight?: string; width?: string };
-          onHandle?: (handle: OverlayHandle) => void;
-        }
-      | undefined;
-    handle: OverlayHandle;
-    callDone: (value: unknown) => void;
-    capturedComponent: () => unknown;
-    options: Parameters<typeof import("../../src/tui/dashboard.ts").openStatusLineDashboard>[0];
-  }
-
   function setupOpenHost(
-    extraOverrides: {
-      ctxOverrides?: Partial<ExtensionCommandContext>;
-      piOverrides?: Partial<ExtensionAPI>;
+    overrides: {
+      pi?: Partial<ExtensionAPI>;
       input?: Promise<string | undefined>;
       handleFirst?: boolean;
     } = {},
-  ): OpenHost {
+  ) {
     const handle = {
       focus: vi.fn(),
       hide: vi.fn(),
@@ -563,21 +545,10 @@ describe("openStatusLineDashboard", () => {
       unfocus: vi.fn(),
       isFocused: vi.fn(() => true),
     } as unknown as OverlayHandle;
-    const ctxState: {
-      factory?: (...args: unknown[]) => unknown;
-      options?: {
-        overlay?: boolean;
-        overlayOptions?: { anchor?: string; maxHeight?: string; width?: string };
-        onHandle?: (handle: OverlayHandle) => void;
-      };
-      component?: {
-        dispose: () => void;
-        handleInput?: (d: string) => void;
-        setOverlayHandle?: (h: OverlayHandle) => void;
-      };
-    } = {};
-    let resolveCustom: ((value: unknown) => void) | undefined;
-    const customPromise = new Promise((resolve) => {
+    let component!: StatusLineDashboardComponent;
+    let customOptions: unknown;
+    let resolveCustom!: () => void;
+    const customPromise = new Promise<void>((resolve) => {
       resolveCustom = resolve;
     });
     const ctx = {
@@ -590,34 +561,22 @@ describe("openStatusLineDashboard", () => {
       } as never,
       ui: {
         custom: vi.fn((factory, options) => {
-          ctxState.factory = factory as (...args: unknown[]) => unknown;
-          ctxState.options = options as typeof ctxState.options;
-          if (extraOverrides.handleFirst) options?.onHandle?.(handle);
-          const fakeTui = {
-            terminal: { columns: 80, rows: 30 },
-            requestRender: vi.fn(),
-          };
-          const component = (
-            ctxState.factory as (
-              tui: unknown,
-              theme: unknown,
-              keys: unknown,
-              done: (v: unknown) => void,
-            ) => {
-              dispose: () => void;
-              handleInput?: (d: string) => void;
-              setOverlayHandle?: (h: OverlayHandle) => void;
-            }
-          )(fakeTui, null, {}, (value: unknown) => {
-            component.dispose();
-            resolveCustom?.(value);
-          });
-          ctxState.component = component;
-          if (!extraOverrides.handleFirst) options?.onHandle?.(handle);
+          customOptions = options;
+          if (overrides.handleFirst) options?.onHandle?.(handle);
+          component = factory(
+            { terminal: { columns: 80, rows: 30 }, requestRender: vi.fn() },
+            null,
+            {},
+            () => {
+              component.dispose();
+              resolveCustom();
+            },
+          );
+          if (!overrides.handleFirst) options?.onHandle?.(handle);
           return customPromise;
         }),
         notify: vi.fn(),
-        input: vi.fn(() => extraOverrides.input ?? Promise.resolve(undefined)),
+        input: vi.fn(() => overrides.input ?? Promise.resolve(undefined)),
         confirm: vi.fn(() => Promise.resolve(false)),
       },
     } as unknown as ExtensionCommandContext;
@@ -633,14 +592,14 @@ describe("openStatusLineDashboard", () => {
       sessionId: "session-1",
       extensionStatuses: new Map(),
     });
-    const baseOptions: OpenHost["options"] = {
+    const options: Parameters<typeof openStatusLineDashboard>[0] = {
       pi: {
         getAllTools: () => [],
         getActiveTools: () => [],
         setActiveTools: vi.fn(),
         getSessionName: () => "Untitled",
         setSessionName: vi.fn(),
-        ...extraOverrides.piOverrides,
+        ...overrides.pi,
       } as unknown as ExtensionAPI,
       ctx,
       config: config(),
@@ -650,41 +609,25 @@ describe("openStatusLineDashboard", () => {
       save: vi.fn(),
     };
     return {
-      ctx,
-      capturedFactory: () => ctxState.factory,
-      capturedOptions: () => ctxState.options,
+      component: () => component,
+      customOptions: () => customOptions,
+      finish: () => component.close(),
       handle,
-      callDone: (value: unknown) => resolveCustom?.(value),
-      capturedComponent: () => ctxState.component,
-      options: baseOptions,
+      options,
     };
   }
 
   it("opens with exact overlay options and onHandle", async () => {
     const host = setupOpenHost();
-    const promise = import("../../src/tui/dashboard.ts").then((mod) =>
-      mod.openStatusLineDashboard(host.options),
-    );
+    const promise = openStatusLineDashboard(host.options);
     await new Promise((resolve) => setImmediate(resolve));
-    host.callDone(undefined);
+    host.finish();
     await promise;
-    expect(host.capturedOptions()).toEqual({
+    expect(host.customOptions()).toEqual({
       overlay: true,
       overlayOptions: { anchor: "center", maxHeight: "85%", width: "92%" },
       onHandle: expect.any(Function),
     });
-  });
-
-  it("attaches the handle when onHandle runs after the factory", async () => {
-    const host = setupOpenHost();
-    const promise = import("../../src/tui/dashboard.ts").then((mod) =>
-      mod.openStatusLineDashboard(host.options),
-    );
-    await new Promise((resolve) => setImmediate(resolve));
-    expect(typeof host.capturedFactory()).toBe("function");
-    host.callDone(undefined);
-    await promise;
-    expect(host.capturedOptions()).toBeDefined();
   });
 
   it.each([false, true])(
@@ -692,17 +635,9 @@ describe("openStatusLineDashboard", () => {
     async (handleFirst) => {
       const input = deferred<string | undefined>();
       const host = setupOpenHost({ input: input.promise, handleFirst });
-      const promise = import("../../src/tui/dashboard.ts").then((mod) =>
-        mod.openStatusLineDashboard(host.options),
-      );
+      const promise = openStatusLineDashboard(host.options);
       await new Promise((resolve) => setImmediate(resolve));
-      expect(typeof host.capturedFactory()).toBe("function");
-      const component = (
-        host as unknown as { capturedComponent: () => unknown }
-      ).capturedComponent() as {
-        handleInput: (d: string) => void;
-        dispose: () => void;
-      };
+      const component = host.component();
       component.handleInput("\t");
       component.handleInput("\t");
       component.handleInput("\r");
@@ -710,7 +645,7 @@ describe("openStatusLineDashboard", () => {
       await input.promise;
       await new Promise((resolve) => setImmediate(resolve));
       await new Promise((resolve) => setImmediate(resolve));
-      host.callDone(undefined);
+      host.finish();
       await promise;
       expect(host.handle.focus).toHaveBeenCalled();
     },
