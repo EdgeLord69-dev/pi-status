@@ -142,9 +142,7 @@ export const SEGMENT_ORDER: readonly SegmentMetadata[] = [
   },
 ];
 
-export const SEGMENT_METADATA = new Map(
-  SEGMENT_ORDER.map((segment) => [segment.id, segment]),
-);
+export const SEGMENT_METADATA = new Map(SEGMENT_ORDER.map((segment) => [segment.id, segment]));
 
 export function findSegmentAssignment(
   zones: StatusLineZones,
@@ -171,9 +169,7 @@ function cloneConfig(config: PiStatusConfig): PiStatusConfig {
 }
 
 function sameArray(left: readonly string[], right: readonly string[]): boolean {
-  return (
-    left.length === right.length && left.every((value, index) => value === right[index])
-  );
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 export function configsEqual(left: PiStatusConfig, right: PiStatusConfig): boolean {
@@ -242,9 +238,7 @@ export function initDashboardState(
     draft: cloneConfig(config),
     activeZone: "topLeft",
     preset: presetForZones(config.zones, visibleSegmentIds),
-    discoveredStatuses: [...new Set(discoveredStatuses)].sort((a, b) =>
-      a.localeCompare(b),
-    ),
+    discoveredStatuses: [...new Set(discoveredStatuses)].sort((a, b) => a.localeCompare(b)),
     visibleSegmentIds,
     navigation: {
       layout: emptyNavigation(),
@@ -285,4 +279,195 @@ export function selectableRows(
   }
   if (tab === "settings") return [{ type: "notifications" }, { type: "save" }];
   return [];
+}
+
+export type DashboardAction =
+  | { type: "next_tab" }
+  | { type: "previous_tab" }
+  | { type: "move"; delta: -1 | 1 }
+  | { type: "adjust"; delta: -1 | 1 }
+  | { type: "activate" }
+  | { type: "type_char"; char: string }
+  | { type: "backspace" }
+  | { type: "clear_query" }
+  | { type: "set_offset"; tab: DashboardTabId; offset: number }
+  | { type: "saved"; config: PiStatusConfig };
+
+export type DashboardEffect = { type: "save"; config: PiStatusConfig };
+export type DashboardTransition = { state: DashboardState; effect?: DashboardEffect };
+
+function activeNavigation(state: DashboardState): TabNavigation {
+  return state.navigation[state.activeTab];
+}
+
+function clampSelection(state: DashboardState): DashboardState {
+  const rows = selectableRows(state);
+  const nav = activeNavigation(state);
+  nav.selectedIndex =
+    rows.length === 0 ? 0 : Math.max(0, Math.min(nav.selectedIndex, rows.length - 1));
+  nav.offset = Math.max(0, nav.offset);
+  return state;
+}
+
+function currentRow(state: DashboardState): DashboardSelectableRow | undefined {
+  const rows = selectableRows(state);
+  return rows[activeNavigation(state).selectedIndex];
+}
+
+function keepSegmentSelected(state: DashboardState, id: StatusLineSegmentId): DashboardState {
+  const index = selectableRows(state).findIndex((row) => row.type === "segment" && row.id === id);
+  if (index >= 0) activeNavigation(state).selectedIndex = index;
+  return clampSelection(state);
+}
+
+function reconcileStatusSelection(
+  state: DashboardState,
+  previous: DashboardSelectableRow | undefined,
+): DashboardState {
+  const index =
+    previous?.type === "status"
+      ? selectableRows(state).findIndex((row) => row.type === "status" && row.key === previous.key)
+      : -1;
+  activeNavigation(state).selectedIndex = index >= 0 ? index : 0;
+  return clampSelection(state);
+}
+
+function cloneState(state: DashboardState): DashboardState {
+  return {
+    ...state,
+    baseline: cloneConfig(state.baseline),
+    draft: cloneConfig(state.draft),
+    discoveredStatuses: [...state.discoveredStatuses],
+    visibleSegmentIds: [...state.visibleSegmentIds],
+    navigation: Object.fromEntries(
+      Object.entries(state.navigation).map(([key, value]) => [key, { ...value }]),
+    ) as DashboardState["navigation"],
+  };
+}
+
+export function reduceDashboardState(
+  current: DashboardState,
+  action: DashboardAction,
+): DashboardTransition {
+  const state = cloneState(current);
+  const tabs = DASHBOARD_TABS.map(({ id }) => id);
+  if (action.type === "next_tab" || action.type === "previous_tab") {
+    const index = tabs.indexOf(state.activeTab);
+    const delta = action.type === "next_tab" ? 1 : -1;
+    state.activeTab = tabs[(index + delta + tabs.length) % tabs.length];
+    return { state: clampSelection(state) };
+  }
+  if (action.type === "move") {
+    activeNavigation(state).selectedIndex += action.delta;
+    return { state: clampSelection(state) };
+  }
+  if (action.type === "type_char") {
+    const previous = currentRow(state);
+    if (state.activeTab === "statuses") activeNavigation(state).query += action.char;
+    return {
+      state:
+        state.activeTab === "statuses"
+          ? reconcileStatusSelection(state, previous)
+          : clampSelection(state),
+    };
+  }
+  if (action.type === "backspace") {
+    const previous = currentRow(state);
+    if (state.activeTab === "statuses") {
+      activeNavigation(state).query = activeNavigation(state).query.slice(0, -1);
+    }
+    return {
+      state:
+        state.activeTab === "statuses"
+          ? reconcileStatusSelection(state, previous)
+          : clampSelection(state),
+    };
+  }
+  if (action.type === "clear_query") {
+    const previous = currentRow(state);
+    activeNavigation(state).query = "";
+    return {
+      state:
+        state.activeTab === "statuses"
+          ? reconcileStatusSelection(state, previous)
+          : clampSelection(state),
+    };
+  }
+  if (action.type === "set_offset") {
+    state.navigation[action.tab].offset = Math.max(0, action.offset);
+    return { state };
+  }
+  if (action.type === "saved") {
+    state.baseline = cloneConfig(action.config);
+    state.draft = cloneConfig(action.config);
+    state.preset = presetForZones(action.config.zones, state.visibleSegmentIds);
+    return { state: clampSelection(state) };
+  }
+
+  const row = currentRow(state);
+  if (!row) return { state };
+  if (action.type === "adjust") {
+    if (row.type === "preset") {
+      const index =
+        state.preset === "custom"
+          ? action.delta > 0
+            ? -1
+            : 0
+          : DISPLAY_PRESET_NAMES.indexOf(state.preset);
+      const name =
+        DISPLAY_PRESET_NAMES[
+          (index + action.delta + DISPLAY_PRESET_NAMES.length) % DISPLAY_PRESET_NAMES.length
+        ];
+      state.draft.zones = visiblePreset(name, state.visibleSegmentIds);
+      state.preset = name;
+    } else if (row.type === "zone") {
+      const index = STATUS_LINE_ZONE_ORDER.indexOf(state.activeZone);
+      state.activeZone =
+        STATUS_LINE_ZONE_ORDER[
+          (index + action.delta + STATUS_LINE_ZONE_ORDER.length) % STATUS_LINE_ZONE_ORDER.length
+        ];
+    } else if (row.type === "segment") {
+      const assignment = findSegmentAssignment(state.draft.zones, row.id);
+      if (assignment?.zone === state.activeZone) {
+        const target = assignment.index + action.delta;
+        if (target >= 0 && target < state.draft.zones[assignment.zone].length) {
+          const [segment] = state.draft.zones[assignment.zone].splice(assignment.index, 1);
+          state.draft.zones[assignment.zone].splice(target, 0, segment);
+          state.preset = "custom";
+        }
+      }
+    }
+    return {
+      state: row.type === "segment" ? keepSegmentSelected(state, row.id) : clampSelection(state),
+    };
+  }
+  if (action.type !== "activate") return { state };
+
+  if (row.type === "save") {
+    return { state, effect: { type: "save", config: cloneConfig(state.draft) } };
+  }
+  if (row.type === "notifications") {
+    state.draft.completionNotifications = !state.draft.completionNotifications;
+  } else if (row.type === "status") {
+    const hidden = state.draft.extensionSegments.hidden;
+    state.draft.extensionSegments.hidden = hidden.includes(row.key)
+      ? hidden.filter((key) => key !== row.key)
+      : [...hidden, row.key];
+  } else if (row.type === "segment") {
+    const assignment = findSegmentAssignment(state.draft.zones, row.id);
+    const assignedCount = STATUS_LINE_ZONE_ORDER.reduce(
+      (count, zone) => count + state.draft.zones[zone].length,
+      0,
+    );
+    if (!assignment) state.draft.zones[state.activeZone].push(row.id);
+    else if (assignment.zone !== state.activeZone) {
+      state.draft.zones[assignment.zone].splice(assignment.index, 1);
+      state.draft.zones[state.activeZone].push(row.id);
+    } else if (assignedCount > 1) {
+      state.draft.zones[assignment.zone].splice(assignment.index, 1);
+    }
+    state.preset = presetForZones(state.draft.zones, state.visibleSegmentIds);
+    return { state: keepSegmentSelected(state, row.id) };
+  }
+  return { state: clampSelection(state) };
 }
