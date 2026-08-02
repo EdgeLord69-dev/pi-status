@@ -14,7 +14,8 @@
 
 - Approved design: [`docs/superpowers/specs/2026-08-01-statusline-dashboard-overlay-design.md`](../specs/2026-08-01-statusline-dashboard-overlay-design.md)
 - Visual/lifecycle reference: `/Users/lanh/Developer/pi-vault/pi-usage` 0.7.0 at `152b377522a2`
-- Host API reference: `/Users/lanh/Developer/pi-packages/pi` 0.83.0 at `583f153d502a`
+- Installed host reference: `/Users/lanh/Developer/pi-packages/pi` tag `v0.83.0` at `845d6ff1f664`
+- Current host cross-check: `/Users/lanh/Developer/pi-packages/pi` main at `583f153d502a`
 - The `pi-atelier` sidebar is a separate project and is not part of these phases.
 
 Execute all phases sequentially in one isolated worktree. Before execution, use the `using-git-worktrees` skill, then use `subagent-driven-development` or `executing-plans`. Do not modify this parent plan while executing or while expanding the linked phase plans.
@@ -35,7 +36,7 @@ The order is fixed from lowest-risk compatibility work to the highest-risk comma
 
 ### New production files
 
-- `src/tui/overlay-render.ts`: faithful `pi-usage` frame, padding, content-width, and tab-bar primitives plus the bounded too-short fallback.
+- `src/tui/overlay-render.ts`: faithful `pi-usage` frame, padding, content-width, and tab-bar primitives plus the bounded small-terminal fallback.
 - `src/tui/dashboard-layout.ts`: terminal-height budget, common target height, body padding, and selection-following viewport calculations.
 - `src/tui/dashboard-state.ts`: dashboard tabs, config baseline/draft, dirty comparison, per-tab cursor/query/offset, Layout/Statuses/Settings transitions, and shared row identity.
 - `src/tui/dashboard-render.ts`: logical rows for all five tabs, production footer preview, contextual footer text, and equal-height framed rendering.
@@ -86,7 +87,7 @@ Keep `src/tui/preset-actions.ts` only if the final dashboard still imports its p
 ```
 
 6. At fixed terminal dimensions every tab renders the same number of rows. Use the largest unfiltered tab body, capped by `max(1, floor(tui.terminal.rows * 0.85))`; short bodies pad, long bodies viewport.
-7. Never rely on Pi's `maxHeight` slicing. The component returns a complete frame no taller than the cap, or a bounded `Terminal too short · Esc` fallback.
+7. Never rely on Pi's `maxHeight` slicing. At widths of seven columns or more, the component returns a complete frame no taller than the cap. Smaller widths or insufficient heights return a bounded `Terminal too small · Esc` fallback.
 8. Statuses and Tools consume printable input, including `q`; Esc clears a query before close. Other tabs use `q`/Esc for close.
 9. Dirty close uses Pi confirmation and restores overlay focus on cancellation. Rename returns and refreshes. Confirmed compaction closes before calling `ctx.compact`.
 10. All overlay close paths and session lifecycle cleanup are idempotent.

@@ -1,17 +1,21 @@
 import type { FooterRenderColor } from "./render.ts";
 
-export type StatusLineMenuColor = FooterRenderColor | "borderMuted";
+export type StatusLineMenuColor = FooterRenderColor | "borderAccent" | "borderMuted" | "selectedBg";
 
 export type StatusLineTheme = {
   fg: (color: StatusLineMenuColor, text: string) => string;
+  bg: (color: StatusLineMenuColor, text: string) => string;
   bold: (text: string) => string;
   dim: (text: string) => string;
+  inverse: (text: string) => string;
   rainbow: (text: string) => string;
 };
 
 type PiThemeLike = {
   fg: (color: string, text: string) => string;
+  bg?: (color: string, text: string) => string;
   bold: (text: string) => string;
+  inverse?: (text: string) => string;
 };
 
 function isPiThemeLike(value: unknown): value is PiThemeLike {
@@ -67,8 +71,10 @@ function safeFg(theme: PiThemeLike, color: string, text: string): string {
 
 export const noTheme: StatusLineTheme = {
   fg: (_color, text) => text,
+  bg: (_color, text) => text,
   bold: (text) => text,
   dim: (text) => text,
+  inverse: (text) => text,
   rainbow: (text) => text,
 };
 
@@ -80,8 +86,22 @@ export function fromPiTheme(theme: unknown): StatusLineTheme {
   if (!isPiThemeLike(theme)) return noTheme;
   return {
     fg: (color, text) => safeFg(theme, color, text),
+    bg: (color, text) => {
+      try {
+        return typeof theme.bg === "function" ? theme.bg(color, text) : text;
+      } catch {
+        return text;
+      }
+    },
     bold: (text) => theme.bold(text),
     dim: (text) => theme.fg("dim", text),
+    inverse: (text) => {
+      try {
+        return typeof theme.inverse === "function" ? theme.inverse(text) : text;
+      } catch {
+        return text;
+      }
+    },
     rainbow: (text) => rainbow(text),
   };
 }

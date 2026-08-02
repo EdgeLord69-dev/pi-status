@@ -36,7 +36,7 @@ Port the reusable `pi-usage` shell primitives and visual contract rather than de
 - overlay options are exactly `{ anchor: "center", maxHeight: "85%", width: "92%" }`;
 - Pi's `center` anchor remains authoritative for both axes and recalculates placement after terminal resize;
 - the heavy box frame, two-column horizontal padding, ANSI-safe frame sizing, theme adapter, tab bar, blank body spacing, and contextual footer follow `pi-usage`;
-- the active tab is shown first when tab labels overflow, then neighboring tabs are fitted alternately with `‹` and `›` overflow markers;
+- the active tab is shown first when tab labels overflow, then neighboring tabs are fitted alternately with `\u2039` and `\u203a` overflow markers;
 - Tab and Shift+Tab cycle through tabs with wraparound;
 - cleanup and close completion are idempotent.
 

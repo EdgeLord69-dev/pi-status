@@ -629,7 +629,7 @@ Expected: new and old reducer coverage passes.
 
 - [ ] **Step 1: Write failing render tests**
 
-Create `tests/tui/dashboard-render.test.ts`. Use `noTheme`, `withDefaults()` from `tests/helpers.ts`, and this exact preview fixture:
+Create `tests/tui/dashboard-render.test.ts`. Use `visibleWidth` from `@earendil-works/pi-tui`, `noTheme`, `withDefaults()` from `tests/helpers.ts`, and this exact preview fixture:
 
 ```ts
 const preview = withDefaults({
@@ -680,7 +680,14 @@ it("renders a bounded fallback below normal chrome height", () => {
   const state = initDashboardState(config(), [], true);
   const result = renderDashboard(state, preview, noTheme, 40, 5);
   expect(result.lines).toHaveLength(4);
-  expect(result.lines.join("\n")).toContain("Terminal too short");
+  expect(result.lines.join("\n")).toContain("Terminal too small");
+});
+
+it("renders a bounded fallback below the minimum frame width", () => {
+  const state = initDashboardState(config(), [], true);
+  const result = renderDashboard(state, preview, noTheme, 6, 40);
+  expect(result.lines.every((line) => visibleWidth(line) === 6)).toBe(true);
+  expect(result.lines.join("\n")).not.toContain("┏");
 });
 ```
 
@@ -776,8 +783,8 @@ export function renderDashboard(
     logicalBody(state, id, previewInput, theme, contentWidth, true),
   );
   const target = targetOverlayRows(natural.map(({ lines }) => lines.length), terminalRows);
-  if (target < MIN_NORMAL_OVERLAY_ROWS) {
-    return { lines: renderTooShort(safeWidth, target, theme), offset: 0 };
+  if (safeWidth < MIN_FRAME_WIDTH || target < MIN_NORMAL_OVERLAY_ROWS) {
+    return { lines: renderTooSmall(safeWidth, target, theme), offset: 0 };
   }
 
   const active = logicalBody(state, state.activeTab, previewInput, theme, contentWidth, false);
@@ -798,7 +805,7 @@ export function renderDashboard(
 }
 ```
 
-Import `frame`, `frameContentWidth`, `renderTabBar`, `renderTooShort` from `overlay-render.ts` and layout functions/constants from `dashboard-layout.ts`.
+Import `frame`, `frameContentWidth`, `MIN_FRAME_WIDTH`, `renderTabBar`, and `renderTooSmall` from `overlay-render.ts`; import the layout functions and constants from `dashboard-layout.ts`.
 
 - [ ] **Step 4: Verify exact height and overflow behavior**
 
