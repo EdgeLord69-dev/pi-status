@@ -188,11 +188,6 @@ function includesFuzzy(haystack: string, needle: string): boolean {
   return queryIndex === query.length;
 }
 
-function toolMatches(tool: DashboardTool, query: string): boolean {
-  if (!query) return true;
-  return includesFuzzy(tool.name, query) || includesFuzzy(tool.description, query);
-}
-
 function visiblePreset(
   name: (typeof DISPLAY_PRESET_NAMES)[number],
   visibleSegmentIds: readonly StatusLineSegmentId[],
@@ -286,7 +281,9 @@ export function selectableRows(
   if (tab === "tools") {
     const query = state.navigation.tools.query;
     return state.tools
-      .filter((tool) => toolMatches(tool, query))
+      .filter(
+        ({ name, description }) => includesFuzzy(name, query) || includesFuzzy(description, query),
+      )
       .map(({ name }) => ({ type: "tool" as const, name }));
   }
   if (tab === "settings") return [{ type: "notifications" }, { type: "save" }];
