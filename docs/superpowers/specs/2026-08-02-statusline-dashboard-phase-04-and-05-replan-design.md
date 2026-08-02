@@ -1,13 +1,13 @@
-# Statusline Dashboard Phase 4 Split Replan
+# Statusline Dashboard Phases 4 and 5 Replan
 
 ## Goal
 
 Replace the current Phase 4 implementation plan with two independently verifiable phases:
 
-- **Phase 4A:** add live Session and Tools data, state, effects, and rendering without changing shipped command behavior;
-- **Phase 4B:** add the concrete dashboard component and wire plain `/statusline` with correct Pi overlay and session lifecycle behavior.
+- **Phase 4:** add live Session and Tools data, state, effects, and rendering without changing shipped command behavior;
+- **Phase 5:** add the concrete dashboard component and wire plain `/statusline` with correct Pi overlay and session lifecycle behavior.
 
-Existing `/statusline tools|session|notifications|preset` routes remain available through both phases and are removed only in Phase 5.
+Existing `/statusline tools|session|notifications|preset` routes remain available through both phases and are removed only in Phase 6.
 
 ## Readiness finding
 
@@ -29,11 +29,11 @@ The architecture remains valid, but the plan must correct these execution contra
 
 `fromPiTheme()` already validates unknown themes and falls back to `noTheme`; no second theme guard is needed. Existing null or incomplete-theme coverage moves to the new dashboard boundary.
 
-## Phase 4A: Live tabs without command wiring
+## Phase 4: Live tabs without command wiring
 
 ### Scope
 
-Phase 4A changes only reusable host operations and the pure dashboard engine:
+Phase 4 changes only reusable host operations and the pure dashboard engine:
 
 - expose live tool snapshot and toggle operations from `src/tui/tool-controls.ts`;
 - expose session detail, rename, and compaction-start operations from `src/tui/session-actions.ts`;
@@ -61,13 +61,13 @@ Session rename trims input and leaves blank input unchanged. Compaction startup 
 
 The existing standalone wrappers call the extracted helpers while preserving their current UI text, rollback, and failure behavior.
 
-### Phase 4A verification
+### Phase 4 verification
 
 Run focused helper, state, render, old-editor, and shell suites, followed by formatting, lint, typecheck, full tests, package verification, dry-run packaging, and `git diff --check`.
 
-Phase 4A is complete when Session and Tools are fully represented by the pure dashboard engine while shipped command behavior remains unchanged.
+Phase 4 is complete when Session and Tools are fully represented by the pure dashboard engine while shipped command behavior remains unchanged.
 
-## Phase 4B: Component and lifecycle wiring
+## Phase 5: Component and lifecycle wiring
 
 ### Component contract
 
@@ -131,11 +131,11 @@ Rendering uses the current `tui.terminal.rows` every time and applies render-der
 
 The live footer remains installed behind the overlay. A single current-footer snapshot helper serves both footer rendering and dashboard preview.
 
-Legacy non-empty routes remain unchanged through Phase 4B.
+Legacy non-empty routes remain unchanged through Phase 5.
 
-Replacing the old no-argument editor path explicitly removes only newly dead code: the editor import, empty-footer factory, empty-footer installer, and editor-only declarations or imports. Old standalone modules remain for legacy routes and Phase 5 cleanup.
+Replacing the old no-argument editor path explicitly removes only newly dead code: the editor import, empty-footer factory, empty-footer installer, and editor-only declarations or imports. Old standalone modules remain for legacy routes and Phase 6 cleanup.
 
-### Phase 4B testing
+### Phase 5 testing
 
 Component tests use a fake TUI with mutable terminal dimensions, a fake overlay handle, complete Pi tool/session APIs, deferred dialogs, and a custom-host harness that calls `dispose()` immediately after `done()`.
 
@@ -154,11 +154,11 @@ Tests cover:
 
 Index tests use dashboard-specific `ExtensionCommandContext` fixtures and a deferred custom overlay mock. They cover exact overlay options, footer continuity, duplicate-open suppression, in-place saving, open failure and retry, non-TUI rejection, lifecycle closure, and unchanged legacy argument routes.
 
-### Phase 4B verification
+### Phase 5 verification
 
 Run focused component and index suites first, then the complete shared gate, dry-run packaging, package verification, and `git diff --check`. Perform the existing manual TUI checklist for overlay geometry, footer continuity, all five tabs, save semantics, tool toggles, dialogs, stale-session closure, resize behavior, and legacy routes.
 
-Phase 4B is complete when plain `/statusline` opens the full dashboard, all host actions and lifecycle paths are safe, the saved footer remains visible, and legacy argument routes still pass.
+Phase 5 is complete when plain `/statusline` opens the full dashboard, all host actions and lifecycle paths are safe, the saved footer remains visible, and legacy argument routes still pass.
 
 ## Out of scope
 

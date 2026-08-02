@@ -1,4 +1,4 @@
-# Statusline Dashboard Phase 5: Command Consolidation Implementation Plan
+# Statusline Dashboard Phase 6: Command Consolidation Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -73,7 +73,7 @@ it.each([
 });
 ```
 
-Keep the plain-command overlay, non-TUI, duplicate-open, save, and lifecycle tests from Phase 4.
+Keep the plain-command overlay, non-TUI, duplicate-open, save, and lifecycle tests from Phase 5.
 
 - [ ] **Step 2: Confirm red state**
 
@@ -102,7 +102,7 @@ handler: async (args, ctx) => {
     ctx.ui.notify("/statusline requires interactive UI", "warning");
     return;
   }
-  // Existing Phase 4 dashboard-open path follows unchanged.
+  // Existing Phase 5 dashboard-open path follows unchanged.
 }
 ```
 
@@ -175,7 +175,7 @@ rm src/tui/editor.ts src/tui/editor-render.ts src/tui/editor-state.ts
 rm tests/tui/editor.test.ts tests/tui/editor-render.test.ts tests/tui/editor-state.test.ts
 ```
 
-Remove now-unused `EMPTY_FOOTER_FACTORY`, `installEmptyFooter()`, `createStatusLineEditor`, and old editor/theme-detection imports from `src/index.ts`. Keep live footer installation and the dashboard's shared `fromPiTheme()` path.
+Phase 5 already removed `EMPTY_FOOTER_FACTORY`, `installEmptyFooter()`, the `createStatusLineEditor` import, and editor-only theme detection from `src/index.ts`. Verify they remain absent; this task only deletes the now-unreferenced editor source and tests.
 
 - [ ] **Step 4: Prove no behavior coverage was lost**
 
@@ -192,7 +192,7 @@ Expected: grep returns no matches; all migrated dashboard/editor behavior is gre
 - [ ] **Step 5: Commit old editor removal**
 
 ```bash
-git add src/index.ts tests/tui/dashboard-state.test.ts \
+git add tests/tui/dashboard-state.test.ts \
   src/tui/editor.ts src/tui/editor-render.ts src/tui/editor-state.ts \
   tests/tui/editor.test.ts tests/tui/editor-render.test.ts tests/tui/editor-state.test.ts
 git commit -m "refactor: remove superseded statusline editor"
@@ -484,8 +484,8 @@ git status --short
 git log --oneline -8
 ```
 
-Expected: only Phase 5 files changed since its base, no sidebar/private-renderer/dependency work leaked, all planned commits exist, and the worktree is clean.
+Expected: only Phase 6 files changed since its base, no sidebar/private-renderer/dependency work leaked, all planned commits exist, and the worktree is clean.
 
 ## Completion gate
 
-Phase 5 and the dashboard-overlay program are complete only when `/statusline` is the sole entry, all former features work through their designated tabs, every tab is equal-height and screen-bounded, stale lifecycle and dialog focus are safe, obsolete code/tests are removed, documentation matches reality, and all automated/manual/package gates pass.
+Phase 6 and the dashboard-overlay program are complete only when `/statusline` is the sole entry, all former features work through their designated tabs, every tab is equal-height and screen-bounded, stale lifecycle and dialog focus are safe, obsolete code/tests are removed, documentation matches reality, and all automated/manual/package gates pass.
