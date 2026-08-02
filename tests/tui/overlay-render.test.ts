@@ -48,7 +48,9 @@ describe("dashboard overlay shell", () => {
       "┃     ┃",
       "┗━━━━━┛",
     ]);
-    expect(frame(["x"], 6, noTheme).every((line) => visibleWidth(line) <= 6)).toBe(true);
+    expect(
+      frame(["x"], 6, noTheme).every((line) => visibleWidth(line) <= 6),
+    ).toBe(true);
   });
 
   it("keeps exact visible widths with ANSI styling", () => {
@@ -69,12 +71,19 @@ describe("dashboard overlay shell", () => {
     const wideBar = renderTabBar(tabs, "session", 80, ansiTheme);
 
     expect(bar).toContain("Session");
-    expect(bar).toContain("‹");
-    expect(bar).toContain("›");
+    expect(bar).toContain("\u2039");
+    expect(bar).toContain("\u203a");
     expect(bar).toContain(`${ESC}[7m`);
     expect(visibleWidth(bar)).toBe(20);
     expect(wideBar).toContain(`${ESC}[44m`);
     expect(visibleWidth(wideBar)).toBe(80);
+  });
+
+  it("keeps the full active pill when markers do not fit", () => {
+    const bar = renderTabBar(tabs, "tools", 7, noTheme);
+
+    expect(bar).toBe(" Tools ");
+    expect(visibleWidth(bar)).toBe(7);
   });
 
   it("returns exact blank padding when no tabs exist", () => {
