@@ -335,12 +335,17 @@ function reconcileToolSelection(
   state: DashboardState,
   previous: DashboardSelectableRow | undefined,
 ): DashboardState {
+  const rows = selectableRows(state, "tools");
   const index =
     previous?.type === "tool"
-      ? selectableRows(state).findIndex((row) => row.type === "tool" && row.name === previous.name)
+      ? rows.findIndex((row) => row.type === "tool" && row.name === previous.name)
       : -1;
-  if (index >= 0) state.navigation.tools.selectedIndex = index;
-  return clampSelection(state);
+  const navigation = state.navigation.tools;
+  if (index >= 0) navigation.selectedIndex = index;
+  navigation.selectedIndex =
+    rows.length === 0 ? 0 : Math.max(0, Math.min(navigation.selectedIndex, rows.length - 1));
+  navigation.offset = Math.max(0, navigation.offset);
+  return state;
 }
 
 function reconcileSearchSelection(
@@ -417,7 +422,7 @@ export function reduceDashboardState(
     return { state };
   }
   if (action.type === "replace_tools") {
-    const previous = currentRow(state);
+    const previous = selectableRows(state, "tools")[state.navigation.tools.selectedIndex];
     state.tools = structuredClone(action.tools);
     return { state: reconcileToolSelection(state, previous) };
   }

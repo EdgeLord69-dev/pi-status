@@ -103,23 +103,33 @@ describe("dashboard render", () => {
     expect(statuses.lines.join("\n")).toContain("build broken");
   });
 
-  it("renders all tabs at the exact capped height without mutating query", () => {
+  it("renders all tabs at the exact capped height without mutating queries", () => {
+    const tools = Array.from({ length: 40 }, (_, index) => ({
+      name: `tool-${index}`,
+      description: `Tool ${index}`,
+      enabled: index === 0,
+    }));
     const state = initDashboardState(
       config(),
       Array.from({ length: 30 }, (_, index) => `status-${index}`),
       true,
+      { tools },
     );
     state.navigation.statuses.query = "no-match";
+    state.navigation.tools.query = "no-match";
     const heights = DASHBOARD_TABS.map(({ id }) => {
       state.activeTab = id;
       const result = renderDashboard(state, preview, noTheme, 100, 24);
       if (id === "statuses") {
         expect(result.lines.join("\n")).toContain("No matching statuses.");
+      } else if (id === "tools") {
+        expect(result.lines.join("\n")).toContain("No matching tools.");
       }
       return result.lines.length;
     });
     expect(new Set(heights)).toEqual(new Set([20]));
     expect(state.navigation.statuses.query).toBe("no-match");
+    expect(state.navigation.tools.query).toBe("no-match");
   });
 
   it("keeps the selected Layout row visible when capped", () => {
@@ -156,6 +166,26 @@ describe("dashboard render", () => {
       expect(result.offset).toBeGreaterThan(0);
     },
   );
+
+  it("scrolls the final filtered Tool row into view without losing footer or border", () => {
+    const tools = Array.from({ length: 40 }, (_, index) => ({
+      name: `tool-${index}`,
+      description: `Tool ${index}`,
+      enabled: index === 0,
+    }));
+    const state = initDashboardState(config(), [], true, { tools });
+    state.activeTab = "tools";
+    state.navigation.tools.query = "3";
+    state.navigation.tools.selectedIndex = selectableRows(state).length - 1;
+
+    const result = renderDashboard(state, preview, noTheme, 80, 20);
+    const output = result.lines.join("\n");
+    expect(output).toContain("tool-39");
+    expect(result.lines.find((line) => line.includes("tool-39"))).toContain("▸");
+    expect(output).toContain("Type Search");
+    expect(result.lines.at(-1)).toContain("┗");
+    expect(result.offset).toBeGreaterThan(0);
+  });
 
   it("recomputes and clamps a stale viewport across resize", () => {
     const state = initDashboardState(

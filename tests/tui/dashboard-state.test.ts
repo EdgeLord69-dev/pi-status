@@ -334,7 +334,7 @@ describe("dashboard live snapshots", () => {
   it("filters tools fuzzily by name or description", () => {
     const state = initDashboardState(config(), [], true, { tools, session });
     state.activeTab = "tools";
-    state.navigation.tools.query = "rsc";
+    state.navigation.tools.query = "bh";
     expect(selectableRows(state)).toEqual([{ type: "tool", name: "bash" }]);
 
     state.navigation.tools.query = "rf";
@@ -382,6 +382,24 @@ describe("dashboard live snapshots", () => {
       ],
     });
     expect(selectableRows(state)[state.navigation.tools.selectedIndex]).toEqual({
+      type: "tool",
+      name: "bash",
+    });
+  });
+
+  it("preserves selected tool by name when replacement arrives off-tab", () => {
+    let state = initDashboardState(config(), [], true, { tools, session });
+    state.navigation.tools.selectedIndex = 1;
+    state = dispatch(state, {
+      type: "replace_tools",
+      tools: [
+        { name: "bash", description: "Run shell commands", enabled: true },
+        { name: "dynamic", description: "Added", enabled: true },
+      ],
+    });
+
+    expect(state.navigation.tools.selectedIndex).toBe(0);
+    expect(selectableRows(state, "tools")[state.navigation.tools.selectedIndex]).toEqual({
       type: "tool",
       name: "bash",
     });

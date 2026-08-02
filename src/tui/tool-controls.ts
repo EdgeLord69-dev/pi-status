@@ -33,6 +33,7 @@ export interface DashboardTool {
 
 export function readToolSnapshot(pi: ExtensionAPI): DashboardTool[] {
   const catalog = pi.getAllTools();
+  if (catalog.length === 0) return [];
   const validNames = new Set(catalog.map(({ name }) => name));
   const activeNames = new Set(pi.getActiveTools().filter((name) => validNames.has(name)));
   return catalog.map(({ name, description }) => ({

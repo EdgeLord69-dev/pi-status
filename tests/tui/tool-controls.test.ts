@@ -355,6 +355,21 @@ describe("openToolControls", () => {
     expect(ctx.ui.notify).toHaveBeenCalledWith("No tools are available", "warning");
   });
 
+  it("preserves the empty-catalog warning when active tools are unavailable", async () => {
+    const { pi } = makePi();
+    vi.mocked(pi.getAllTools).mockReturnValue([]);
+    vi.mocked(pi.getActiveTools).mockImplementation(() => {
+      throw new Error("Active tools unavailable");
+    });
+    const { ctx, custom } = makeContext();
+
+    await openToolControls(pi, ctx);
+
+    expect(pi.getActiveTools).not.toHaveBeenCalled();
+    expect(custom).not.toHaveBeenCalled();
+    expect(ctx.ui.notify).toHaveBeenCalledWith("No tools are available", "warning");
+  });
+
   it("warns when active-tools fetch fails", async () => {
     const { pi } = makePi();
     vi.mocked(pi.getActiveTools).mockImplementationOnce(() => {

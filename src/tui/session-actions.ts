@@ -35,10 +35,11 @@ export function renameCurrentSession(
   ctx: ExtensionCommandContext,
   input: string,
 ): SessionDetails {
+  const details = readSessionDetails(pi, ctx);
   const name = input.trim();
-  if (!name) return readSessionDetails(pi, ctx);
+  if (!name) return details;
   pi.setSessionName(name);
-  return readSessionDetails(pi, ctx);
+  return { ...details, name };
 }
 
 export function startSessionCompaction(ctx: ExtensionCommandContext): void {

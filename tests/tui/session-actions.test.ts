@@ -197,6 +197,23 @@ describe("handleSessionActions", () => {
     expect(pi.setSessionName).toHaveBeenCalledWith("Release work");
   });
 
+  it("returns the new name without reading session metadata after mutation", () => {
+    const ctx = commandContext();
+    let renamed = false;
+    const pi = extensionApi({
+      getSessionName: vi.fn(() => {
+        if (renamed) throw new Error("metadata unavailable after rename");
+        return "Original name";
+      }),
+      setSessionName: vi.fn(() => {
+        renamed = true;
+      }),
+    });
+
+    expect(renameCurrentSession(pi, ctx, "Release work").name).toBe("Release work");
+    expect(pi.getSessionName).toHaveBeenCalledOnce();
+  });
+
   it("leaves a blank rename unchanged", () => {
     const ctx = commandContext();
     const pi = extensionApi();
