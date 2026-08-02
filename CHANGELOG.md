@@ -4,45 +4,28 @@ All notable changes to `@pi-vault/pi-status` are documented in this file.
 
 ## Unreleased
 
-### Added
-
-- Added opt-in `workspace-pulse` footer segment. It is a bounded, read-only Git workspace summary backed by two fixed-argv `git` commands (`rev-parse --show-toplevel`, `status --porcelain=v2 --branch --untracked-files=all`) and refreshes only on session start, every `turn_start`, and 250 ms after every `tool_execution_end`. The segment renders six states (`clean`, `changed`, `conflict`, `not-repository`, `unavailable`, `stale`) without ever retaining or displaying changed-file paths. RPC and non-TUI sessions never spawn Git.
-- Added `/statusline preset [minimal|balanced|telemetry]` with a native selector and confirmation prompt. Three curated four-zone layouts (`minimal`, `balanced`, `telemetry`) can be saved to `<Pi agent directory>/extensions/statusline.json` after a four-row preview and explicit confirmation; other config fields are preserved.
-- Added opt-in `turn-progress` and `response-performance` footer segments that observe the current TUI session only. `turn-progress` shows the active turn number, grouped active tools, or the newest completed tool with an elided duration. `response-performance` shows time-to-first-token and the current or final tokens-per-second, conservative during streaming and overridden by Pi's official assistant usage when the response completes.
-
 ### Breaking Changes
 
-- Replaced the flat `FooterRenderInput` shape and removed `DEFAULT_SEGMENTS`, `buildFooterLine()`, and `buildFooterLineFromResolved()`. Persisted legacy `segments` configuration still migrates into the top-left zone.
-
-### Added
-
-- Added opt-in completion notifications on macOS and Windows via `/statusline notifications [on|off]`. The preference is global-only, off by default, and is stored in the same `extensions/statusline.json` file. Pi's `agent_settled` event drives settlement notifications; an optional subscription to the literal `pi-vault:questionnaire:status` event drives questionnaire-wait notifications. Notification content is fixed and never includes prompts, labels, answers, or other session content.
-- Added four-zone footer and `/statusline` editor layout controls for top-left, top-right, bottom-left, and bottom-right segment placement.
-- Added opt-in `cache-read-tokens`, `cache-write-tokens`, `cache-hit`, `session-cost`, and `access-type` footer segments.
-- Added `/statusline session` with current-session details, rename, and confirmed compaction actions.
-- Added searchable centered-overlay `/statusline tools` controls with immediate session-scoped changes and an at-least-one-active safeguard.
+- `/statusline` is now the sole dashboard command; former `tools`, `session`, `notifications`, and `preset` arguments are rejected.
+- The dashboard is a five-tab overlay: Layout, Statuses, Session, Tools, and Settings. Superseded standalone editor and command wrappers were removed.
 
 ### Changed
 
-- Moved pi-status configuration from Pi's `settings.json` files to the global extension-owned `<Pi agent directory>/extensions/statusline.json` file with a four-zone JSON shape.
-- Footer rows now fit independently at narrow widths, dropping lower-priority items before truncating the remaining content; visible extension statuses remain bottom-right.
-- Honor `NO_COLOR` by presence, including an empty value, for the footer and `/statusline` editor.
-- Token totals now include usage from assistant, tool-result, branch-summary, and compaction session entries; context, usage-window, and default segments are unchanged.
+- Layout, Statuses, and Settings share one draft/save flow; Tools apply immediately; Session rename and compaction use Pi dialogs.
+- Dashboard rendering is bounded across narrow terminal sizes, while the saved footer remains visible behind the overlay.
 
-### Fixed
+### Added
 
-- Restricted custom footer/editor APIs to TUI mode and synchronized reasoning display with Pi's current and selected thinking levels.
+- Added opt-in `workspace-pulse`, `turn-progress`, and `response-performance` footer segments.
+- Added opt-in completion notifications on supported desktop platforms.
 
 ### Compatibility
 
-- Set the development baseline to Pi agent 0.83.0 and TUI 0.83.0, refreshed `@types/node` to `^26.1.1`, and retained caret Pi development ranges and wildcard runtime peer ranges.
-- Standardized local and CI checks on Node.js 24.15.0+, formatting, linting, type checking, tests, and package-content verification.
+- Retained Pi agent and TUI 0.83.0 compatibility and Node.js 24.15.0+ support.
 
 ### Internal
 
-- Renamed the settings-store test seam for the extension-owned config file and added explicit tarball allowlist verification.
-- Routed session actions through Pi's public command-context APIs without adding pi-status persistence.
-- Reused Pi's public live tool APIs and TUI SettingsList without adding persistence or a second settings framework.
+- Consolidated dashboard state and retained only dashboard-owned preset, tool, and session helpers.
 
 ## 0.3.0 - 2026-06-23
 
