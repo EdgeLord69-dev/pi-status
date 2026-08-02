@@ -17,13 +17,13 @@ describe("dashboard responsive layout", () => {
     expect(maxOverlayRows(0)).toBe(1);
   });
 
-  it("separates the eight-row fallback from the nine-row normal shell", () => {
-    expect(DASHBOARD_CHROME_ROWS).toBe(8);
-    expect(MIN_NORMAL_OVERLAY_ROWS).toBe(9);
-    expect(maxOverlayRows(10)).toBe(8);
-    expect(maxOverlayRows(11)).toBe(9);
-    expect(targetOverlayRows([1], 10)).toBe(8);
-    expect(targetOverlayRows([1], 11)).toBe(9);
+  it("separates the fallback threshold from the normal shell", () => {
+    expect(DASHBOARD_CHROME_ROWS).toBe(3);
+    expect(MIN_NORMAL_OVERLAY_ROWS).toBe(4);
+    expect(maxOverlayRows(3)).toBe(2);
+    expect(maxOverlayRows(5)).toBe(4);
+    expect(targetOverlayRows([1], 3)).toBe(2);
+    expect(targetOverlayRows([1], 5)).toBe(4);
   });
 
   it("uses the longest natural body, handles empty input, and caps the result", () => {
@@ -36,7 +36,7 @@ describe("dashboard responsive layout", () => {
     const target = targetOverlayRows([4, 12, 2], 40);
 
     expect(bodyRowBudget(target)).toBe(12);
-    expect(bodyRowBudget(8)).toBe(0);
+    expect(bodyRowBudget(3)).toBe(0);
   });
 
   it("scrolls to selection and pads short content", () => {
