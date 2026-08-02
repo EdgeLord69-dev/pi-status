@@ -5,103 +5,14 @@ import type {
   StatusLineZones,
 } from "../shared/types.ts";
 import { isUsageSegment, STATUS_LINE_ZONE_ORDER } from "../shared/types.ts";
+import {
+  type SegmentMetadata,
+  SEGMENT_METADATA,
+  SEGMENT_ORDER,
+  findSegmentAssignment,
+} from "./dashboard-state.ts";
 
-type SegmentMetadata = { id: StatusLineSegmentId; label: string; description: string };
-
-const SEGMENT_ORDER: readonly SegmentMetadata[] = [
-  { id: "model", label: "Model", description: "Current model name" },
-  {
-    id: "model-with-reasoning",
-    label: "Model + Reasoning",
-    description: "Current model name with reasoning level",
-  },
-  {
-    id: "project-name",
-    label: "Project Name",
-    description: "Project name (omitted when unavailable)",
-  },
-  { id: "current-dir", label: "Current Dir", description: "Current working directory" },
-  {
-    id: "git-branch",
-    label: "Git Branch",
-    description: "Current Git branch (omitted when unavailable)",
-  },
-  {
-    id: "workspace-pulse",
-    label: "Workspace Pulse",
-    description: "Bounded Git workspace summary (counts, ahead/behind, clean/stale)",
-  },
-  { id: "run-state", label: "Run State", description: "Pi status (idle, queued, busy)" },
-  {
-    id: "context-remaining",
-    label: "Context Remaining",
-    description: "Context tokens remaining vs window size (omitted when unknown)",
-  },
-  {
-    id: "context-used",
-    label: "Context Used",
-    description: "Context tokens used vs window size (omitted when unknown)",
-  },
-  {
-    id: "used-tokens",
-    label: "Used Tokens",
-    description: "Total tokens used in session (omitted when zero)",
-  },
-  {
-    id: "total-input-tokens",
-    label: "Input Tokens",
-    description: "Total input tokens used in session",
-  },
-  {
-    id: "total-output-tokens",
-    label: "Output Tokens",
-    description: "Total output tokens used in session",
-  },
-  {
-    id: "session-id",
-    label: "Session ID",
-    description: "Current session ID (omitted when unavailable)",
-  },
-  {
-    id: "five-hour-limit",
-    label: "5h Limit",
-    description: "Remaining usage on the primary usage limit (omitted when unavailable)",
-  },
-  {
-    id: "weekly-limit",
-    label: "Weekly Limit",
-    description: "Remaining usage on the secondary usage limit (omitted when unavailable)",
-  },
-  {
-    id: "cache-read-tokens",
-    label: "Cache Read Tokens",
-    description: "Total cache-read tokens used in session",
-  },
-  {
-    id: "cache-write-tokens",
-    label: "Cache Write Tokens",
-    description: "Total cache-write tokens used in session",
-  },
-  {
-    id: "cache-hit",
-    label: "Cache Hit",
-    description: "Latest assistant prompt cache-hit percentage",
-  },
-  { id: "session-cost", label: "Session Cost", description: "Best-effort session cost telemetry" },
-  { id: "access-type", label: "Access Type", description: "Subscription or metered model access" },
-  {
-    id: "turn-progress",
-    label: "Turn Progress",
-    description: "Active turn number, active tools, and most recent completed tool",
-  },
-  {
-    id: "response-performance",
-    label: "Response Performance",
-    description: "TTFT and estimated/final tokens per second for the current response",
-  },
-] as const;
-
-export const SEGMENT_METADATA = new Map(SEGMENT_ORDER.map((segment) => [segment.id, segment]));
+export { SEGMENT_METADATA, findSegmentAssignment };
 
 export interface EditorState {
   zones: StatusLineZones;
@@ -144,16 +55,6 @@ export function collectHiddenStatuses(input: {
   return [...input.discoveredKeys]
     .sort((a, b) => a.localeCompare(b))
     .filter((key) => !shown.has(key));
-}
-
-export function findSegmentAssignment(
-  zones: StatusLineZones,
-  id: StatusLineSegmentId,
-): SegmentAssignment | undefined {
-  for (const zone of STATUS_LINE_ZONE_ORDER) {
-    const index = zones[zone].indexOf(id);
-    if (index >= 0) return { zone, index };
-  }
 }
 
 function includesFuzzy(haystack: string, needle: string): boolean {

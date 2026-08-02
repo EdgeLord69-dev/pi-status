@@ -4,9 +4,9 @@
 
 **Goal:** Build the complete pure state and rendering engine for Layout, Statuses, and Settings, including one shared draft, explicit all-draft saves, production preview, equal tab height, and scrolling.
 
-**Architecture:** `dashboard-state.ts` owns immutable transitions and returns explicit effects; it imports existing segment metadata/zone helpers during this compatibility phase. `dashboard-render.ts` converts state into logical rows, computes one natural-height target across all five tabs, viewports the active body, and wraps it in Phase 2's shell. No command is routed to the dashboard yet, so the current editor and subcommands remain usable and releasable.
+**Architecture:** `dashboard-state.ts` owns immutable transitions and returns explicit effects while temporarily owning segment metadata shared with the old editor. `dashboard-render.ts` converts state into logical rows, previews through the live `resolveFooter()` → `buildFooterRowsFromResolved()` path, computes one natural-height target across all five tabs, viewports the active body, and wraps it in Phase 2's shell. No command is routed to the dashboard yet, so the current editor and subcommands remain usable and releasable.
 
-**Tech Stack:** TypeScript 6, Pi/TUI 0.83, existing `PiStatusConfig`, existing preset and footer-render pipelines, Vitest 4.
+**Tech Stack:** TypeScript 6, Pi/TUI 0.83, existing `PiStatusConfig`, preset and production footer-resolution pipelines, Vitest 4.
 
 ---
 
@@ -21,8 +21,81 @@
 - Create: `src/tui/dashboard-render.ts`
 - Create: `tests/tui/dashboard-render.test.ts`
 - Modify: `src/tui/editor-state.ts` only to import/re-export segment metadata and assignment helpers from dashboard state
-- Read/reuse: `src/tui/preset-actions.ts`, `src/tui/render.ts`, `src/shared/types.ts`
+- Read/reuse: `src/tui/preset-actions.ts`, `src/core/resolve-footer.ts`, `src/tui/render.ts`, `src/shared/types.ts`
 - Do not modify: `src/index.ts`, `src/tui/editor.ts`, `src/tui/editor-render.ts`, `src/tui/command-router.ts`, tool/session wrappers, README, or changelog
+
+**Product baseline:** `d556784b9bc9aaea378b3f769340a90e50cfe3ca`
+
+**References:**
+
+- Approved design: `docs/superpowers/specs/2026-08-01-statusline-dashboard-overlay-design.md`
+- Completed shell phase: `docs/superpowers/plans/2026-08-01-statusline-dashboard-phase-02-responsive-shell.md`
+- `pi-usage` 0.7.0 shell: `/Users/lanh/Developer/pi-vault/pi-usage` at `152b377522a24a72543029965860527b94b5fca5`
+- Pi/TUI 0.83 overlay behavior: `/Users/lanh/Developer/pi-packages/pi` at `845d6ff1f6643aba440341cce877ce1c43ebbc39`
+- Current Pi cross-check: `/Users/lanh/Developer/pi-packages/pi` at `583f153d502aa8e958eefdb9af0fbd3344e68f95`
+
+## Task 0: Record and validate the execution base
+
+No tracked files change in this task.
+
+- [ ] **Step 1: Record the clean Phase 3 base**
+
+```bash
+set -e
+PRODUCT_BASE=d556784b9bc9aaea378b3f769340a90e50cfe3ca
+BASE_FILE=.superpowers/statusline-dashboard-phase-03-base
+
+test -z "$(git status --short)"
+git cat-file -e "$PRODUCT_BASE^{commit}"
+git merge-base --is-ancestor "$PRODUCT_BASE" HEAD
+mkdir -p .superpowers
+git rev-parse HEAD > "$BASE_FILE"
+git check-ignore -q "$BASE_FILE"
+PHASE_BASE=$(cat "$BASE_FILE")
+printf 'PRODUCT_BASE=%s\nPHASE_BASE=%s\n' "$PRODUCT_BASE" "$PHASE_BASE"
+```
+
+Expected: `PRODUCT_BASE` prints as `d556784b9bc9aaea378b3f769340a90e50cfe3ca`; `PHASE_BASE` prints the clean pre-implementation documentation commit; the ignored base file does not dirty the worktree.
+
+- [ ] **Step 2: Verify the frozen runtime and dependency graph**
+
+```bash
+set -e
+node -e 'const [major, minor] = process.versions.node.split(".").map(Number); if (major < 24 || (major === 24 && minor < 15)) process.exit(1); console.log(process.version)'
+pnpm install --frozen-lockfile
+node --input-type=module <<'NODE'
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+
+const version = async (name) =>
+  JSON.parse(await readFile(`node_modules/${name}/package.json`, "utf8")).version;
+assert.equal(await version("@earendil-works/pi-coding-agent"), "0.83.0");
+assert.equal(await version("@earendil-works/pi-tui"), "0.83.0");
+assert.equal(await version("@pi-vault/pi-usage"), "0.7.0");
+console.log("Phase 3 dependency graph verified");
+NODE
+```
+
+Expected: Node 24.15.0 or newer and `Phase 3 dependency graph verified`.
+
+- [ ] **Step 3: Verify the pinned references and Pi's bottom-slicing behavior**
+
+```bash
+set -e
+PI_USAGE=/Users/lanh/Developer/pi-vault/pi-usage
+PI=/Users/lanh/Developer/pi-packages/pi
+PI_USAGE_REF=152b377522a24a72543029965860527b94b5fca5
+PI_083_REF=845d6ff1f6643aba440341cce877ce1c43ebbc39
+PI_MAIN_REF=583f153d502aa8e958eefdb9af0fbd3344e68f95
+
+git -C "$PI_USAGE" cat-file -e "$PI_USAGE_REF^{commit}"
+git -C "$PI" cat-file -e "$PI_083_REF^{commit}"
+git -C "$PI" cat-file -e "$PI_MAIN_REF^{commit}"
+git -C "$PI" show "$PI_083_REF:packages/tui/src/tui.ts" \
+  | grep -F 'overlayLines = overlayLines.slice(0, maxHeight)'
+```
+
+Expected: every command exits 0 and the exact slicing line prints. This is why Phase 3 must return a complete frame within the 85% cap rather than relying on Pi to clip it.
 
 ## Required state contract
 
@@ -104,6 +177,7 @@ import {
   configsEqual,
   initDashboardState,
   isDashboardDirty,
+  SEGMENT_ORDER,
   selectableRows,
 } from "../../src/tui/dashboard-state.ts";
 
@@ -127,6 +201,16 @@ function config(overrides: Partial<PiStatusConfig> = {}): PiStatusConfig {
 }
 
 describe("dashboard draft initialization", () => {
+  it("moves the complete canonical segment registry without changing order", () => {
+    expect(SEGMENT_ORDER.map(({ id }) => id)).toEqual([
+      "model", "model-with-reasoning", "project-name", "current-dir", "git-branch",
+      "workspace-pulse", "run-state", "context-remaining", "context-used", "used-tokens",
+      "total-input-tokens", "total-output-tokens", "session-id", "five-hour-limit",
+      "weekly-limit", "cache-read-tokens", "cache-write-tokens", "cache-hit",
+      "session-cost", "access-type", "turn-progress", "response-performance",
+    ]);
+  });
+
   it("deep-clones baseline and draft and starts clean", () => {
     const source = config({ extensionSegments: { hidden: ["missing-extension"] } });
     const state = initDashboardState(source, ["beta", "alpha"], true);
@@ -148,6 +232,20 @@ describe("dashboard draft initialization", () => {
     expect(configsEqual(first, config({ zones: zones({ topLeft: ["current-dir", "model-with-reasoning"] }) }))).toBe(false);
   });
 
+  it("preserves assigned unavailable usage segments while hiding their controls", () => {
+    const state = initDashboardState(
+      config({ zones: zones({ topLeft: ["five-hour-limit", "model"] }) }),
+      [],
+      false,
+    );
+    expect(state.draft.zones.topLeft).toEqual(["five-hour-limit", "model"]);
+    expect(state.visibleSegmentIds).not.toContain("five-hour-limit");
+    expect(selectableRows(state)).not.toContainEqual({
+      type: "segment",
+      id: "five-hour-limit",
+    });
+  });
+
   it("keeps Save reachable when status search has no matches", () => {
     const state = initDashboardState(config(), ["alpha"], true);
     state.activeTab = "statuses";
@@ -167,7 +265,7 @@ Expected: FAIL because `dashboard-state.ts` does not exist.
 
 - [ ] **Step 3: Implement cloning, comparison, filtering, and row selection**
 
-Create `src/tui/dashboard-state.ts` with the required contracts above. Move `SegmentMetadata`, the full canonical `SEGMENT_ORDER`, `SEGMENT_METADATA`, and `findSegmentAssignment()` from `src/tui/editor-state.ts` into this file without changing any ID, label, description, order, or zone lookup behavior. Export them with these shapes:
+Create `src/tui/dashboard-state.ts` with the required contracts above. Move `SegmentMetadata`, the full canonical `SEGMENT_ORDER`, `SEGMENT_METADATA`, and `findSegmentAssignment()` from `src/tui/editor-state.ts` into this file without changing any ID, label, description, order, or zone lookup behavior. Export all four so Phase 5 can delete the compatibility editor without another ownership change:
 
 ```ts
 export type SegmentMetadata = {
@@ -175,6 +273,31 @@ export type SegmentMetadata = {
   label: string;
   description: string;
 };
+
+export const SEGMENT_ORDER: readonly SegmentMetadata[] = [
+  { id: "model", label: "Model", description: "Current model name" },
+  { id: "model-with-reasoning", label: "Model + Reasoning", description: "Current model name with reasoning level" },
+  { id: "project-name", label: "Project Name", description: "Project name (omitted when unavailable)" },
+  { id: "current-dir", label: "Current Dir", description: "Current working directory" },
+  { id: "git-branch", label: "Git Branch", description: "Current Git branch (omitted when unavailable)" },
+  { id: "workspace-pulse", label: "Workspace Pulse", description: "Bounded Git workspace summary (counts, ahead/behind, clean/stale)" },
+  { id: "run-state", label: "Run State", description: "Pi status (idle, queued, busy)" },
+  { id: "context-remaining", label: "Context Remaining", description: "Context tokens remaining vs window size (omitted when unknown)" },
+  { id: "context-used", label: "Context Used", description: "Context tokens used vs window size (omitted when unknown)" },
+  { id: "used-tokens", label: "Used Tokens", description: "Total tokens used in session (omitted when zero)" },
+  { id: "total-input-tokens", label: "Input Tokens", description: "Total input tokens used in session" },
+  { id: "total-output-tokens", label: "Output Tokens", description: "Total output tokens used in session" },
+  { id: "session-id", label: "Session ID", description: "Current session ID (omitted when unavailable)" },
+  { id: "five-hour-limit", label: "5h Limit", description: "Remaining usage on the primary usage limit (omitted when unavailable)" },
+  { id: "weekly-limit", label: "Weekly Limit", description: "Remaining usage on the secondary usage limit (omitted when unavailable)" },
+  { id: "cache-read-tokens", label: "Cache Read Tokens", description: "Total cache-read tokens used in session" },
+  { id: "cache-write-tokens", label: "Cache Write Tokens", description: "Total cache-write tokens used in session" },
+  { id: "cache-hit", label: "Cache Hit", description: "Latest assistant prompt cache-hit percentage" },
+  { id: "session-cost", label: "Session Cost", description: "Best-effort session cost telemetry" },
+  { id: "access-type", label: "Access Type", description: "Subscription or metered model access" },
+  { id: "turn-progress", label: "Turn Progress", description: "Active turn number, active tools, and most recent completed tool" },
+  { id: "response-performance", label: "Response Performance", description: "TTFT and estimated/final tokens per second for the current response" },
+];
 
 export const SEGMENT_METADATA = new Map(
   SEGMENT_ORDER.map((segment) => [segment.id, segment]),
@@ -224,11 +347,7 @@ Continue with these imports and helpers:
 
 ```ts
 import { isUsageSegment, STATUS_LINE_ZONE_ORDER } from "../shared/types.ts";
-import {
-  DISPLAY_PRESET_NAMES,
-  displayPreset,
-  type DisplayPresetName,
-} from "./preset-actions.ts";
+import { DISPLAY_PRESET_NAMES, displayPreset } from "./preset-actions.ts";
 
 function cloneConfig(config: PiStatusConfig): PiStatusConfig {
   return {
@@ -270,9 +389,26 @@ function includesFuzzy(haystack: string, needle: string): boolean {
   return queryIndex === query.length;
 }
 
-function presetForZones(zones: PiStatusConfig["zones"]): PresetDisplay {
+function visiblePreset(
+  name: (typeof DISPLAY_PRESET_NAMES)[number],
+  visibleSegmentIds: readonly StatusLineSegmentId[],
+): StatusLineZones {
+  const preset = displayPreset(name);
+  return {
+    topLeft: preset.topLeft.filter((id) => visibleSegmentIds.includes(id)),
+    topRight: preset.topRight.filter((id) => visibleSegmentIds.includes(id)),
+    bottomLeft: preset.bottomLeft.filter((id) => visibleSegmentIds.includes(id)),
+    bottomRight: preset.bottomRight.filter((id) => visibleSegmentIds.includes(id)),
+  };
+}
+
+function presetForZones(
+  zones: PiStatusConfig["zones"],
+  visibleSegmentIds: readonly StatusLineSegmentId[],
+): PresetDisplay {
   for (const name of DISPLAY_PRESET_NAMES) {
-    if (STATUS_LINE_ZONE_ORDER.every((zone) => sameArray(zones[zone], displayPreset(name)[zone]))) {
+    const preset = visiblePreset(name, visibleSegmentIds);
+    if (STATUS_LINE_ZONE_ORDER.every((zone) => sameArray(zones[zone], preset[zone]))) {
       return name;
     }
   }
@@ -287,16 +423,17 @@ export function initDashboardState(
   usageAvailable = true,
 ): DashboardState {
   const baseline = cloneConfig(config);
+  const visibleSegmentIds = SEGMENT_ORDER.map(({ id }) => id).filter(
+    (id) => usageAvailable || !isUsageSegment(id),
+  );
   return {
     activeTab: "layout",
     baseline,
     draft: cloneConfig(config),
     activeZone: "topLeft",
-    preset: presetForZones(config.zones),
+    preset: presetForZones(config.zones, visibleSegmentIds),
     discoveredStatuses: [...new Set(discoveredStatuses)].sort((a, b) => a.localeCompare(b)),
-    visibleSegmentIds: [...SEGMENT_METADATA.keys()].filter(
-      (id) => usageAvailable || !isUsageSegment(id),
-    ),
+    visibleSegmentIds,
     navigation: {
       layout: emptyNavigation(),
       statuses: emptyNavigation(),
@@ -349,18 +486,19 @@ In `src/tui/editor-state.ts`, delete its original metadata/order/assignment defi
 import {
   type SegmentMetadata,
   SEGMENT_METADATA,
+  SEGMENT_ORDER,
   findSegmentAssignment,
 } from "./dashboard-state.ts";
 
 export { SEGMENT_METADATA, findSegmentAssignment };
 ```
 
-The old editor reducer continues to use these imports unchanged until Phase 5 removes it.
+The old editor reducer continues to use these imports unchanged until Phase 5 removes it. Keep `SEGMENT_ORDER` imported but not re-exported because it was private before this move; `SEGMENT_METADATA` and `findSegmentAssignment` retain their existing editor-state exports.
 
 - [ ] **Step 4: Verify initialization and commit**
 
 ```bash
-pnpm vitest run tests/tui/dashboard-state.test.ts
+pnpm vitest run tests/tui/dashboard-state.test.ts tests/tui/editor-state.test.ts
 pnpm typecheck
 pnpm lint
 git diff --check
@@ -373,9 +511,10 @@ git commit -m "feat: add statusline dashboard draft state"
 
 - [ ] **Step 1: Add failing reducer tests**
 
-Append tests that use this helper:
+Append tests and imports that use this helper:
 
 ```ts
+import { displayPreset } from "../../src/tui/preset-actions.ts";
 import {
   reduceDashboardState,
   type DashboardAction,
@@ -404,9 +543,10 @@ it("cycles tabs while preserving independent navigation", () => {
 
 it("applies presets to draft only and marks manual edits custom", () => {
   let state = initDashboardState(config(), [], true);
-  state = dispatch(state, { type: "adjust", delta: 1 });
   expect(state.preset).toBe("minimal");
-  expect(state.draft.zones).toEqual(displayPreset("minimal"));
+  state = dispatch(state, { type: "adjust", delta: 1 });
+  expect(state.preset).toBe("balanced");
+  expect(state.draft.zones).toEqual(displayPreset("balanced"));
   expect(state.baseline.zones).toEqual(zones());
 
   state.navigation.layout.selectedIndex = 2;
@@ -427,6 +567,38 @@ it("moves and reorders segments while protecting the final segment", () => {
   expect(state.draft.zones.bottomLeft).toEqual([]);
 });
 
+it("keeps or resets status selection safely when filtering", () => {
+  let state = initDashboardState(config(), ["alpha", "beta"], true);
+  state.activeTab = "statuses";
+  state.navigation.statuses.selectedIndex = 1;
+
+  state = dispatch(state, { type: "type_char", char: "b" });
+  expect(selectableRows(state)[state.navigation.statuses.selectedIndex]).toEqual({
+    type: "status",
+    key: "beta",
+  });
+
+  state = dispatch(state, { type: "type_char", char: "z" });
+  expect(selectableRows(state)[state.navigation.statuses.selectedIndex]).toEqual({
+    type: "save",
+  });
+  expect(state.navigation.statuses.selectedIndex).toBe(0);
+});
+
+it("filters unavailable usage segments out of applied presets", () => {
+  let state = initDashboardState(config(), [], false);
+  state = dispatch(state, { type: "adjust", delta: 1 });
+  expect(state.preset).toBe("balanced");
+  expect(state.draft.zones).toEqual({
+    topLeft: ["model-with-reasoning", "run-state"],
+    topRight: ["context-remaining"],
+    bottomLeft: ["current-dir", "git-branch"],
+    bottomRight: [],
+  });
+  expect(state.visibleSegmentIds).not.toContain("five-hour-limit");
+  expect(state.visibleSegmentIds).not.toContain("weekly-limit");
+});
+
 it("preserves hidden undiscovered statuses across a discovered toggle", () => {
   let state = initDashboardState(
     config({ extensionSegments: { hidden: ["missing-extension", "alpha"] } }),
@@ -444,6 +616,60 @@ it("toggles notification draft without saving", () => {
   state = dispatch(state, { type: "activate" });
   expect(state.draft.completionNotifications).toBe(true);
   expect(state.baseline.completionNotifications).toBe(false);
+});
+
+it("keeps the same segment selected after moving and reordering it", () => {
+  let state = initDashboardState(
+    config({ zones: zones({ topLeft: ["model", "git-branch"] }) }),
+    [],
+    true,
+  );
+  state.navigation.layout.selectedIndex = selectableRows(state).findIndex(
+    (row) => row.type === "segment" && row.id === "model",
+  );
+
+  state = dispatch(state, { type: "adjust", delta: 1 });
+  expect(state.draft.zones.topLeft).toEqual(["git-branch", "model"]);
+  expect(selectableRows(state)[state.navigation.layout.selectedIndex]).toEqual({
+    type: "segment",
+    id: "model",
+  });
+
+  state.navigation.layout.selectedIndex = selectableRows(state).findIndex(
+    (row) => row.type === "segment" && row.id === "session-cost",
+  );
+  state = dispatch(state, { type: "activate" });
+  expect(selectableRows(state)[state.navigation.layout.selectedIndex]).toEqual({
+    type: "segment",
+    id: "session-cost",
+  });
+});
+
+it("stores viewport offsets through a pure transition", () => {
+  const state = initDashboardState(config(), [], true);
+  const result = reduceDashboardState(state, {
+    type: "set_offset",
+    tab: "layout",
+    offset: 4,
+  });
+  expect(result.state.navigation.layout.offset).toBe(4);
+  expect(state.navigation.layout.offset).toBe(0);
+  expect(result.effect).toBeUndefined();
+});
+
+it("does not mutate reducer input or alias save effects", () => {
+  const state = initDashboardState(config(), ["alpha"], true);
+  const before = structuredClone(state);
+  const moved = reduceDashboardState(state, { type: "move", delta: 1 });
+  expect(state).toEqual(before);
+  expect(moved.state).not.toBe(state);
+
+  moved.state.activeTab = "settings";
+  moved.state.navigation.settings.selectedIndex = 1;
+  const saved = reduceDashboardState(moved.state, { type: "activate" });
+  if (saved.effect?.type !== "save") throw new Error("expected save effect");
+  saved.effect.config.zones.topLeft.push("model");
+  expect(saved.state.draft.zones.topLeft).toEqual(["model-with-reasoning"]);
 });
 
 it.each(["layout", "statuses", "settings"] as const)(
@@ -498,6 +724,30 @@ function currentRow(state: DashboardState): DashboardSelectableRow | undefined {
   return rows[activeNavigation(state).selectedIndex];
 }
 
+function keepSegmentSelected(
+  state: DashboardState,
+  id: StatusLineSegmentId,
+): DashboardState {
+  const index = selectableRows(state).findIndex(
+    (row) => row.type === "segment" && row.id === id,
+  );
+  if (index >= 0) activeNavigation(state).selectedIndex = index;
+  return clampSelection(state);
+}
+
+function reconcileStatusSelection(
+  state: DashboardState,
+  previous: DashboardSelectableRow | undefined,
+): DashboardState {
+  const index = previous?.type === "status"
+    ? selectableRows(state).findIndex(
+        (row) => row.type === "status" && row.key === previous.key,
+      )
+    : -1;
+  activeNavigation(state).selectedIndex = index >= 0 ? index : 0;
+  return clampSelection(state);
+}
+
 function cloneState(state: DashboardState): DashboardState {
   return {
     ...state,
@@ -532,16 +782,33 @@ export function reduceDashboardState(
     return { state: clampSelection(state) };
   }
   if (action.type === "type_char") {
+    const previous = currentRow(state);
     if (state.activeTab === "statuses") activeNavigation(state).query += action.char;
-    return { state: clampSelection(state) };
+    return {
+      state: state.activeTab === "statuses"
+        ? reconcileStatusSelection(state, previous)
+        : clampSelection(state),
+    };
   }
   if (action.type === "backspace") {
-    if (state.activeTab === "statuses") activeNavigation(state).query = activeNavigation(state).query.slice(0, -1);
-    return { state: clampSelection(state) };
+    const previous = currentRow(state);
+    if (state.activeTab === "statuses") {
+      activeNavigation(state).query = activeNavigation(state).query.slice(0, -1);
+    }
+    return {
+      state: state.activeTab === "statuses"
+        ? reconcileStatusSelection(state, previous)
+        : clampSelection(state),
+    };
   }
   if (action.type === "clear_query") {
+    const previous = currentRow(state);
     activeNavigation(state).query = "";
-    return { state: clampSelection(state) };
+    return {
+      state: state.activeTab === "statuses"
+        ? reconcileStatusSelection(state, previous)
+        : clampSelection(state),
+    };
   }
   if (action.type === "set_offset") {
     state.navigation[action.tab].offset = Math.max(0, action.offset);
@@ -550,7 +817,7 @@ export function reduceDashboardState(
   if (action.type === "saved") {
     state.baseline = cloneConfig(action.config);
     state.draft = cloneConfig(action.config);
-    state.preset = presetForZones(action.config.zones);
+    state.preset = presetForZones(action.config.zones, state.visibleSegmentIds);
     return { state: clampSelection(state) };
   }
 
@@ -560,7 +827,7 @@ export function reduceDashboardState(
     if (row.type === "preset") {
       const index = state.preset === "custom" ? (action.delta > 0 ? -1 : 0) : DISPLAY_PRESET_NAMES.indexOf(state.preset);
       const name = DISPLAY_PRESET_NAMES[(index + action.delta + DISPLAY_PRESET_NAMES.length) % DISPLAY_PRESET_NAMES.length];
-      state.draft.zones = displayPreset(name as DisplayPresetName);
+      state.draft.zones = visiblePreset(name, state.visibleSegmentIds);
       state.preset = name;
     } else if (row.type === "zone") {
       const index = STATUS_LINE_ZONE_ORDER.indexOf(state.activeZone);
@@ -578,7 +845,7 @@ export function reduceDashboardState(
         }
       }
     }
-    return { state: clampSelection(state) };
+    return { state: row.type === "segment" ? keepSegmentSelected(state, row.id) : clampSelection(state) };
   }
   if (action.type !== "activate") return { state };
 
@@ -603,13 +870,16 @@ export function reduceDashboardState(
     } else if (assignedCount > 1) {
       state.draft.zones[assignment.zone].splice(assignment.index, 1);
     }
-    state.preset = presetForZones(state.draft.zones);
+    state.preset = presetForZones(state.draft.zones, state.visibleSegmentIds);
+    return { state: keepSegmentSelected(state, row.id) };
   }
   return { state: clampSelection(state) };
 }
 ```
 
-When TypeScript narrows `name` to the preset union, remove the unnecessary cast rather than widening types.
+Phase 4 must apply `set_offset` directly with `reduceDashboardState()` from `render()` and assign the returned state without calling the component's render-requesting `dispatch()`. This preserves pure transitions while avoiding a render loop.
+
+The `saved` action is a synchronous acknowledgement: Phase 4's `save(config): void` call returns before `saved` is dispatched, and input is not processed between the save effect and acknowledgement. Replacing both baseline and draft is therefore intentional; do not add speculative asynchronous-save state.
 
 - [ ] **Step 4: Verify and commit transitions**
 
@@ -629,15 +899,26 @@ Expected: new and old reducer coverage passes.
 
 - [ ] **Step 1: Write failing render tests**
 
-Create `tests/tui/dashboard-render.test.ts`. Use `visibleWidth` from `@earendil-works/pi-tui`, `noTheme`, `withDefaults()` from `tests/helpers.ts`, and this exact preview fixture:
+Create `tests/tui/dashboard-render.test.ts`. Use `visibleWidth` from `@earendil-works/pi-tui`, `buildSnapshot` from `src/core/resolve-footer.ts`, and `noTheme`. Build preview input through the same production snapshot boundary used by the live footer:
 
 ```ts
-const preview = withDefaults({
+import { visibleWidth } from "@earendil-works/pi-tui";
+import { buildSnapshot } from "../../src/core/resolve-footer.ts";
+
+const snapshotInput = {
   model: { name: "GPT-5" },
   cwd: "/work/pi-status",
   thinkingLevel: "medium",
-  runState: "idle",
-});
+  gitBranch: null,
+  isIdle: true,
+  hasPendingMessages: false,
+  entries: [],
+  accessType: undefined,
+  sessionId: "preview-session-id",
+  extensionStatuses: new Map<string, string>(),
+};
+
+const preview = buildSnapshot(snapshotInput);
 ```
 
 Cover:
@@ -652,28 +933,99 @@ it("renders the pi-usage shell and draft preview", () => {
   expect(output).toContain("Preset");
   expect(output).toContain("Save changes");
   expect(output).toContain("GPT-5");
-  expect(result.lines.length).toBeLessThanOrEqual(34);
+  expect(result.lines).toHaveLength(34);
+  expect(result.lines.every((line) => visibleWidth(line) === 100)).toBe(true);
 });
 
-it("renders all tabs at one height independent of query", () => {
-  const state = initDashboardState(config(), Array.from({ length: 30 }, (_, index) => `status-${index}`), true);
+it("uses draft zones instead of fixture zones for the production preview", () => {
+  const state = initDashboardState(config(), [], true);
+  state.draft.zones = {
+    topLeft: ["session-id"],
+    topRight: [],
+    bottomLeft: [],
+    bottomRight: [],
+  };
+  const output = renderDashboard(state, preview, noTheme, 100, 40).lines.join("\n");
+  expect(output).toContain("preview-session-id");
+  expect(output).not.toContain("GPT-5");
+});
+
+it("previews draft status visibility through production resolution", () => {
+  const state = initDashboardState(config(), [], true);
+  const live = buildSnapshot({
+    ...snapshotInput,
+    extensionStatuses: new Map([["build", "build: ready"]]),
+  });
+  expect(renderDashboard(state, live, noTheme, 100, 40).lines.join("\n")).toContain("ready");
+
+  state.draft.extensionSegments.hidden = ["build"];
+  expect(renderDashboard(state, live, noTheme, 100, 40).lines.join("\n")).not.toContain("ready");
+});
+
+it("renders all tabs at the exact capped height without mutating query", () => {
+  const state = initDashboardState(
+    config(),
+    Array.from({ length: 30 }, (_, index) => `status-${index}`),
+    true,
+  );
+  state.navigation.statuses.query = "no-match";
   const heights = DASHBOARD_TABS.map(({ id }) => {
     state.activeTab = id;
-    if (id === "statuses") state.navigation.statuses.query = "no-match";
-    return renderDashboard(state, preview, noTheme, 100, 24).lines.length;
+    const result = renderDashboard(state, preview, noTheme, 100, 24);
+    if (id === "statuses") {
+      expect(result.lines.join("\n")).toContain("No matching statuses.");
+    }
+    return result.lines.length;
   });
-  expect(new Set(heights).size).toBe(1);
-  expect(heights[0]).toBeLessThanOrEqual(20);
+  expect(new Set(heights)).toEqual(new Set([20]));
+  expect(state.navigation.statuses.query).toBe("no-match");
 });
 
-it("scrolls Save into view without losing footer or border", () => {
-  const state = initDashboardState(config(), Array.from({ length: 40 }, (_, index) => `status-${index}`), true);
+it.each(["layout", "statuses"] as const)(
+  "scrolls the %s Save row into view without losing footer or border",
+  (tab) => {
+    const state = initDashboardState(
+      config(),
+      Array.from({ length: 40 }, (_, index) => `status-${index}`),
+      true,
+    );
+    state.activeTab = tab;
+    state.navigation[tab].selectedIndex = selectableRows(state).length - 1;
+    const result = renderDashboard(state, preview, noTheme, 80, 20);
+    expect(result.lines.join("\n")).toContain("Save changes");
+    expect(result.lines.at(-1)).toContain("┗");
+    expect(result.offset).toBeGreaterThan(0);
+  },
+);
+
+it("recomputes and clamps a stale viewport across resize", () => {
+  const state = initDashboardState(
+    config(),
+    Array.from({ length: 40 }, (_, index) => `status-${index}`),
+    true,
+  );
   state.activeTab = "statuses";
   state.navigation.statuses.selectedIndex = selectableRows(state).length - 1;
-  const result = renderDashboard(state, preview, noTheme, 80, 20);
-  expect(result.lines.join("\n")).toContain("Save changes");
+  state.navigation.statuses.offset = 99;
+
+  const narrow = renderDashboard(state, preview, noTheme, 60, 18);
+  const wide = renderDashboard(state, preview, noTheme, 100, 40);
+  expect(narrow.lines).toHaveLength(15);
+  expect(wide.lines).toHaveLength(34);
+  expect(narrow.offset).toBeLessThan(99);
+  expect(wide.offset).toBeLessThan(narrow.offset);
+  expect(narrow.lines.every((line) => visibleWidth(line) === 60)).toBe(true);
+  expect(wide.lines.every((line) => visibleWidth(line) === 100)).toBe(true);
+  expect(narrow.lines.at(-1)).toContain("┗");
+  expect(wide.lines.at(-1)).toContain("┗");
+});
+
+it("preserves exact geometry at the minimum framed width", () => {
+  const state = initDashboardState(config(), [], true);
+  const result = renderDashboard(state, preview, noTheme, 7, 40);
+  expect(result.lines).toHaveLength(34);
+  expect(result.lines.every((line) => visibleWidth(line) === 7)).toBe(true);
   expect(result.lines.at(-1)).toContain("┗");
-  expect(result.offset).toBeGreaterThan(0);
 });
 
 it("renders a bounded fallback below normal chrome height", () => {
@@ -705,14 +1057,31 @@ Create `src/tui/dashboard-render.ts` with these public contracts:
 
 ```ts
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { resolveFooter } from "../core/resolve-footer.ts";
+import type { StatusLineZone } from "../shared/types.ts";
+import {
+  bodyRowBudget,
+  fitViewport,
+  MIN_NORMAL_OVERLAY_ROWS,
+  targetOverlayRows,
+} from "./dashboard-layout.ts";
+import {
+  frame,
+  frameContentWidth,
+  MIN_FRAME_WIDTH,
+  renderTabBar,
+  renderTooSmall,
+} from "./overlay-render.ts";
 import type { FooterRenderInput } from "./render.ts";
-import { buildFooterRows } from "./render.ts";
+import { buildFooterRowsFromResolved } from "./render.ts";
 import type { StatusLineTheme } from "./theme.ts";
 import {
   DASHBOARD_TABS,
   type DashboardSelectableRow,
   type DashboardState,
   type DashboardTabId,
+  findSegmentAssignment,
+  SEGMENT_METADATA,
   selectableRows,
 } from "./dashboard-state.ts";
 
@@ -727,7 +1096,7 @@ type LogicalBody = {
 };
 ```
 
-Use one-line ANSI-safe rows. The common selectable renderer must preserve width:
+Use one-line ANSI-safe rows. The common selectable renderer must never exceed its width, including the one-column content area at the minimum framed width:
 
 ```ts
 function selectableLine(
@@ -742,18 +1111,142 @@ function selectableLine(
   const prefix = `${marker} ${checkbox} `;
   const remaining = Math.max(0, width - visibleWidth(prefix));
   const text = description ? `${label} - ${theme.dim(description)}` : label;
-  return `${prefix}${truncateToWidth(text, remaining, "")}`;
+  return truncateToWidth(
+    `${prefix}${truncateToWidth(text, remaining, "")}`,
+    width,
+    "",
+  );
 }
 ```
 
-Implement `logicalBody(state, tab, previewInput, theme, width, ignoreQuery)` so:
+Use these labels and implement `logicalBody()` exactly enough that logical-line and selectable-row indices cannot drift:
 
-- Layout emits preset (`Custom` only as the truthful current-state label), active zone, every segment, a blank line, production `buildFooterRows({...previewInput, zones: state.draft.zones, extensionSegments: state.draft.extensionSegments}, theme, width)`, then `Save changes`.
-- Statuses emits `Search: <query>`, discovered filtered rows (or `No matching statuses.`), then `Save changes`; when `ignoreQuery` is true it uses an empty query only for natural-height calculation.
-- Settings emits the completion-notification row and `Save changes`.
-- Session and Tools return `{ lines: [], selectedLine: undefined }` in this phase.
-- `selectedLine` is the actual logical-line index corresponding to `navigation[tab].selectedIndex`; non-interactive search/preview/blank lines do not consume selection indices.
-- Every line is truncated to `width` before return.
+```ts
+const ZONE_LABELS: Record<StatusLineZone, string> = {
+  topLeft: "Top Left",
+  topRight: "Top Right",
+  bottomLeft: "Bottom Left",
+  bottomRight: "Bottom Right",
+};
+
+const PRESET_LABELS = {
+  custom: "Custom",
+  minimal: "Minimal",
+  balanced: "Balanced",
+  telemetry: "Telemetry",
+} as const;
+
+function stateForNaturalHeight(
+  state: DashboardState,
+  tab: DashboardTabId,
+  ignoreQuery: boolean,
+): DashboardState {
+  if (!ignoreQuery || tab !== "statuses") return state;
+  return {
+    ...state,
+    navigation: {
+      ...state.navigation,
+      statuses: { ...state.navigation.statuses, query: "" },
+    },
+  };
+}
+
+function logicalBody(
+  state: DashboardState,
+  tab: DashboardTabId,
+  previewInput: Omit<FooterRenderInput, "zones" | "extensionSegments">,
+  theme: StatusLineTheme,
+  width: number,
+  ignoreQuery: boolean,
+): LogicalBody {
+  if (tab === "session" || tab === "tools") {
+    return { lines: [], selectedLine: undefined };
+  }
+
+  const renderState = stateForNaturalHeight(state, tab, ignoreQuery);
+  const rows = selectableRows(renderState, tab);
+  const selectedIndex = state.navigation[tab].selectedIndex;
+  const lines: string[] = [];
+  let interactiveIndex = 0;
+  let selectedLine: number | undefined;
+  const pushSelectable = (
+    _row: DashboardSelectableRow,
+    checkbox: string,
+    label: string,
+    description = "",
+  ): void => {
+    const selected = interactiveIndex === selectedIndex;
+    if (selected) selectedLine = lines.length;
+    lines.push(selectableLine(selected, checkbox, label, description, width, theme));
+    interactiveIndex += 1;
+  };
+
+  if (tab === "layout") {
+    for (const row of rows) {
+      if (row.type === "save") continue;
+      if (row.type === "preset") {
+        pushSelectable(row, "↔", "Preset", PRESET_LABELS[state.preset]);
+      } else if (row.type === "zone") {
+        pushSelectable(row, "↔", "Active zone", ZONE_LABELS[state.activeZone]);
+      } else if (row.type === "segment") {
+        const metadata = SEGMENT_METADATA.get(row.id);
+        const assignment = findSegmentAssignment(state.draft.zones, row.id);
+        const position = assignment
+          ? `${ZONE_LABELS[assignment.zone]} ${assignment.index + 1}`
+          : "Disabled";
+        pushSelectable(
+          row,
+          assignment ? "[•]" : "[ ]",
+          `${metadata?.label ?? row.id} (${position})`,
+          metadata?.description ?? "",
+        );
+      }
+    }
+    lines.push(
+      "",
+      ...buildFooterRowsFromResolved(
+        resolveFooter(previewInput, state.draft, theme),
+        theme,
+        width,
+      ),
+    );
+    const save = rows.at(-1);
+    if (save?.type === "save") pushSelectable(save, " ", "Save changes");
+  } else if (tab === "statuses") {
+    lines.push(`Search: ${renderState.navigation.statuses.query}`);
+    const statuses = rows.filter(
+      (row): row is Extract<DashboardSelectableRow, { type: "status" }> =>
+        row.type === "status",
+    );
+    if (statuses.length === 0) lines.push(theme.dim("No matching statuses."));
+    for (const row of statuses) {
+      const shown = !state.draft.extensionSegments.hidden.includes(row.key);
+      pushSelectable(row, shown ? "[•]" : "[ ]", row.key, "Show in the status line");
+    }
+    const save = rows.at(-1);
+    if (save?.type === "save") pushSelectable(save, " ", "Save changes");
+  } else {
+    const notifications = rows[0];
+    if (notifications?.type === "notifications") {
+      pushSelectable(
+        notifications,
+        state.draft.completionNotifications ? "[•]" : "[ ]",
+        "Completion notifications",
+        "Notify when Pi finishes a response",
+      );
+    }
+    const save = rows.at(-1);
+    if (save?.type === "save") pushSelectable(save, " ", "Save changes");
+  }
+
+  return {
+    lines: lines.map((line) => truncateToWidth(line, width, "")),
+    selectedLine,
+  };
+}
+```
+
+`selectedLine` is therefore the actual logical-line index corresponding to `navigation[tab].selectedIndex`; search, preview, and blank lines never consume selectable indices. Natural-height rendering clears only the Statuses query in a shallow render-only copy and never mutates dashboard state.
 
 Use these contextual footers:
 
@@ -777,7 +1270,7 @@ export function renderDashboard(
   width: number,
   terminalRows: number,
 ): DashboardRenderResult {
-  const safeWidth = Math.max(1, width);
+  const safeWidth = Math.max(1, Math.floor(width));
   const contentWidth = frameContentWidth(safeWidth);
   const natural = DASHBOARD_TABS.map(({ id }) =>
     logicalBody(state, id, previewInput, theme, contentWidth, true),
@@ -805,8 +1298,6 @@ export function renderDashboard(
 }
 ```
 
-Import `frame`, `frameContentWidth`, `MIN_FRAME_WIDTH`, `renderTabBar`, and `renderTooSmall` from `overlay-render.ts`; import the layout functions and constants from `dashboard-layout.ts`.
-
 - [ ] **Step 4: Verify exact height and overflow behavior**
 
 ```bash
@@ -816,7 +1307,7 @@ pnpm lint
 git diff --check
 ```
 
-Expected: all tabs have one height at fixed dimensions; selected Save scrolls into view; last line retains the bottom border; every line fits width.
+Expected: all tabs have one height at fixed dimensions; selected Save scrolls into view; last line retains the bottom border; every line fits width; the fallback matches the approved `Terminal too small` contract.
 
 - [ ] **Step 5: Commit rendering**
 
@@ -840,29 +1331,41 @@ pnpm vitest run \
 
 Expected: all tests pass; the old editor is still the registered UI and the new pure engine has independent coverage.
 
-- [ ] **Step 2: Run the full phase gate**
+- [ ] **Step 2: Run the full phase gate and verify package contents**
 
 ```bash
-pnpm format:check
-pnpm lint
-pnpm typecheck
-pnpm test
+set -e
+PHASE_BASE=$(cat .superpowers/statusline-dashboard-phase-03-base)
+git cat-file -e "$PHASE_BASE^{commit}"
+git merge-base --is-ancestor "$PHASE_BASE" HEAD
 pnpm check
-pnpm run pack:dry-run
-pnpm pack:verify
+pack_output=$(pnpm run pack:dry-run)
+printf '%s\n' "$pack_output"
+printf '%s\n' "$pack_output" | grep -F 'src/tui/dashboard-state.ts'
+printf '%s\n' "$pack_output" | grep -F 'src/tui/dashboard-render.ts'
 git diff --check "$PHASE_BASE"..HEAD
 ```
 
-Expected: all checks pass and both new dashboard modules are packaged.
+Expected: all checks pass and both new dashboard modules appear in the package dry run.
 
-- [ ] **Step 3: Review scope**
+- [ ] **Step 3: Verify exact phase scope and cleanliness**
 
 ```bash
-git diff --name-only "$PHASE_BASE"..HEAD
-git status --short
+set -e
+PHASE_BASE=$(cat .superpowers/statusline-dashboard-phase-03-base)
+actual=$(git diff --name-only "$PHASE_BASE"..HEAD | sort)
+expected=$(printf '%s\n' \
+  src/tui/dashboard-render.ts \
+  src/tui/dashboard-state.ts \
+  src/tui/editor-state.ts \
+  tests/tui/dashboard-render.test.ts \
+  tests/tui/dashboard-state.test.ts | sort)
+test "$actual" = "$expected"
+test -z "$(git status --short)"
+printf '%s\n' "$actual"
 ```
 
-Expected: the four new dashboard files and the editor-state compatibility import changed; existing command/index/editor/tool/session behavior is unchanged; worktree is clean.
+Expected: exactly the two new source files, two new tests, and the editor-state compatibility import print; existing command/index/editor/tool/session behavior is unchanged; the worktree is clean.
 
 ## Completion gate
 

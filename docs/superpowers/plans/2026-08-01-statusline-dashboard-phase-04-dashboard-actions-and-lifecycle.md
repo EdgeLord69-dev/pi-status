@@ -542,7 +542,7 @@ Keyboard order must be:
 8. Space/Enter activates;
 9. other printable ASCII appends only on Statuses/Tools.
 
-`render()` calls `renderDashboard(state, getPreviewInput(), theme, width, tui.terminal.rows)`, stores the returned active-tab offset without requesting another render, and returns its lines. `close()` checks `closed`, marks it, and calls `done()` once. `invalidate()` and `dispose()` are idempotent and never call `done()` again.
+`render()` calls `renderDashboard(state, getPreviewInput(), theme, width, tui.terminal.rows)`. If the returned offset differs, apply `{ type: "set_offset", tab: state.activeTab, offset: result.offset }` by calling `reduceDashboardState()` directly and assigning its returned state; do not route this render-derived update through the render-requesting `dispatch()`. Return `result.lines`. `close()` checks `closed`, marks it, and calls `done()` once. `invalidate()` and `dispose()` are idempotent and never call `done()` again.
 
 - [ ] **Step 4: Add `openStatusLineDashboard()` with exact overlay options**
 
