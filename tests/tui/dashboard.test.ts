@@ -469,3 +469,191 @@ describe("StatusLineDashboardComponent", () => {
     expect(handle.focus).not.toHaveBeenCalled();
   });
 });
+
+describe("openStatusLineDashboard", () => {
+  interface OpenHost {
+    ctx: ExtensionCommandContext;
+    capturedFactory: () => ((...args: unknown[]) => unknown) | undefined;
+    capturedOptions: () =>
+      | {
+          overlay?: boolean;
+          overlayOptions?: { anchor?: string; maxHeight?: string; width?: string };
+          onHandle?: (handle: OverlayHandle) => void;
+        }
+      | undefined;
+    handle: OverlayHandle;
+    callDone: (value: unknown) => void;
+    capturedComponent: () => unknown;
+    options: Parameters<
+      typeof import("../../src/tui/dashboard.ts").openStatusLineDashboard
+    >[0];
+  }
+
+  function setupOpenHost(extraOverrides: {
+    ctxOverrides?: Partial<ExtensionCommandContext>;
+    piOverrides?: Partial<ExtensionAPI>;
+    input?: Promise<string | undefined>;
+  } = {}): OpenHost {
+    const handle = {
+      focus: vi.fn(),
+      hide: vi.fn(),
+      setHidden: vi.fn(),
+      isHidden: vi.fn(() => false),
+      unfocus: vi.fn(),
+      isFocused: vi.fn(() => true),
+    } as unknown as OverlayHandle;
+    const ctxState: {
+      factory?: (...args: unknown[]) => unknown;
+      options?: {
+        overlay?: boolean;
+        overlayOptions?: { anchor?: string; maxHeight?: string; width?: string };
+        onHandle?: (handle: OverlayHandle) => void;
+      };
+      component?: {
+        dispose: () => void;
+        handleInput?: (d: string) => void;
+        setOverlayHandle?: (h: OverlayHandle) => void;
+      };
+    } = {};
+    let resolveCustom: ((value: unknown) => void) | undefined;
+    const customPromise = new Promise((resolve) => {
+      resolveCustom = resolve;
+    });
+    const ctx = {
+      mode: "tui",
+      cwd: "/work/pi-status",
+      model: { provider: "anthropic", id: "gpt-5" } as never,
+      sessionManager: {
+        getSessionId: () => "session-1",
+        getSessionFile: () => "/sessions/session-1.jsonl",
+      } as never,
+      ui: {
+        custom: vi.fn((factory, options) => {
+          ctxState.factory = factory as (...args: unknown[]) => unknown;
+          ctxState.options = options as typeof ctxState.options;
+          const fakeTui = {
+            terminal: { columns: 80, rows: 30 },
+            requestRender: vi.fn(),
+          };
+          const component = (
+            ctxState.factory as (
+              tui: unknown,
+              theme: unknown,
+              keys: unknown,
+              done: (v: unknown) => void,
+            ) => {
+              dispose: () => void;
+              handleInput?: (d: string) => void;
+              setOverlayHandle?: (h: OverlayHandle) => void;
+            }
+          )(
+            fakeTui,
+            null,
+            {},
+            (value: unknown) => {
+              component.dispose();
+              resolveCustom?.(value);
+            },
+          );
+          ctxState.component = component;
+          if (options?.onHandle) options.onHandle(handle);
+          return customPromise;
+        }),
+        notify: vi.fn(),
+        input: vi.fn(() => extraOverrides.input ?? Promise.resolve(undefined)),
+        confirm: vi.fn(() => Promise.resolve(false)),
+      },
+    } as unknown as ExtensionCommandContext;
+    const previewInput = buildSnapshot({
+      model: { name: "GPT-5" },
+      cwd: "/work/pi-status",
+      thinkingLevel: "medium",
+      gitBranch: null,
+      isIdle: true,
+      hasPendingMessages: false,
+      entries: [],
+      accessType: undefined,
+      sessionId: "session-1",
+      extensionStatuses: new Map(),
+    });
+    const baseOptions: OpenHost["options"] = {
+      pi: {
+        getAllTools: () => [],
+        getActiveTools: () => [],
+        setActiveTools: vi.fn(),
+        getSessionName: () => "Untitled",
+        setSessionName: vi.fn(),
+        ...extraOverrides.piOverrides,
+      } as unknown as ExtensionAPI,
+      ctx,
+      config: config(),
+      discoveredStatuses: ["build"],
+      usageAvailable: true,
+      getPreviewInput: () =>
+        previewInput as Omit<FooterRenderInput, "zones" | "extensionSegments">,
+      save: vi.fn(),
+    };
+    return {
+      ctx,
+      capturedFactory: () => ctxState.factory,
+      capturedOptions: () => ctxState.options,
+      handle,
+      callDone: (value: unknown) => resolveCustom?.(value),
+      capturedComponent: () => ctxState.component,
+      options: baseOptions,
+    };
+  }
+
+  it("opens with exact overlay options and onHandle", async () => {
+    const host = setupOpenHost();
+    const promise = import("../../src/tui/dashboard.ts").then((mod) =>
+      mod.openStatusLineDashboard(host.options),
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+    host.callDone(undefined);
+    await promise;
+    expect(host.capturedOptions()).toEqual({
+      overlay: true,
+      overlayOptions: { anchor: "center", maxHeight: "85%", width: "92%" },
+      onHandle: expect.any(Function),
+    });
+  });
+
+  it("attaches the handle when onHandle runs after the factory", async () => {
+    const host = setupOpenHost();
+    const promise = import("../../src/tui/dashboard.ts").then((mod) =>
+      mod.openStatusLineDashboard(host.options),
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(typeof host.capturedFactory()).toBe("function");
+    host.callDone(undefined);
+    await promise;
+    expect(host.capturedOptions()).toBeDefined();
+  });
+
+  it("focuses the overlay when rename dialog completes", async () => {
+    const input = deferred<string | undefined>();
+    const host = setupOpenHost({ input: input.promise });
+    const promise = import("../../src/tui/dashboard.ts").then((mod) =>
+      mod.openStatusLineDashboard(host.options),
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(typeof host.capturedFactory()).toBe("function");
+    const component = (
+      host as unknown as { capturedComponent: () => unknown }
+    ).capturedComponent() as {
+      handleInput: (d: string) => void;
+      dispose: () => void;
+    };
+    component.handleInput("\t");
+    component.handleInput("\t");
+    component.handleInput("\r");
+    input.resolve("NewName");
+    await input.promise;
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+    host.callDone(undefined);
+    await promise;
+    expect(host.handle.focus).toHaveBeenCalled();
+  });
+});
