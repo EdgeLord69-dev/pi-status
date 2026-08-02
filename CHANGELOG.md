@@ -6,18 +6,30 @@ All notable changes to `@pi-vault/pi-status` are documented in this file.
 
 ### Breaking Changes
 
+- Replaced the flat `FooterRenderInput` shape and removed `DEFAULT_SEGMENTS`, `buildFooterLine()`, and `buildFooterLineFromResolved()`. Persisted legacy `segments` configuration still migrates into the top-left zone.
 - `/statusline` is now the sole dashboard command; former `tools`, `session`, `notifications`, and `preset` arguments are rejected.
 - The dashboard is a five-tab overlay: Layout, Statuses, Session, Tools, and Settings. Superseded standalone editor and command wrappers were removed.
 
+### Added
+
+- Added the opt-in `workspace-pulse` footer segment for a bounded, read-only Git workspace summary without retaining or displaying changed-file paths.
+- Added opt-in `turn-progress` and `response-performance` footer segments for current-turn tool activity, time-to-first-token, and response throughput.
+- Added opt-in completion notifications on macOS and Windows, configured from the dashboard Settings tab and driven by Pi's `agent_settled` event plus questionnaire wait-state events.
+- Added four-zone footer layout controls and minimal, balanced, and telemetry presets in the dashboard Layout tab.
+- Added opt-in `cache-read-tokens`, `cache-write-tokens`, `cache-hit`, `session-cost`, and `access-type` footer segments.
+
 ### Changed
 
+- Moved pi-status configuration from Pi's `settings.json` files to the global extension-owned `<Pi agent directory>/extensions/statusline.json` file with a four-zone JSON shape.
+- Footer rows now fit independently at narrow widths, dropping lower-priority items before truncating remaining content.
+- `NO_COLOR` is honored by presence for both the footer and dashboard.
+- Token totals now include usage from assistant, tool-result, branch-summary, and compaction session entries.
 - Layout, Statuses, and Settings share one draft/save flow; Tools apply immediately; Session rename and compaction use Pi dialogs.
 - Dashboard rendering is bounded across narrow terminal sizes, while the saved footer remains visible behind the overlay.
 
-### Added
+### Fixed
 
-- Added opt-in `workspace-pulse`, `turn-progress`, and `response-performance` footer segments.
-- Added opt-in completion notifications on supported desktop platforms.
+- Restricted custom footer and dashboard APIs to TUI mode and synchronized reasoning display with Pi's current and selected thinking levels.
 
 ### Compatibility
 
@@ -25,6 +37,8 @@ All notable changes to `@pi-vault/pi-status` are documented in this file.
 
 ### Internal
 
+- Renamed the settings-store test seam for the extension-owned config file and added explicit tarball allowlist verification.
+- Routed session actions through Pi's public command-context APIs and reused Pi's public live tool APIs without adding persistence.
 - Consolidated dashboard state and retained only dashboard-owned preset, tool, and session helpers.
 
 ## 0.3.0 - 2026-06-23

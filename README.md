@@ -42,7 +42,7 @@ Once installed, the footer updates automatically. Run `/statusline` inside Pi to
 
 - **Layout**, **Statuses**, and **Settings** share one draft and Save action.
 - **Tools** applies tool changes immediately and never disables the final active tool.
-- **Session** uses Pi dialogs for details, rename, and compaction.
+- **Session** shows current details and uses Pi dialogs for rename and compaction.
 - `Esc` clears search before closing; closing with unsaved changes confirms discard.
 - The saved footer remains visible behind the centered dashboard overlay.
 
@@ -199,15 +199,9 @@ of the old `statusLine` object into `extensions/statusline.json`.
 
 ## Completion Notifications
 
-`/statusline notifications [on|off]` toggles an opt-in, global preference for
+The Settings tab in `/statusline` controls an opt-in, global preference for
 bounded, best-effort native system notifications when a TUI agent run settles
 or `@pi-vault/pi-questionnaire` enters its wait state.
-
-- `/statusline notifications` reports the current state.
-- `/statusline notifications on` enables completion notifications.
-- `/statusline notifications off` disables them.
-- `/statusline notifications maybe` (or any other arguments) reports
-  `Usage: /statusline notifications [on|off]`.
 
 The preference is global-only, off by default, and lives in the same
 `extensions/statusline.json` file. There is no per-project or per-session
@@ -229,9 +223,8 @@ text is always passed through argv (macOS) or child-only environment variables
 named `PI_STATUS_NOTIFICATION_TITLE` and `PI_STATUS_NOTIFICATION_BODY`
 (Windows); no shell interpolation is used. Native processes are detached,
 time-bounded, and fail silently if the OS rejects them. Other platforms and
-RPC/print contexts do not receive notifications. Settings are updated
-independently of the editor; failed writes leave both runtime state and the
-notifier unchanged.
+RPC/print contexts do not receive notifications. Failed settings writes leave
+both runtime state and the notifier unchanged.
 
 ## Upgrade Notes For 0.2.x Users
 
