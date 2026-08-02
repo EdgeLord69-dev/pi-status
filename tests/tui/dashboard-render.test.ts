@@ -2,6 +2,8 @@ import { visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it } from "vitest";
 import { buildSnapshot } from "../../src/core/resolve-footer.ts";
 import type { PiStatusConfig, StatusLineZones } from "../../src/shared/types.ts";
+import type { DashboardTool } from "../../src/tui/tool-controls.ts";
+import type { SessionDetails } from "../../src/tui/session-actions.ts";
 import {
   DASHBOARD_TABS,
   initDashboardState,
@@ -198,5 +200,69 @@ describe("dashboard render", () => {
     const result = renderDashboard(state, preview, noTheme, 6, 40);
     expect(result.lines.every((line) => visibleWidth(line) === 6)).toBe(true);
     expect(result.lines.join("\n")).not.toContain("┏");
+  });
+});
+
+describe("dashboard Session and Tools rendering", () => {
+  const tools: DashboardTool[] = [
+    { name: "read", description: "Read files", enabled: true },
+    { name: "bash", description: "Run shell commands", enabled: false },
+  ];
+
+  const session: SessionDetails = {
+    name: "Work",
+    id: "session-1",
+    file: "In memory",
+    directory: "/work",
+    model: "anthropic/claude",
+  };
+
+  it("renders session details above two selectable actions", () => {
+    const state = initDashboardState(config(), [], true, { tools, session });
+    state.activeTab = "session";
+    const output = renderDashboard(state, preview, noTheme, 100, 40).lines.join("\n");
+
+    expect(output).toContain("Name: Work");
+    expect(output).toContain("ID: session-1");
+    expect(output).toContain("File: In memory");
+    expect(output).toContain("Directory: /work");
+    expect(output).toContain("Model: anthropic/claude");
+    expect(output).toContain("Rename session");
+    expect(output).toContain("Compact session");
+  });
+
+  it("renders an unavailable session without interactive rows", () => {
+    const state = initDashboardState(config(), [], true, { tools });
+    state.activeTab = "session";
+    expect(renderDashboard(state, preview, noTheme, 100, 40).lines.join("\n")).toContain(
+      "Session details unavailable.",
+    );
+  });
+
+  it("renders and filters live tools", () => {
+    const state = initDashboardState(config(), [], true, { tools, session });
+    state.activeTab = "tools";
+    state.navigation.tools.query = "rf";
+    const output = renderDashboard(state, preview, noTheme, 100, 40).lines.join("\n");
+
+    expect(output).toContain("Search: rf");
+    expect(output).toContain("read");
+    expect(output).toContain("enabled");
+    expect(output).not.toContain("Run shell commands");
+  });
+
+  it("distinguishes no tools from no matching tools", () => {
+    const empty = initDashboardState(config(), [], true, { session });
+    empty.activeTab = "tools";
+    expect(renderDashboard(empty, preview, noTheme, 100, 40).lines.join("\n")).toContain(
+      "No tools available.",
+    );
+
+    const filtered = initDashboardState(config(), [], true, { tools, session });
+    filtered.activeTab = "tools";
+    filtered.navigation.tools.query = "zzz";
+    expect(renderDashboard(filtered, preview, noTheme, 100, 40).lines.join("\n")).toContain(
+      "No matching tools.",
+    );
   });
 });

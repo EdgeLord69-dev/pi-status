@@ -78,12 +78,12 @@ function stateForNaturalHeight(
   tab: DashboardTabId,
   ignoreQuery: boolean,
 ): DashboardState {
-  if (!ignoreQuery || tab !== "statuses") return state;
+  if (!ignoreQuery || (tab !== "statuses" && tab !== "tools")) return state;
   return {
     ...state,
     navigation: {
       ...state.navigation,
-      statuses: { ...state.navigation.statuses, query: "" },
+      [tab]: { ...state.navigation[tab], query: "" },
     },
   };
 }
@@ -96,10 +96,6 @@ function logicalBody(
   width: number,
   ignoreQuery: boolean,
 ): LogicalBody {
-  if (tab === "session" || tab === "tools") {
-    return { lines: [], selectedLine: undefined };
-  }
-
   const renderState = stateForNaturalHeight(state, tab, ignoreQuery);
   const rows = selectableRows(renderState, tab);
   const selectedIndex = state.navigation[tab].selectedIndex;
@@ -144,6 +140,35 @@ function logicalBody(
     for (const row of statuses) {
       const shown = !state.draft.extensionSegments.hidden.includes(row.key);
       pushSelectable(shown ? "[•]" : "[ ]", row.key, "Show in the status line");
+    }
+  } else if (tab === "session") {
+    if (!state.session) {
+      lines.push(theme.dim("Session details unavailable."));
+    } else {
+      lines.push(
+        theme.dim(`Name: ${state.session.name}`),
+        theme.dim(`ID: ${state.session.id}`),
+        theme.dim(`File: ${state.session.file}`),
+        theme.dim(`Directory: ${state.session.directory}`),
+        theme.dim(`Model: ${state.session.model}`),
+        "",
+      );
+      pushSelectable(" ", "Rename session");
+      pushSelectable(" ", "Compact session");
+    }
+  } else if (tab === "tools") {
+    lines.push(`Search: ${renderState.navigation.tools.query}`);
+    const toolRows = rows.filter((row) => row.type === "tool");
+    if (state.tools.length === 0) lines.push(theme.dim("No tools available."));
+    else if (toolRows.length === 0) lines.push(theme.dim("No matching tools."));
+    for (const row of toolRows) {
+      const tool = state.tools.find(({ name }) => name === row.name);
+      if (!tool) continue;
+      pushSelectable(
+        tool.enabled ? "[•]" : "[ ]",
+        tool.name,
+        `${tool.enabled ? "enabled" : "disabled"} - ${tool.description}`,
+      );
     }
   } else {
     const notifications = rows[0];

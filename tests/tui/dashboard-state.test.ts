@@ -322,7 +322,9 @@ describe("dashboard live snapshots", () => {
       tools: inputTools,
       session: inputSession,
     });
-    inputTools[0]!.enabled = false;
+    const firstTool = inputTools[0];
+    if (!firstTool) throw new Error("missing first tool");
+    firstTool.enabled = false;
     inputSession.name = "Changed outside";
 
     expect(state.tools[0]?.enabled).toBe(true);
@@ -349,7 +351,7 @@ describe("dashboard live snapshots", () => {
   });
 
   it("emits live effects without dirtying persisted config", () => {
-    let state = initDashboardState(config(), [], true, { tools, session });
+    const state = initDashboardState(config(), [], true, { tools, session });
     state.activeTab = "tools";
     expect(reduceDashboardState(state, { type: "activate" }).effect).toEqual({
       type: "toggle_tool",
