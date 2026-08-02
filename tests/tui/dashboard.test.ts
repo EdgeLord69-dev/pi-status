@@ -222,4 +222,70 @@ describe("StatusLineDashboardComponent", () => {
     expect(short.length).toBeLessThan(tall.length);
     expect(component.getState().navigation.tools.offset).toBeGreaterThanOrEqual(0);
   });
+
+  it.each(["q", "\x1b[113u"])("treats %j as query text on searchable tabs", (input) => {
+    const { component, done } = makeDashboard();
+    component.handleInput("\t");
+    component.handleInput(input);
+    expect(component.getState().navigation.statuses.query).toBe("q");
+    expect(done).not.toHaveBeenCalled();
+  });
+
+  it.each(["q", "\x1b[113u"])("treats %j as close outside searchable tabs", (input) => {
+    const { component, done } = makeDashboard();
+    component.handleInput(input);
+    expect(done).toHaveBeenCalledOnce();
+  });
+
+  it("clears a Tools query before Esc closes", () => {
+    const { component, done } = makeDashboard();
+    for (let index = 0; index < 3; index += 1) component.handleInput("\t");
+    component.handleInput("r");
+    component.handleInput("\x1b");
+    expect(component.getState().navigation.tools.query).toBe("");
+    expect(done).not.toHaveBeenCalled();
+  });
+
+  it("saves the whole draft and marks clean only after success", () => {
+    const { component, save } = makeDashboard();
+    // Move to Settings via Shift+Tab from Layout (Shift+Tab prev tab from Layout = Settings)
+    component.handleInput("\x1b[Z");
+    component.handleInput("\r"); // Toggle notifications (first row)
+    component.handleInput("\x1b[B"); // Move to Save
+    component.handleInput("\r"); // Activate Save
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({ completionNotifications: true }),
+    );
+    expect(component.getState().draft.completionNotifications).toBe(true);
+    expect(component.getState().baseline.completionNotifications).toBe(true);
+  });
+
+  it("keeps a failed save dirty", () => {
+    const { component, ctx, save } = makeDashboard();
+    save.mockImplementationOnce(() => {
+      throw new Error("disk full");
+    });
+    component.handleInput("\x1b[Z");
+    component.handleInput("\r");
+    component.handleInput("\x1b[B");
+    component.handleInput("\r");
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Failed to save statusline config", "warning");
+  });
+
+  it("replaces confirmed tool rows after an applied toggle", () => {
+    const { component, pi } = makeDashboard();
+    for (let index = 0; index < 3; index += 1) component.handleInput("\t");
+    component.handleInput("\r");
+    expect(pi.setActiveTools).toHaveBeenCalledWith(["bash"]);
+    expect(component.getState().tools.find(({ name }) => name === "read")?.enabled).toBe(false);
+  });
+
+  it("keeps confirmed rows and warns when the final tool is rejected", () => {
+    const { component, ctx, pi } = makeDashboard({ activeTools: ["read"] });
+    for (let index = 0; index < 3; index += 1) component.handleInput("\t");
+    component.handleInput("\r");
+    expect(pi.setActiveTools).not.toHaveBeenCalled();
+    expect(component.getState().tools[0]?.enabled).toBe(true);
+    expect(ctx.ui.notify).toHaveBeenCalledWith("At least one tool must remain active", "warning");
+  });
 });
