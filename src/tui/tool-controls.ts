@@ -25,6 +25,51 @@ export function calculateToolChange(
   return { type: "apply", names: allNames.filter((name) => next.has(name)) };
 }
 
+export interface DashboardTool {
+  name: string;
+  description: string;
+  enabled: boolean;
+}
+
+export function readToolSnapshot(pi: ExtensionAPI): DashboardTool[] {
+  const catalog = pi.getAllTools();
+  const validNames = new Set(catalog.map(({ name }) => name));
+  const activeNames = new Set(pi.getActiveTools().filter((name) => validNames.has(name)));
+  return catalog.map(({ name, description }) => ({
+    name,
+    description,
+    enabled: activeNames.has(name),
+  }));
+}
+
+export type LiveToolToggle =
+  | { type: "applied"; tools: DashboardTool[] }
+  | { type: "ignore"; tools: DashboardTool[] }
+  | { type: "reject-last-active" };
+
+export function toggleLiveTool(
+  pi: ExtensionAPI,
+  changedName: string,
+  enabled: boolean,
+): LiveToolToggle {
+  const tools = readToolSnapshot(pi);
+  const change = calculateToolChange(
+    tools.map(({ name }) => name),
+    tools.filter((tool) => tool.enabled).map(({ name }) => name),
+    changedName,
+    enabled ? "enabled" : "disabled",
+  );
+  if (change.type === "reject-last-active") return change;
+  if (change.type === "ignore") return { type: "ignore", tools };
+
+  pi.setActiveTools(change.names);
+  const activeNames = new Set(change.names);
+  return {
+    type: "applied",
+    tools: tools.map((tool) => ({ ...tool, enabled: activeNames.has(tool.name) })),
+  };
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function errorText(error: unknown): string {
@@ -48,28 +93,24 @@ export async function openToolControls(
     return;
   }
 
-  let allTools: ReturnType<ExtensionAPI["getAllTools"]>;
+  let initialTools: DashboardTool[];
   try {
-    allTools = pi.getAllTools();
+    initialTools = readToolSnapshot(pi);
   } catch (err) {
     warn(ctx, `Could not load Pi tools: ${errorText(err)}`);
     return;
   }
 
-  if (allTools.length === 0) {
+  if (initialTools.length === 0) {
     warn(ctx, "No tools are available");
     return;
   }
 
-  const allNames = allTools.map((t) => t.name);
-
-  let initialActiveNames: string[];
-  try {
-    initialActiveNames = pi.getActiveTools().filter((name) => allNames.includes(name));
-  } catch (err) {
-    warn(ctx, `Could not load Pi tools: ${errorText(err)}`);
-    return;
-  }
+  const allTools = initialTools.map(({ name, description }) => ({ name, description }));
+  const allNames = initialTools.map(({ name }) => name);
+  const initialActiveNames = initialTools
+    .filter(({ enabled }) => enabled)
+    .map(({ name }) => name);
 
   const items: SettingItem[] = allTools.map((t) => ({
     id: t.name,
