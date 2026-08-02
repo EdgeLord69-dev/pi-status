@@ -168,7 +168,7 @@ Every tab body is represented as logical rows inside the shared viewport, includ
 - moving to `Save changes` scrolls it into view rather than pinning it outside the body budget;
 - frame, tab bar, contextual footer, and bottom border are never delegated to Pi's truncation.
 
-ANSI-safe truncation, padding, and intentional wrapping happen before height calculation, so no rendered line exceeds the current frame width. If the terminal is too short to fit the normal shell chrome, render a bounded centered `Terminal too short` fallback with a close hint instead of a partially sliced frame. The fallback also stays within the 85% height limit.
+ANSI-safe truncation, padding, and intentional wrapping happen before height calculation, so no rendered line exceeds the current frame width. If the terminal is too small to fit the normal shell chrome, render a bounded centered `Terminal too small` fallback with a close hint instead of a partially sliced frame. The fallback also stays within the 85% height limit.
 
 ## Lifecycle and Failure Handling
 
@@ -185,7 +185,7 @@ Add focused tests for:
 - exact overlay options, centered anchor, frame geometry, tab overflow, contextual footer, and idempotent lifecycle parity with `pi-usage`;
 - equal rendered height for all five tabs at the same terminal dimensions, including filtered and empty states;
 - responsive recomputation after width and height changes without horizontal or vertical overflow;
-- complete frame/footer preservation at the 85% cap and the bounded too-short-terminal fallback;
+- complete frame/footer preservation at the 85% cap and the bounded too-small-terminal fallback;
 - tab cycling and independent cursor, query, and viewport state;
 - selection-following scrolling for every long tab body under constrained heights;
 - Layout presets, zone movement, segment toggling/reordering, final-segment protection, and production preview use;

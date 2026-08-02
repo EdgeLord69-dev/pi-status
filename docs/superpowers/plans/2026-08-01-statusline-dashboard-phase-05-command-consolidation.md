@@ -336,7 +336,7 @@ it.each([
 });
 ```
 
-For normal-height cases, also assert top and bottom borders survive. For the 8-row case, assert the too-short fallback and close key.
+For normal-height cases, also assert top and bottom borders survive. For the 8-row case, assert the `Terminal too small` fallback and close key.
 
 - [ ] **Step 3: Run all final focused suites**
 

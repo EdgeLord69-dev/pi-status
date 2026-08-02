@@ -899,15 +899,26 @@ Expected: new and old reducer coverage passes.
 
 - [ ] **Step 1: Write failing render tests**
 
-Create `tests/tui/dashboard-render.test.ts`. Use `visibleWidth` from `@earendil-works/pi-tui`, `noTheme`, `withDefaults()` from `tests/helpers.ts`, and this exact preview fixture:
+Create `tests/tui/dashboard-render.test.ts`. Use `visibleWidth` from `@earendil-works/pi-tui`, `buildSnapshot` from `src/core/resolve-footer.ts`, and `noTheme`. Build preview input through the same production snapshot boundary used by the live footer:
 
 ```ts
-const preview = withDefaults({
+import { visibleWidth } from "@earendil-works/pi-tui";
+import { buildSnapshot } from "../../src/core/resolve-footer.ts";
+
+const snapshotInput = {
   model: { name: "GPT-5" },
   cwd: "/work/pi-status",
   thinkingLevel: "medium",
-  runState: "idle",
-});
+  gitBranch: null,
+  isIdle: true,
+  hasPendingMessages: false,
+  entries: [],
+  accessType: undefined,
+  sessionId: "preview-session-id",
+  extensionStatuses: new Map<string, string>(),
+};
+
+const preview = buildSnapshot(snapshotInput);
 ```
 
 Cover:
@@ -922,14 +933,27 @@ it("renders the pi-usage shell and draft preview", () => {
   expect(output).toContain("Preset");
   expect(output).toContain("Save changes");
   expect(output).toContain("GPT-5");
-  expect(result.lines.length).toBeLessThanOrEqual(34);
+  expect(result.lines).toHaveLength(34);
   expect(result.lines.every((line) => visibleWidth(line) === 100)).toBe(true);
 });
 
-it("previews the draft through production status resolution", () => {
+it("uses draft zones instead of fixture zones for the production preview", () => {
   const state = initDashboardState(config(), [], true);
-  const live = withDefaults({
-    ...preview,
+  state.draft.zones = {
+    topLeft: ["session-id"],
+    topRight: [],
+    bottomLeft: [],
+    bottomRight: [],
+  };
+  const output = renderDashboard(state, preview, noTheme, 100, 40).lines.join("\n");
+  expect(output).toContain("preview-session-id");
+  expect(output).not.toContain("GPT-5");
+});
+
+it("previews draft status visibility through production resolution", () => {
+  const state = initDashboardState(config(), [], true);
+  const live = buildSnapshot({
+    ...snapshotInput,
     extensionStatuses: new Map([["build", "build: ready"]]),
   });
   expect(renderDashboard(state, live, noTheme, 100, 40).lines.join("\n")).toContain("ready");
@@ -938,15 +962,23 @@ it("previews the draft through production status resolution", () => {
   expect(renderDashboard(state, live, noTheme, 100, 40).lines.join("\n")).not.toContain("ready");
 });
 
-it("renders all tabs at one height independent of query", () => {
-  const state = initDashboardState(config(), Array.from({ length: 30 }, (_, index) => `status-${index}`), true);
+it("renders all tabs at the exact capped height without mutating query", () => {
+  const state = initDashboardState(
+    config(),
+    Array.from({ length: 30 }, (_, index) => `status-${index}`),
+    true,
+  );
+  state.navigation.statuses.query = "no-match";
   const heights = DASHBOARD_TABS.map(({ id }) => {
     state.activeTab = id;
-    if (id === "statuses") state.navigation.statuses.query = "no-match";
-    return renderDashboard(state, preview, noTheme, 100, 24).lines.length;
+    const result = renderDashboard(state, preview, noTheme, 100, 24);
+    if (id === "statuses") {
+      expect(result.lines.join("\n")).toContain("No matching statuses.");
+    }
+    return result.lines.length;
   });
-  expect(new Set(heights).size).toBe(1);
-  expect(heights[0]).toBeLessThanOrEqual(20);
+  expect(new Set(heights)).toEqual(new Set([20]));
+  expect(state.navigation.statuses.query).toBe("no-match");
 });
 
 it.each(["layout", "statuses"] as const)(
@@ -965,6 +997,36 @@ it.each(["layout", "statuses"] as const)(
     expect(result.offset).toBeGreaterThan(0);
   },
 );
+
+it("recomputes and clamps a stale viewport across resize", () => {
+  const state = initDashboardState(
+    config(),
+    Array.from({ length: 40 }, (_, index) => `status-${index}`),
+    true,
+  );
+  state.activeTab = "statuses";
+  state.navigation.statuses.selectedIndex = selectableRows(state).length - 1;
+  state.navigation.statuses.offset = 99;
+
+  const narrow = renderDashboard(state, preview, noTheme, 60, 18);
+  const wide = renderDashboard(state, preview, noTheme, 100, 40);
+  expect(narrow.lines).toHaveLength(15);
+  expect(wide.lines).toHaveLength(34);
+  expect(narrow.offset).toBeLessThan(99);
+  expect(wide.offset).toBeLessThan(narrow.offset);
+  expect(narrow.lines.every((line) => visibleWidth(line) === 60)).toBe(true);
+  expect(wide.lines.every((line) => visibleWidth(line) === 100)).toBe(true);
+  expect(narrow.lines.at(-1)).toContain("┗");
+  expect(wide.lines.at(-1)).toContain("┗");
+});
+
+it("preserves exact geometry at the minimum framed width", () => {
+  const state = initDashboardState(config(), [], true);
+  const result = renderDashboard(state, preview, noTheme, 7, 40);
+  expect(result.lines).toHaveLength(34);
+  expect(result.lines.every((line) => visibleWidth(line) === 7)).toBe(true);
+  expect(result.lines.at(-1)).toContain("┗");
+});
 
 it("renders a bounded fallback below normal chrome height", () => {
   const state = initDashboardState(config(), [], true);
@@ -1034,7 +1096,7 @@ type LogicalBody = {
 };
 ```
 
-Use one-line ANSI-safe rows. The common selectable renderer must preserve width:
+Use one-line ANSI-safe rows. The common selectable renderer must never exceed its width, including the one-column content area at the minimum framed width:
 
 ```ts
 function selectableLine(
@@ -1049,7 +1111,11 @@ function selectableLine(
   const prefix = `${marker} ${checkbox} `;
   const remaining = Math.max(0, width - visibleWidth(prefix));
   const text = description ? `${label} - ${theme.dim(description)}` : label;
-  return `${prefix}${truncateToWidth(text, remaining, "")}`;
+  return truncateToWidth(
+    `${prefix}${truncateToWidth(text, remaining, "")}`,
+    width,
+    "",
+  );
 }
 ```
 
@@ -1241,7 +1307,7 @@ pnpm lint
 git diff --check
 ```
 
-Expected: all tabs have one height at fixed dimensions; selected Save scrolls into view; last line retains the bottom border; every line fits width. The fallback assertion intentionally uses Phase 2's shipped `Terminal too small` string; the older design phrase `Terminal too short` is descriptive, not a second UI contract.
+Expected: all tabs have one height at fixed dimensions; selected Save scrolls into view; last line retains the bottom border; every line fits width; the fallback matches the approved `Terminal too small` contract.
 
 - [ ] **Step 5: Commit rendering**
 
