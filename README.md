@@ -38,23 +38,15 @@ Usage-limit segments depend on `pi-usage`. `/statusline` can show those segment 
 
 ## Quick Start
 
-Once installed, the footer updates automatically.
+Once installed, the footer updates automatically. Run `/statusline` inside Pi to open the five-tab dashboard:
 
-- Run `/statusline` inside Pi to open the interactive editor.
-- Run `/statusline tools` to search and toggle Pi's currently available tools in a centered overlay. Valid changes apply to the session immediately, and the control will not disable the final active tool.
-- Run `/statusline session` to view the current session name, ID, file, directory, and model.
-- From the session menu, rename the current session or compact it after an explicit confirmation.
-- Run `/statusline notifications [on|off]` to toggle opt-in native completion notifications on macOS and Windows.
-- Run `/statusline preset [minimal|balanced|telemetry]` to choose a curated four-zone layout from a selector and confirm it before it is persisted.
-- Use `Tab` and `Shift+Tab` to select the TL, TR, BL, or BR zone.
-- Toggle segments on or off with `Space`.
-- Reorder segments in the active zone with `Left` and `Right`.
-- Search the segment list by typing.
-- Preview the footer before saving.
-- Hide individual extension status keys from the "Extension statuses" section.
-- Save changes and reuse them the next time Pi starts.
+- **Layout**, **Statuses**, and **Settings** share one draft and Save action.
+- **Tools** applies tool changes immediately and never disables the final active tool.
+- **Session** shows current details and uses Pi dialogs for rename and compaction.
+- `Esc` clears search before closing; closing with unsaved changes confirms discard.
+- The saved footer remains visible behind the centered dashboard overlay.
 
-While the editor is open, the live footer is temporarily hidden so the inline UI can use the full width cleanly.
+Use `Tab` and `Shift+Tab` to move between tabs, arrow keys to navigate, `Space` to toggle, and type to search. Pi 0.83.0 or newer is required.
 
 ## Available Segments
 
@@ -113,62 +105,6 @@ State values:
 - `stale` — the last known state is shown with a stale marker because a subsequent inspection failed
 
 Changed-file paths are never retained or displayed, the formatter never embeds internal error text or stack frames, and `unavailable` and `stale` never render the clean check.
-
-## Session Actions
-
-`/statusline session` uses Pi's current-session APIs. Renaming updates the current Pi session name, and compaction starts only after you confirm the prompt. These actions do not add pi-status settings or change the behavior of plain `/statusline`.
-
-## Tool Controls
-
-`/statusline tools` opens a centered searchable overlay that lists every tool Pi currently knows about, regardless of source. Each row shows the tool name and its current enabled/disabled state. Press `Enter` or `Space` to toggle a tool. Type to filter by name. Press `Esc` to close the overlay; changes made before closing remain active for the session.
-
-- Rows include extension-provided tools alongside Pi's built-in tools.
-- Valid changes apply to the session immediately and are session-scoped; they do not persist.
-- Stale or unknown tool names (removed by another extension) are ignored during reconciliation.
-- The final valid active tool cannot be disabled; the control restores the row and warns instead.
-- An externally empty host active set stays empty until a row is explicitly enabled.
-- No tool choices are persisted and no second settings framework is added.
-- Plain `/statusline` (no argument) continues to open the footer segment editor.
-
-## Display Presets
-
-`/statusline preset [minimal|balanced|telemetry]` picks one of three curated four-zone layouts. The command shows the four-row preview as the confirmation message, writes the chosen layout to `<Pi agent directory>/extensions/statusline.json` only after you confirm, and updates the live footer in the same step. Cancellation at either prompt is silent and changes nothing.
-
-- `/statusline preset` opens a selector titled `Choose display preset`; the choices are `minimal`, `balanced`, and `telemetry`. Cancelling the selector leaves every config field untouched.
-- `/statusline preset minimal|balanced|telemetry` skips the selector. An unknown name or extra tokens show `Usage: /statusline preset [minimal|balanced|telemetry]`.
-- Each preset replaces every segment in all four zones. The preview lists the exact IDs that will be written, with `—` for empty zones. Segments whose backing data is unavailable render blank until their source has data.
-- Persistence path: `<Pi agent directory>/extensions/statusline.json` (overridable via `$PI_CODING_AGENT_DIR`). Other config fields—the completion-notification preference and extension-status hidden list—are preserved unchanged.
-
-### Preset Layouts
-
-`minimal`
-
-```text
-Top Left: model-with-reasoning
-Top Right: —
-Bottom Left: current-dir
-Bottom Right: —
-```
-
-`balanced`
-
-```text
-Top Left: model-with-reasoning · run-state
-Top Right: context-remaining
-Bottom Left: current-dir · git-branch
-Bottom Right: five-hour-limit · weekly-limit
-```
-
-`telemetry`
-
-```text
-Top Left: model-with-reasoning · run-state · turn-progress · response-performance
-Top Right: context-used · context-remaining
-Bottom Left: —
-Bottom Right: total-input-tokens · total-output-tokens · cache-read-tokens · cache-write-tokens · cache-hit · session-cost · access-type · five-hour-limit · weekly-limit
-```
-
-Presets only change zone membership and order. They never modify your model, thinking level, tool selection, completion-notification preference, session identity, Git state, or workspace state.
 
 ## Footer Layout And Extension Statuses
 
@@ -263,15 +199,9 @@ of the old `statusLine` object into `extensions/statusline.json`.
 
 ## Completion Notifications
 
-`/statusline notifications [on|off]` toggles an opt-in, global preference for
+The Settings tab in `/statusline` controls an opt-in, global preference for
 bounded, best-effort native system notifications when a TUI agent run settles
 or `@pi-vault/pi-questionnaire` enters its wait state.
-
-- `/statusline notifications` reports the current state.
-- `/statusline notifications on` enables completion notifications.
-- `/statusline notifications off` disables them.
-- `/statusline notifications maybe` (or any other arguments) reports
-  `Usage: /statusline notifications [on|off]`.
 
 The preference is global-only, off by default, and lives in the same
 `extensions/statusline.json` file. There is no per-project or per-session
@@ -293,9 +223,8 @@ text is always passed through argv (macOS) or child-only environment variables
 named `PI_STATUS_NOTIFICATION_TITLE` and `PI_STATUS_NOTIFICATION_BODY`
 (Windows); no shell interpolation is used. Native processes are detached,
 time-bounded, and fail silently if the OS rejects them. Other platforms and
-RPC/print contexts do not receive notifications. Settings are updated
-independently of the editor; failed writes leave both runtime state and the
-notifier unchanged.
+RPC/print contexts do not receive notifications. Failed settings writes leave
+both runtime state and the notifier unchanged.
 
 ## Upgrade Notes For 0.2.x Users
 

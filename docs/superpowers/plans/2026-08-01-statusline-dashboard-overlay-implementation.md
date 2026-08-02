@@ -22,14 +22,14 @@ Execute all phases sequentially in one isolated worktree. Before execution, use 
 
 ## Ordered phases
 
-| Phase | Atomic usable result | Depends on | Detailed plan |
-| --- | --- | --- | --- |
-| 1 | Existing footer/editor/commands pass unchanged on the Pi 0.83 development baseline | Approved spec | [`phase-01-pi-083-baseline`](2026-08-01-statusline-dashboard-phase-01-pi-083-baseline.md) |
-| 2 | Tested `pi-usage` visual shell plus responsive, equal-height, overflow-safe layout primitives; shipped behavior remains unchanged | Phase 1 | [`phase-02-responsive-shell`](2026-08-01-statusline-dashboard-phase-02-responsive-shell.md) |
-| 3 | Complete testable Layout, Statuses, and Settings draft dashboard with all-save semantics; existing `/statusline` remains available until host actions are integrated | Phase 2 | [`phase-03-draft-configuration-tabs`](2026-08-01-statusline-dashboard-phase-03-draft-configuration-tabs.md) |
-| 4 | Live Session and Tools snapshots, effects, and rendering are complete in the pure dashboard engine; shipped commands remain unchanged | Phase 3 | [`phase-04-live-session-and-tools-tabs`](2026-08-02-statusline-dashboard-phase-04-live-session-and-tools-tabs.md) |
-| 5 | Plain `/statusline` opens the full five-tab dashboard with immediate Tools and Session actions; legacy argument routes remain temporarily functional | Phase 4 | [`phase-05-dashboard-actions-and-lifecycle`](2026-08-02-statusline-dashboard-phase-05-dashboard-actions-and-lifecycle.md) |
-| 6 | `/statusline` is the sole dashboard entry point; old subcommands/screens are removed and all acceptance, docs, and package gates pass | Phase 5 | [`phase-06-command-consolidation`](2026-08-02-statusline-dashboard-phase-06-command-consolidation.md) |
+| Phase | Atomic usable result                                                                                                                                                 | Depends on    | Detailed plan                                                                                                             |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| 1     | Existing footer/editor/commands pass unchanged on the Pi 0.83 development baseline                                                                                   | Approved spec | [`phase-01-pi-083-baseline`](2026-08-01-statusline-dashboard-phase-01-pi-083-baseline.md)                                 |
+| 2     | Tested `pi-usage` visual shell plus responsive, equal-height, overflow-safe layout primitives; shipped behavior remains unchanged                                    | Phase 1       | [`phase-02-responsive-shell`](2026-08-01-statusline-dashboard-phase-02-responsive-shell.md)                               |
+| 3     | Complete testable Layout, Statuses, and Settings draft dashboard with all-save semantics; existing `/statusline` remains available until host actions are integrated | Phase 2       | [`phase-03-draft-configuration-tabs`](2026-08-01-statusline-dashboard-phase-03-draft-configuration-tabs.md)               |
+| 4     | Live Session and Tools snapshots, effects, and rendering are complete in the pure dashboard engine; shipped commands remain unchanged                                | Phase 3       | [`phase-04-live-session-and-tools-tabs`](2026-08-02-statusline-dashboard-phase-04-live-session-and-tools-tabs.md)         |
+| 5     | Plain `/statusline` opens the full five-tab dashboard with immediate Tools and Session actions; legacy argument routes remain temporarily functional                 | Phase 4       | [`phase-05-dashboard-actions-and-lifecycle`](2026-08-02-statusline-dashboard-phase-05-dashboard-actions-and-lifecycle.md) |
+| 6     | `/statusline` is the sole dashboard entry point; old subcommands/screens are removed and all acceptance, docs, and package gates pass                                | Phase 5       | [`phase-06-command-consolidation`](2026-08-02-statusline-dashboard-phase-06-command-consolidation.md)                     |
 
 The order is fixed from lowest-risk compatibility work to the highest-risk command/lifecycle migration. Every phase must leave the repository green and releasable. Do not merge phases or add sidebar work.
 
@@ -48,7 +48,7 @@ The order is fixed from lowest-risk compatibility work to the highest-risk comma
 - `package.json`, `pnpm-lock.yaml`: Pi agent/TUI 0.83 development ranges and lock resolution; wildcard peers stay unchanged.
 - `src/tui/theme.ts`: add the `bg` and `inverse` methods required by the ported tab pills without creating a second theme adapter.
 - `src/tui/editor-state.ts`: temporarily re-export moved segment metadata/helpers, then disappear after old editor removal.
-- `src/tui/tool-controls.ts`: retain pure tool transition/reconciliation helpers; remove its standalone overlay entry point in Phase 6.
+- `src/tui/tool-controls.ts`: retain dashboard-native tool snapshot/toggle helpers; remove the string transition adapter and standalone overlay entry point in Phase 6.
 - `src/tui/session-actions.ts`: retain session detail and safe compaction helpers; remove its standalone selector entry point in Phase 6.
 - `src/index.ts`: factor current footer snapshot creation, keep footer installed, own the active-dashboard guard, wire save/apply, and close stale dashboards on session replacement/shutdown.
 - `README.md`, `CHANGELOG.md`: replace subcommand/editor documentation with the dashboard workflow and Pi 0.83 compatibility.
