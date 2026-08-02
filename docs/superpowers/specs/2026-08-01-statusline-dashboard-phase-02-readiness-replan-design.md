@@ -67,7 +67,7 @@ Export `MIN_FRAME_WIDTH = 7`. Complete frame geometry is guaranteed only at or a
 
 Add `renderTooSmall(width, height, theme)`. It returns plain, unframed lines containing a `Terminal too small · Esc` hint. It normalizes each dimension to at least one, returns exactly that many rows, and makes every row exactly that many visible columns. The hint may truncate when the terminal is too narrow to show it; bounds take priority.
 
-`renderTabBar` keeps the active tab in the visible slice when the width permits its label. It fits neighboring tabs alternately and uses `‹` and `›` markers for hidden tabs. Empty tabs return one padded blank row.
+`renderTabBar` keeps the active tab in the visible slice when the width permits its label. It fits neighboring tabs alternately and uses `\u2039` and `\u203a` markers for hidden tabs. Empty tabs return one padded blank row.
 
 ### Responsive layout
 
@@ -84,7 +84,7 @@ Keep the pure layout module from the existing plan:
 The Phase 3 composer uses `renderTooSmall()` when either condition is true:
 
 ```ts
-width < MIN_FRAME_WIDTH || targetRows < MIN_NORMAL_OVERLAY_ROWS
+width < MIN_FRAME_WIDTH || targetRows < MIN_NORMAL_OVERLAY_ROWS;
 ```
 
 Otherwise it renders a complete frame. Width and height fallback decisions stay in the composer; the pure frame helper does not choose application behavior.
