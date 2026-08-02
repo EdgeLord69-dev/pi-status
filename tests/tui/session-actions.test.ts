@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { handleSessionActions } from "../../src/tui/session-actions.ts";
+import {
+  handleSessionActions,
+  readSessionDetails,
+  renameCurrentSession,
+  startSessionCompaction,
+} from "../../src/tui/session-actions.ts";
 
 function commandContext(overrides: Record<string, unknown> = {}) {
   return {
@@ -35,7 +40,13 @@ describe("handleSessionActions", () => {
     const ctx = commandContext();
     vi.mocked(ctx.ui.select).mockResolvedValue("Rename session");
     vi.mocked(ctx.ui.input).mockResolvedValue("  Release work  ");
-    const pi = extensionApi();
+    let currentName = "Original name";
+    const pi = extensionApi({
+      getSessionName: vi.fn(() => currentName),
+      setSessionName: vi.fn((next: string) => {
+        currentName = next;
+      }),
+    });
 
     await handleSessionActions(pi, ctx);
 
@@ -156,6 +167,57 @@ describe("handleSessionActions", () => {
 
     expect(pi.setSessionName).not.toHaveBeenCalled();
     expect(ctx.compact).not.toHaveBeenCalled();
+  });
+
+  it("reads dashboard session details without opening a selector", () => {
+    const ctx = commandContext();
+    const pi = extensionApi();
+
+    expect(readSessionDetails(pi, ctx)).toEqual({
+      name: "Original name",
+      id: "session-123",
+      file: "/tmp/session-123.jsonl",
+      directory: "/work/pi-status",
+      model: "anthropic/claude-sonnet-4",
+    });
+    expect(ctx.ui.select).not.toHaveBeenCalled();
+  });
+
+  it("trims a rename and returns refreshed session details", () => {
+    const ctx = commandContext();
+    let name = "Original name";
+    const pi = extensionApi({
+      getSessionName: vi.fn(() => name),
+      setSessionName: vi.fn((next: string) => {
+        name = next;
+      }),
+    });
+
+    expect(renameCurrentSession(pi, ctx, "  Release work  ").name).toBe("Release work");
+    expect(pi.setSessionName).toHaveBeenCalledWith("Release work");
+  });
+
+  it("leaves a blank rename unchanged", () => {
+    const ctx = commandContext();
+    const pi = extensionApi();
+
+    expect(renameCurrentSession(pi, ctx, "   ").name).toBe("Original name");
+    expect(pi.setSessionName).not.toHaveBeenCalled();
+  });
+
+  it("starts compaction with stale-safe callbacks", () => {
+    const ctx = commandContext();
+    startSessionCompaction(ctx);
+
+    expect(ctx.compact).toHaveBeenCalledOnce();
+    const options = vi.mocked(ctx.compact).mock.calls[0]?.[0] as {
+      onComplete(): void;
+      onError(error: Error): void;
+    };
+    options.onComplete();
+    options.onError(new Error("compact failed"));
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Session compacted", "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith("compact failed", "warning");
   });
 
   it("rejects RPC mode without opening native prompts", async () => {

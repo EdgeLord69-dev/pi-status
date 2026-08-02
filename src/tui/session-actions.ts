@@ -12,6 +12,45 @@ function notifyIfActive(
   }
 }
 
+export interface SessionDetails {
+  name: string;
+  id: string;
+  file: string;
+  directory: string;
+  model: string;
+}
+
+export function readSessionDetails(
+  pi: ExtensionAPI,
+  ctx: ExtensionCommandContext,
+): SessionDetails {
+  return {
+    name: pi.getSessionName() ?? "Untitled",
+    id: ctx.sessionManager.getSessionId(),
+    file: ctx.sessionManager.getSessionFile() ?? "In memory",
+    directory: ctx.cwd,
+    model: ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "None",
+  };
+}
+
+export function renameCurrentSession(
+  pi: ExtensionAPI,
+  ctx: ExtensionCommandContext,
+  input: string,
+): SessionDetails {
+  const name = input.trim();
+  if (!name) return readSessionDetails(pi, ctx);
+  pi.setSessionName(name);
+  return readSessionDetails(pi, ctx);
+}
+
+export function startSessionCompaction(ctx: ExtensionCommandContext): void {
+  ctx.compact({
+    onComplete: () => notifyIfActive(ctx, "Session compacted", "info"),
+    onError: (error) => notifyIfActive(ctx, error.message, "warning"),
+  });
+}
+
 export async function handleSessionActions(
   pi: ExtensionAPI,
   ctx: ExtensionCommandContext,
@@ -22,38 +61,35 @@ export async function handleSessionActions(
   }
 
   try {
-    const id = ctx.sessionManager.getSessionId();
+    const details = readSessionDetails(pi, ctx);
     const action = await ctx.ui.select(
       [
         "Session details",
-        `Name: ${pi.getSessionName() ?? "Untitled"}`,
-        `ID: ${id}`,
-        `File: ${ctx.sessionManager.getSessionFile() ?? "In memory"}`,
-        `Directory: ${ctx.cwd}`,
-        `Model: ${ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "None"}`,
+        `Name: ${details.name}`,
+        `ID: ${details.id}`,
+        `File: ${details.file}`,
+        `Directory: ${details.directory}`,
+        `Model: ${details.model}`,
       ].join("\n"),
       ["Rename session", "Compact session", "Close"],
     );
 
     if (action === "Rename session") {
-      const name = (await ctx.ui.input("Rename session", "Session name"))?.trim();
-      if (!name) return;
-      pi.setSessionName(name);
-      ctx.ui.notify(`Session renamed to ${name}`, "info");
+      const input = await ctx.ui.input("Rename session", "Session name");
+      if (!input?.trim()) return;
+      const renamed = renameCurrentSession(pi, ctx, input);
+      ctx.ui.notify(`Session renamed to ${renamed.name}`, "info");
       return;
     }
 
     if (action !== "Compact session") return;
     const confirmed = await ctx.ui.confirm(
       "Compact session?",
-      `Pi will summarize older context for session ${id}. Continue?`,
+      `Pi will summarize older context for session ${details.id}. Continue?`,
     );
     if (!confirmed) return;
 
-    ctx.compact({
-      onComplete: () => notifyIfActive(ctx, "Session compacted", "info"),
-      onError: (error) => notifyIfActive(ctx, error.message, "warning"),
-    });
+    startSessionCompaction(ctx);
   } catch (error) {
     ctx.ui.notify(
       `Session action failed: ${error instanceof Error ? error.message : String(error)}`,
