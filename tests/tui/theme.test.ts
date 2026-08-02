@@ -35,6 +35,11 @@ describe("noTheme", () => {
   it("returns the original text from rainbow", () => {
     expect(noTheme.rainbow("hi")).toBe("hi");
   });
+
+  it("returns the original text from dashboard background and inverse methods", () => {
+    expect(noTheme.bg("selectedBg", "tab")).toBe("tab");
+    expect(noTheme.inverse("tab")).toBe("tab");
+  });
 });
 
 describe("noColorRequested", () => {
@@ -186,5 +191,55 @@ describe("fromPiTheme", () => {
   it("safeFg passes through when theme.fg succeeds", () => {
     const adapted = fromPiTheme(makeSpyTheme());
     expect(adapted.fg("thinkingMinimal", "test")).toBe("[fg:thinkingMinimal:test]");
+  });
+
+  it("delegates dashboard pill styling to the live Pi theme", () => {
+    const adapted = fromPiTheme({
+      fg: (_color: string, text: string) => text,
+      bg: (color: string, text: string) => `<${color}>${text}</${color}>`,
+      bold: (text: string) => `<b>${text}</b>`,
+      inverse: (text: string) => `<inverse>${text}</inverse>`,
+    });
+
+    expect(adapted.bg("selectedBg", "tab")).toBe("<selectedBg>tab</selectedBg>");
+    expect(adapted.inverse("tab")).toBe("<inverse>tab</inverse>");
+  });
+
+  it("falls back when older theme-like objects omit dashboard methods", () => {
+    const adapted = fromPiTheme({
+      fg: (_color: string, text: string) => text,
+      bold: (text: string) => text,
+    });
+
+    expect(adapted.bg("selectedBg", "tab")).toBe("tab");
+    expect(adapted.inverse("tab")).toBe("tab");
+  });
+
+  it("falls back when optional dashboard properties are not functions", () => {
+    const adapted = fromPiTheme({
+      fg: (_color: string, text: string) => text,
+      bold: (text: string) => text,
+      bg: "broken",
+      inverse: 42,
+    });
+
+    expect(adapted.bg("selectedBg", "tab")).toBe("tab");
+    expect(adapted.inverse("tab")).toBe("tab");
+  });
+
+  it("falls back when optional dashboard methods throw", () => {
+    const adapted = fromPiTheme({
+      fg: (_color: string, text: string) => text,
+      bold: (text: string) => text,
+      bg: () => {
+        throw new Error("broken background");
+      },
+      inverse: () => {
+        throw new Error("broken inverse");
+      },
+    });
+
+    expect(adapted.bg("selectedBg", "tab")).toBe("tab");
+    expect(adapted.inverse("tab")).toBe("tab");
   });
 });
