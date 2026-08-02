@@ -2,11 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { SettingsListTheme } from "@earendil-works/pi-tui";
 import { calculateToolChange } from "../../src/tui/tool-controls.ts";
-import {
-  openToolControls,
-  readToolSnapshot,
-  toggleLiveTool,
-} from "../../src/tui/tool-controls.ts";
+import { openToolControls, readToolSnapshot, toggleLiveTool } from "../../src/tui/tool-controls.ts";
 
 // ── Theme mock ───────────────────────────────────────────────────────────────
 

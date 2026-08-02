@@ -20,10 +20,7 @@ export interface SessionDetails {
   model: string;
 }
 
-export function readSessionDetails(
-  pi: ExtensionAPI,
-  ctx: ExtensionCommandContext,
-): SessionDetails {
+export function readSessionDetails(pi: ExtensionAPI, ctx: ExtensionCommandContext): SessionDetails {
   return {
     name: pi.getSessionName() ?? "Untitled",
     id: ctx.sessionManager.getSessionId(),

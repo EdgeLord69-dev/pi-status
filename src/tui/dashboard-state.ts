@@ -337,9 +337,7 @@ function reconcileToolSelection(
 ): DashboardState {
   const index =
     previous?.type === "tool"
-      ? selectableRows(state).findIndex(
-          (row) => row.type === "tool" && row.name === previous.name,
-        )
+      ? selectableRows(state).findIndex((row) => row.type === "tool" && row.name === previous.name)
       : -1;
   if (index >= 0) state.navigation.tools.selectedIndex = index;
   return clampSelection(state);

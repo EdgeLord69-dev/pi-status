@@ -107,9 +107,7 @@ export async function openToolControls(
   }
 
   const allTools = initialTools.map(({ name, description }) => ({ name, description }));
-  const initialActiveNames = initialTools
-    .filter(({ enabled }) => enabled)
-    .map(({ name }) => name);
+  const initialActiveNames = initialTools.filter(({ enabled }) => enabled).map(({ name }) => name);
 
   const items: SettingItem[] = allTools.map((t) => ({
     id: t.name,
