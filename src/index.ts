@@ -9,10 +9,6 @@ import { createRuntimeStateMachine } from "./core/runtime-state.ts";
 import { createUsageRuntime } from "./core/usage-runtime.ts";
 import { createWorkspacePulseRuntime, type WorkspacePulseRuntime } from "./core/workspace-pulse.ts";
 import type { AccessType, PiStatusConfig, StatusLineZones } from "./shared/types.ts";
-import { parseStatusLineCommand } from "./tui/command-router.ts";
-import { handleDisplayPreset } from "./tui/preset-actions.ts";
-import { openToolControls } from "./tui/tool-controls.ts";
-import { handleSessionActions } from "./tui/session-actions.ts";
 import { buildFooterRowsFromResolved } from "./tui/render.ts";
 import { fromPiTheme, noColorRequested, noTheme } from "./tui/theme.ts";
 import { openStatusLineDashboard, type StatusLineDashboardComponent } from "./tui/dashboard.ts";
@@ -186,73 +182,11 @@ export default function createExtension(pi: ExtensionAPI): void {
     syncWorkspacePulse(runtimeState.snapshot().config);
   }
 
-  function handleNotificationsCommand(
-    ctx: ExtensionContext,
-    action: "query" | "on" | "off" | "invalid",
-  ): void {
-    if (ctx.mode !== "tui") {
-      ctx.ui.notify("/statusline requires interactive UI", "warning");
-      return;
-    }
-    if (action === "invalid") {
-      ctx.ui.notify("Usage: /statusline notifications [on|off]", "warning");
-      return;
-    }
-    if (action === "query") {
-      const enabled = runtimeState.snapshot().config.completionNotifications;
-      ctx.ui.notify(
-        enabled ? "Completion notifications: on" : "Completion notifications: off",
-        "info",
-      );
-      return;
-    }
-    const current = runtimeState.snapshot().config;
-    const next: PiStatusConfig = {
-      ...current,
-      completionNotifications: action === "on",
-    };
-    try {
-      saveAndApplyConfig(next);
-    } catch {
-      ctx.ui.notify("Failed to save statusline config", "warning");
-      return;
-    }
-    ctx.ui.notify(
-      next.completionNotifications
-        ? "Completion notifications: on"
-        : "Completion notifications: off",
-      "info",
-    );
-  }
-
   pi.registerCommand("statusline", {
-    description: "Configure statusline segments and extension-status visibility",
+    description: "Configure statusline layout, statuses, session, tools, and settings",
     handler: async (args, ctx) => {
-      const command = parseStatusLineCommand(args);
-      if (command.kind === "tools") {
-        await openToolControls(pi, ctx);
-        return;
-      }
-      if (command.kind === "session") {
-        await handleSessionActions(pi, ctx);
-        return;
-      }
-      if (command.kind === "notifications") {
-        handleNotificationsCommand(ctx, command.action);
-        return;
-      }
-      if (command.kind === "preset") {
-        await handleDisplayPreset(ctx, command.action, (zones) => {
-          const current = runtimeState.snapshot().config;
-          saveAndApplyConfig({
-            ...current,
-            zones,
-          });
-        });
-        return;
-      }
-      if (command.kind === "unknown") {
-        ctx.ui.notify(`Unknown /statusline command: ${command.command}`, "warning");
+      if (args.trim()) {
+        ctx.ui.notify("Usage: /statusline", "warning");
         return;
       }
       if (ctx.mode !== "tui") {

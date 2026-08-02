@@ -2,11 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  initTheme,
-  type ExtensionAPI,
-  type ExtensionContext,
-} from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import createExtension from "../src/index.ts";
 import type { StatusLineDashboardComponent } from "../src/tui/dashboard.ts";
 
@@ -792,132 +788,54 @@ describe("extension wiring", () => {
     expect(renderWithFactory(footerSpy.calls[2])).toContain("GPT-5 [med]");
   });
 
-  it("routes /statusline session to the session menu without opening the editor", async () => {
+  it.each([
+    "tools",
+    "session",
+    "notifications",
+    "notifications on",
+    "preset",
+    "preset minimal",
+    "unknown",
+    "  Tools  ",
+  ])("rejects non-empty arguments %j without opening UI", async (args) => {
     const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
-    const select = vi.fn(async () => "Close");
-    const custom = vi.fn(async () => null);
-
+    const custom = vi.fn(),
+      select = vi.fn(),
+      input = vi.fn(),
+      confirm = vi.fn(),
+      notify = vi.fn();
     createExtension(pi);
-
+    const baseUi = createContext().ui;
     const ctx = createContext({
       ui: {
-        ...createContext().ui,
-        select: select as unknown as ExtensionContext["ui"]["select"],
-        custom: custom as unknown as ExtensionContext["ui"]["custom"],
+        ...baseUi,
+        custom: custom as never,
+        select: select as never,
+        input: input as never,
+        confirm: confirm as never,
+        notify: notify as never,
       },
     });
     for (const h of handlers.get("session_start") ?? []) h({}, ctx);
-
-    const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
-    await handler("session", ctx);
-
-    expect(select).toHaveBeenCalledTimes(1);
-    const title = (select.mock.calls[0] as unknown[] | undefined)?.[0] as string;
-    expect(title).toContain("Session details");
-    expect(title).toContain("abcdef123456");
+    await getRegisteredCommand(registerCommandCalls, "statusline").handler(args, ctx);
     expect(custom).not.toHaveBeenCalled();
-  });
-
-  it("warns on unknown /statusline commands without opening UI", async () => {
-    const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
-    const select = vi.fn();
-    const custom = vi.fn();
-    const notify = vi.fn();
-
-    createExtension(pi);
-
-    const ctx = createContext({
-      ui: {
-        ...createContext().ui,
-        select: select as unknown as ExtensionContext["ui"]["select"],
-        custom: custom as unknown as ExtensionContext["ui"]["custom"],
-        notify: notify as unknown as ExtensionContext["ui"]["notify"],
-      },
-    });
-    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
-
-    const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
-    await handler("widgets", ctx);
-
     expect(select).not.toHaveBeenCalled();
-    expect(custom).not.toHaveBeenCalled();
-    expect(notify).toHaveBeenCalledWith("Unknown /statusline command: widgets", "warning");
+    expect(input).not.toHaveBeenCalled();
+    expect(confirm).not.toHaveBeenCalled();
+    expect(notify).toHaveBeenCalledExactlyOnceWith("Usage: /statusline", "warning");
   });
 
-  it("rejects /statusline session in RPC mode without opening prompts", async () => {
+  it("rejects arguments before the RPC warning", async () => {
     const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
-    const select = vi.fn();
     const notify = vi.fn();
-
     createExtension(pi);
-
     const ctx = createContext({
       mode: "rpc",
-      ui: {
-        ...createContext().ui,
-        select: select as unknown as ExtensionContext["ui"]["select"],
-        notify: notify as unknown as ExtensionContext["ui"]["notify"],
-      },
+      ui: { ...createContext().ui, notify: notify as never },
     });
     for (const h of handlers.get("session_start") ?? []) h({}, ctx);
-
-    const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
-    await handler("session", ctx);
-
-    expect(select).not.toHaveBeenCalled();
-    expect(notify).toHaveBeenCalledWith("/statusline session requires interactive TUI", "warning");
-  });
-
-  it("routes /statusline tools to the tool controls overlay", async () => {
-    const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
-    Object.assign(pi, {
-      getAllTools: () => [
-        { name: "read", description: "Read files" },
-        { name: "write", description: "Write files" },
-        { name: "bash", description: "Run shell commands" },
-      ],
-      getActiveTools: () => ["read", "write"],
-      setActiveTools: vi.fn(),
-    });
-    let preview = "";
-    const custom = vi.fn(
-      async (factory: (...args: unknown[]) => { render: (width: number) => string[] }) => {
-        preview = factory({ requestRender: () => {} }, {}, {}, () => {})
-          .render(100)
-          .join("\n");
-        return null;
-      },
-    );
-
-    createExtension(pi);
-    initTheme("dark", false);
-
-    const ctx = createContext({
-      ui: {
-        ...createContext().ui,
-        custom: custom as unknown as ExtensionContext["ui"]["custom"],
-      },
-    });
-    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
-
-    const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
-    await handler("tools", ctx);
-
-    expect(custom).toHaveBeenCalledTimes(1);
-    const callArgs = custom.mock.calls[0] as unknown[];
-    expect(typeof callArgs[0]).toBe("function");
-    expect(callArgs[1]).toEqual({
-      overlay: true,
-      overlayOptions: {
-        anchor: "center",
-        width: "70%",
-        minWidth: 32,
-        maxHeight: "80%",
-        margin: 1,
-      },
-    });
-    expect(preview).toContain("read");
-    expect(preview).toContain("write");
+    await getRegisteredCommand(registerCommandCalls, "statusline").handler("tools", ctx);
+    expect(notify).toHaveBeenCalledExactlyOnceWith("Usage: /statusline", "warning");
   });
 });
 
@@ -1005,241 +923,6 @@ describe("/statusline theme adaptation", () => {
     resolveCustom?.(undefined);
     await commandPromise;
     expect(renderOutput.length).toBeGreaterThan(0);
-  });
-});
-
-describe("/statusline notifications command", () => {
-  function setup() {
-    const harness = buildPiWithHandlers();
-    createExtension(harness.pi);
-    return { ...harness, pi: harness.pi as ExtensionAPI & { events: typeof harness.events } };
-  }
-
-  it("reports the current state on /statusline notifications", () => {
-    const { registerCommandCalls, handlers } = setup();
-    const notify = vi.fn();
-    const ctx = createContext({ ui: { ...createContext().ui, notify } });
-    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
-
-    const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
-    handler("notifications", ctx);
-
-    expect(notify).toHaveBeenCalledWith("Completion notifications: off", "info");
-  });
-
-  it("writes the new state and updates runtime when /statusline notifications on is invoked", async () => {
-    const { registerCommandCalls, handlers } = setup();
-    const configPath = join(agentDir, "extensions", "statusline.json");
-    mkdirSync(join(agentDir, "extensions"), { recursive: true });
-    const notify = vi.fn();
-    const ctx = createContext({ ui: { ...createContext().ui, notify } });
-    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
-    const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
-
-    await handler("notifications on", ctx);
-
-    expect(JSON.parse(readFileSync(configPath, "utf8")).completionNotifications).toBe(true);
-    expect(notify).toHaveBeenCalledWith("Completion notifications: on", "info");
-  });
-
-  it("rolls back to the previous runtime config when saveConfig throws", async () => {
-    const { registerCommandCalls, handlers } = setup();
-    const configPath = join(agentDir, "extensions", "statusline.json");
-    mkdirSync(join(agentDir, "extensions"), { recursive: true });
-    writeFileSync(configPath, "{ bad", "utf8");
-    const notify = vi.fn();
-    const ctx = createContext({ ui: { ...createContext().ui, notify } });
-    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
-    const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
-
-    await handler("notifications on", ctx);
-
-    expect(notify).toHaveBeenCalledWith("Failed to save statusline config", "warning");
-  });
-
-  it("rejects /statusline notifications in RPC mode", () => {
-    const { registerCommandCalls, handlers } = setup();
-    const notify = vi.fn();
-    const ctx = createContext({
-      mode: "rpc",
-      ui: { ...createContext().ui, notify },
-    });
-    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
-    const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
-
-    handler("notifications on", ctx);
-
-    expect(notify).toHaveBeenCalledWith("/statusline requires interactive UI", "warning");
-  });
-
-  it.each(["notifications", "notifications maybe"])(
-    "rejects /statusline %s in RPC mode before parsing the action",
-    (args) => {
-      const { registerCommandCalls, handlers } = setup();
-      const notify = vi.fn();
-      const ctx = createContext({
-        mode: "rpc",
-        ui: { ...createContext().ui, notify },
-      });
-      for (const h of handlers.get("session_start") ?? []) h({}, ctx);
-      const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
-
-      handler(args, ctx);
-
-      expect(notify).toHaveBeenCalledWith("/statusline requires interactive UI", "warning");
-    },
-  );
-
-  it("reports the usage string for an invalid notifications invocation", () => {
-    const { registerCommandCalls, handlers } = setup();
-    const notify = vi.fn();
-    const ctx = createContext({ ui: { ...createContext().ui, notify } });
-    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
-    const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
-
-    handler("notifications maybe", ctx);
-
-    expect(notify).toHaveBeenCalledWith("Usage: /statusline notifications [on|off]", "warning");
-  });
-});
-
-describe("/statusline preset command", () => {
-  function setup(): {
-    pi: ExtensionAPI;
-    handlers: Map<string, Array<(event: unknown, ctx: ExtensionContext) => void>>;
-    registerCommandCalls: unknown[][];
-  } {
-    const harness = buildPiWithHandlers();
-    createExtension(harness.pi);
-    return harness;
-  }
-
-  it("persists the balanced preset to the global config file when the user confirms", async () => {
-    const configPath = join(agentDir, "extensions", "statusline.json");
-    mkdirSync(join(agentDir, "extensions"), { recursive: true });
-    const select = vi.fn(async () => "balanced");
-    const confirm = vi.fn(async () => true);
-    const notify = vi.fn();
-    const footerSpy = buildSetFooterSpy();
-    const { handlers, registerCommandCalls } = setup();
-    const ctx = createContext({
-      ui: {
-        ...createContext().ui,
-        select: select as unknown as ExtensionContext["ui"]["select"],
-        confirm: confirm as unknown as ExtensionContext["ui"]["confirm"],
-        notify: notify as unknown as ExtensionContext["ui"]["notify"],
-        setFooter: footerSpy.setFooter,
-      },
-    });
-    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
-    const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
-
-    await handler("preset", ctx);
-
-    expect(JSON.parse(readFileSync(configPath, "utf8"))).toMatchObject({
-      zones: {
-        topLeft: ["model-with-reasoning", "run-state"],
-        topRight: ["context-remaining"],
-        bottomLeft: ["current-dir", "git-branch"],
-        bottomRight: ["five-hour-limit", "weekly-limit"],
-      },
-      completionNotifications: false,
-    });
-    expect(notify).toHaveBeenCalledWith("Applied balanced display preset.", "info");
-    expect(renderWithFactory(footerSpy.calls[footerSpy.calls.length - 1])).toContain("idle");
-  });
-
-  it("preserves existing config fields when a preset is saved", async () => {
-    const configPath = join(agentDir, "extensions", "statusline.json");
-    mkdirSync(join(agentDir, "extensions"), { recursive: true });
-    writeFileSync(
-      configPath,
-      JSON.stringify({
-        zones: { topLeft: ["model"], topRight: [], bottomLeft: [], bottomRight: [] },
-        extensionSegments: { hidden: ["alpha-status"] },
-        completionNotifications: true,
-      }),
-      "utf8",
-    );
-    const confirm = vi.fn(async () => true);
-    const { handlers, registerCommandCalls } = setup();
-    const ctx = createContext({
-      ui: {
-        ...createContext().ui,
-        confirm: confirm as unknown as ExtensionContext["ui"]["confirm"],
-      },
-    });
-    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
-    const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
-
-    await handler("preset telemetry", ctx);
-
-    const saved = JSON.parse(readFileSync(configPath, "utf8"));
-    expect(saved.extensionSegments).toEqual({ hidden: ["alpha-status"] });
-    expect(saved.completionNotifications).toBe(true);
-    expect(saved.zones).toMatchObject({
-      topLeft: ["model-with-reasoning", "run-state", "turn-progress", "response-performance"],
-      topRight: ["context-used", "context-remaining"],
-    });
-  });
-
-  it("warns and keeps the live footer when saving over a malformed config fails", async () => {
-    const configPath = join(agentDir, "extensions", "statusline.json");
-    mkdirSync(join(agentDir, "extensions"), { recursive: true });
-    writeFileSync(
-      configPath,
-      JSON.stringify({
-        zones: { topLeft: ["model"], topRight: [], bottomLeft: [], bottomRight: [] },
-        extensionSegments: { hidden: [] },
-      }),
-      "utf8",
-    );
-    const confirm = vi.fn(async () => true);
-    const notify = vi.fn();
-    const footerSpy = buildSetFooterSpy();
-    const { handlers, registerCommandCalls } = setup();
-    const ctx = createContext({
-      ui: {
-        ...createContext().ui,
-        confirm: confirm as unknown as ExtensionContext["ui"]["confirm"],
-        notify: notify as unknown as ExtensionContext["ui"]["notify"],
-        setFooter: footerSpy.setFooter,
-      },
-    });
-    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
-    writeFileSync(configPath, "{ bad", "utf8");
-
-    const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
-    await handler("preset minimal", ctx);
-
-    expect(notify).toHaveBeenCalledWith("Failed to apply display preset", "warning");
-    expect(notify).not.toHaveBeenCalledWith("Applied minimal display preset.", "info");
-    expect(renderWithFactory(footerSpy.calls[footerSpy.calls.length - 1])).toBe("GPT-5");
-  });
-
-  it("writes the selected layout when a preset is named directly", async () => {
-    const configPath = join(agentDir, "extensions", "statusline.json");
-    mkdirSync(join(agentDir, "extensions"), { recursive: true });
-    const confirm = vi.fn(async () => true);
-    const select = vi.fn();
-    const { handlers, registerCommandCalls } = setup();
-    const ctx = createContext({
-      ui: {
-        ...createContext().ui,
-        select: select as unknown as ExtensionContext["ui"]["select"],
-        confirm: confirm as unknown as ExtensionContext["ui"]["confirm"],
-      },
-    });
-    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
-    const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
-
-    await handler("preset balanced", ctx);
-
-    expect(select).not.toHaveBeenCalled();
-    expect(JSON.parse(readFileSync(configPath, "utf8")).zones.bottomRight).toEqual([
-      "five-hour-limit",
-      "weekly-limit",
-    ]);
   });
 });
 
