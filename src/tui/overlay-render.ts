@@ -6,11 +6,6 @@ const FRAME = { tl: "┏", tr: "┓", bl: "┗", br: "┛", h: "━", v: "┃" }
 
 export const MIN_FRAME_WIDTH = 7;
 
-export interface DashboardTab {
-  id: string;
-  label: string;
-}
-
 export function pad(text: string, width: number): string {
   if (width <= 0) return "";
   const truncated = truncateToWidth(text, width, "");
@@ -21,20 +16,13 @@ export function frameContentWidth(width: number): number {
   return Math.max(1, Math.floor(width) - 2 - PADDING_X * 2);
 }
 
-export function frame(
-  lines: string[],
-  width: number,
-  theme: StatusLineTheme,
-): string[] {
+export function frame(lines: string[], width: number, theme: StatusLineTheme): string[] {
   const safeWidth = Math.max(1, Math.floor(width));
   const inner = Math.max(1, safeWidth - 2);
   const contentWidth = frameContentWidth(safeWidth);
   const border = (text: string) => theme.fg("borderAccent", text);
   const blank = `${border(FRAME.v)}${" ".repeat(inner)}${border(FRAME.v)}`;
-  const out = [
-    `${border(FRAME.tl)}${border(FRAME.h.repeat(inner))}${border(FRAME.tr)}`,
-    blank,
-  ];
+  const out = [`${border(FRAME.tl)}${border(FRAME.h.repeat(inner))}${border(FRAME.tr)}`, blank];
 
   for (const line of lines) {
     out.push(
@@ -42,23 +30,12 @@ export function frame(
     );
   }
 
-  out.push(
-    blank,
-    `${border(FRAME.bl)}${border(FRAME.h.repeat(inner))}${border(FRAME.br)}`,
-  );
+  out.push(blank, `${border(FRAME.bl)}${border(FRAME.h.repeat(inner))}${border(FRAME.br)}`);
   return out.map((line) => truncateToWidth(line, safeWidth, ""));
 }
 
-function activePill(theme: StatusLineTheme, label: string): string {
-  return theme.fg("accent", theme.inverse(theme.bold(label)));
-}
-
-function inactivePill(theme: StatusLineTheme, label: string): string {
-  return theme.bg("selectedBg", theme.fg("accent", label));
-}
-
 export function renderTabBar(
-  tabs: DashboardTab[],
+  tabs: { id: string; label: string }[],
   activeId: string,
   width: number,
   theme: StatusLineTheme,
@@ -113,30 +90,22 @@ export function renderTabBar(
   const cells = tabs.slice(start, end).map((tab) => {
     const label = ` ${tab.label} `;
     return tab.id === activeId
-      ? activePill(theme, label)
-      : inactivePill(theme, label);
+      ? theme.fg("accent", theme.inverse(theme.bold(label)))
+      : theme.bg("selectedBg", theme.fg("accent", label));
   });
   let remaining = safeWidth - visibleWidth(cells.join(" "));
   if (start > 0 && remaining >= 2) {
     cells.unshift(theme.fg("dim", "\u2039"));
     remaining -= 2;
   }
-  if (end < tabs.length && remaining >= 2)
-    cells.push(theme.fg("dim", "\u203a"));
+  if (end < tabs.length && remaining >= 2) cells.push(theme.fg("dim", "\u203a"));
   return pad(cells.join(" "), safeWidth);
 }
 
-export function renderTooSmall(
-  width: number,
-  height: number,
-  theme: StatusLineTheme,
-): string[] {
+export function renderTooSmall(width: number, height: number, theme: StatusLineTheme): string[] {
   const safeWidth = Math.max(1, Math.floor(width));
   const safeHeight = Math.max(1, Math.floor(height));
-  const message = pad(
-    theme.fg("accent", "Terminal too small · Esc"),
-    safeWidth,
-  );
+  const message = pad(theme.fg("accent", "Terminal too small · Esc"), safeWidth);
   const blank = " ".repeat(safeWidth);
   return Array.from({ length: safeHeight }, (_, index) =>
     index === Math.floor(safeHeight / 2) ? message : blank,

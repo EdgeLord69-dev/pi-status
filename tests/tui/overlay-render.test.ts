@@ -48,9 +48,7 @@ describe("dashboard overlay shell", () => {
       "┃     ┃",
       "┗━━━━━┛",
     ]);
-    expect(
-      frame(["x"], 6, noTheme).every((line) => visibleWidth(line) <= 6),
-    ).toBe(true);
+    expect(frame(["x"], 6, noTheme).every((line) => visibleWidth(line) <= 6)).toBe(true);
   });
 
   it("keeps exact visible widths with ANSI styling", () => {

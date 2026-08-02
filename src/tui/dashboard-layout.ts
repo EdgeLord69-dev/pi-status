@@ -3,7 +3,7 @@ export const DASHBOARD_CHROME_ROWS = 8;
 export const MIN_NORMAL_OVERLAY_ROWS = DASHBOARD_CHROME_ROWS + 1;
 
 export function maxOverlayRows(terminalRows: number): number {
-  return Math.max(1, Math.floor(Math.max(0, terminalRows) * MAX_HEIGHT_RATIO));
+  return Math.max(1, Math.floor(terminalRows * MAX_HEIGHT_RATIO));
 }
 
 export function targetOverlayRows(
@@ -12,7 +12,7 @@ export function targetOverlayRows(
 ): number {
   const cap = maxOverlayRows(terminalRows);
   if (cap < MIN_NORMAL_OVERLAY_ROWS) return cap;
-  const longestBody = Math.max(1, ...naturalBodyRows.map((rows) => Math.max(0, rows)));
+  const longestBody = Math.max(1, ...naturalBodyRows);
   return Math.min(cap, DASHBOARD_CHROME_ROWS + longestBody);
 }
 
@@ -37,7 +37,6 @@ export function fitViewport(
     else if (selected >= nextOffset + safeHeight) {
       nextOffset = selected - safeHeight + 1;
     }
-    nextOffset = Math.max(0, Math.min(nextOffset, maxOffset));
   }
 
   const visible = lines.slice(nextOffset, nextOffset + safeHeight);
