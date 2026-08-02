@@ -34,8 +34,8 @@ export function renameCurrentSession(
   pi: ExtensionAPI,
   ctx: ExtensionCommandContext,
   input: string,
+  details = readSessionDetails(pi, ctx),
 ): SessionDetails {
-  const details = readSessionDetails(pi, ctx);
   const name = input.trim();
   if (!name) return details;
   pi.setSessionName(name);
@@ -75,7 +75,7 @@ export async function handleSessionActions(
     if (action === "Rename session") {
       const input = await ctx.ui.input("Rename session", "Session name");
       if (!input?.trim()) return;
-      const renamed = renameCurrentSession(pi, ctx, input);
+      const renamed = renameCurrentSession(pi, ctx, input, details);
       ctx.ui.notify(`Session renamed to ${renamed.name}`, "info");
       return;
     }

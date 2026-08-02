@@ -65,6 +65,26 @@ describe("handleSessionActions", () => {
     expect(ctx.ui.notify).toHaveBeenCalledWith("Session renamed to Release work", "info");
   });
 
+  it("reuses displayed details instead of rereading metadata before rename", async () => {
+    const ctx = commandContext();
+    vi.mocked(ctx.ui.select).mockResolvedValue("Rename session");
+    vi.mocked(ctx.ui.input).mockResolvedValue("Release work");
+    const pi = extensionApi({
+      getSessionName: vi
+        .fn()
+        .mockReturnValueOnce("Original name")
+        .mockImplementation(() => {
+          throw new Error("metadata unavailable");
+        }),
+    });
+
+    await handleSessionActions(pi, ctx);
+
+    expect(pi.getSessionName).toHaveBeenCalledOnce();
+    expect(pi.setSessionName).toHaveBeenCalledWith("Release work");
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Session renamed to Release work", "info");
+  });
+
   it.each([undefined, "   "])("does not rename for input %j", async (input) => {
     const ctx = commandContext();
     vi.mocked(ctx.ui.select).mockResolvedValue("Rename session");
