@@ -21,10 +21,8 @@ export function frame(lines: string[], width: number, theme: StatusLineTheme): s
   const inner = Math.max(1, safeWidth - 2);
   const contentWidth = frameContentWidth(safeWidth);
   const border = (text: string) => theme.fg("borderAccent", text);
-  const topBorder = `${border(FRAME.tl)}${border(FRAME.h.repeat(inner))}${border(FRAME.tr)}`;
-  const bottomBorder = `${border(FRAME.bl)}${border(FRAME.h.repeat(inner))}${border(FRAME.br)}`;
   const blank = `${border(FRAME.v)}${" ".repeat(inner)}${border(FRAME.v)}`;
-  const out = [topBorder, blank];
+  const out = [`${border(FRAME.tl)}${border(FRAME.h.repeat(inner))}${border(FRAME.tr)}`, blank];
 
   for (const line of lines) {
     out.push(
@@ -32,7 +30,7 @@ export function frame(lines: string[], width: number, theme: StatusLineTheme): s
     );
   }
 
-  out.push(blank, bottomBorder);
+  out.push(blank, `${border(FRAME.bl)}${border(FRAME.h.repeat(inner))}${border(FRAME.br)}`);
   return out.map((line) => truncateToWidth(line, safeWidth, ""));
 }
 

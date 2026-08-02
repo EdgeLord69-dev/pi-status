@@ -47,13 +47,14 @@ const preview = buildSnapshot(snapshotInput);
 describe("dashboard render", () => {
   it("renders the pi-usage shell and draft preview", () => {
     const state = initDashboardState(config(), ["alpha"], true);
-    const result = renderDashboard(state, preview, noTheme, 100, 40);
+    const result = renderDashboard(state, preview, noTheme, 100, 60);
     const output = result.lines.join("\n");
     expect(output).toContain("┏");
     expect(output).toContain("Layout");
     expect(output).toContain("Preset");
     expect(output).toContain("Save changes");
     expect(output).toContain("GPT-5");
+    expect(result.lines).toHaveLength(36);
     expect(result.lines.every((line) => visibleWidth(line) === 100)).toBe(true);
   });
 
@@ -78,13 +79,13 @@ describe("dashboard render", () => {
       ...snapshotInput,
       extensionStatuses: new Map([["build", "build: ready"]]),
     });
-    expect(renderDashboard(state, live, noTheme, 100, 40).lines.join("\n")).toContain("ready");
+    expect(renderDashboard(state, live, noTheme, 100, 60).lines.join("\n")).toContain("ready");
 
     state.draft.extensionSegments.hidden = ["build"];
-    expect(renderDashboard(state, live, noTheme, 100, 40).lines.join("\n")).not.toContain("ready");
+    expect(renderDashboard(state, live, noTheme, 100, 60).lines.join("\n")).not.toContain("ready");
   });
 
-  it("renders all tabs at one height independent of query", () => {
+  it("renders all tabs at the exact capped height without mutating query", () => {
     const state = initDashboardState(
       config(),
       Array.from({ length: 30 }, (_, index) => `status-${index}`),
@@ -93,14 +94,30 @@ describe("dashboard render", () => {
     state.navigation.statuses.query = "no-match";
     const heights = DASHBOARD_TABS.map(({ id }) => {
       state.activeTab = id;
-      return renderDashboard(state, preview, noTheme, 100, 60).lines.length;
+      const result = renderDashboard(state, preview, noTheme, 100, 24);
+      if (id === "statuses") {
+        expect(result.lines.join("\n")).toContain("No matching statuses.");
+      }
+      return result.lines.length;
     });
-    expect(new Set(heights).size).toBe(1);
+    expect(new Set(heights)).toEqual(new Set([20]));
     expect(state.navigation.statuses.query).toBe("no-match");
+  });
+
+  it("keeps the selected Layout row visible when capped", () => {
+    const state = initDashboardState(config(), [], true);
+    const result = renderDashboard(state, preview, noTheme, 100, 24);
+
+    expect(result.lines.find((line) => line.includes("Preset"))).toContain("▸");
+  });
+
+  it("renders empty Statuses with a reachable Save row", () => {
+    const state = initDashboardState(config(), [], true);
     state.activeTab = "statuses";
-    expect(renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n")).toMatch(
-      /No matching/,
-    );
+    const output = renderDashboard(state, preview, noTheme, 100, 24).lines.join("\n");
+
+    expect(output).toContain("No matching statuses.");
+    expect(output).toContain("Save changes");
   });
 
   it.each(["layout", "statuses"] as const)(
@@ -114,7 +131,9 @@ describe("dashboard render", () => {
       state.activeTab = tab;
       state.navigation[tab].selectedIndex = selectableRows(state).length - 1;
       const result = renderDashboard(state, preview, noTheme, 80, 20);
-      expect(result.lines.join("\n")).toContain("Save changes");
+      const output = result.lines.join("\n");
+      expect(output).toContain("Save changes");
+      expect(result.lines.find((line) => line.includes("Save changes"))).toContain("▸");
       expect(result.lines.at(-1)).toContain("┗");
       expect(result.offset).toBeGreaterThan(0);
     },
@@ -130,27 +149,32 @@ describe("dashboard render", () => {
     state.navigation.statuses.selectedIndex = selectableRows(state).length - 1;
     state.navigation.statuses.offset = 99;
 
-    const cap = Math.max(1, Math.floor(60 * 0.85));
-    const wide = renderDashboard(state, preview, noTheme, 100, 60);
-    expect(wide.lines.length).toBeLessThanOrEqual(cap);
+    const narrow = renderDashboard(state, preview, noTheme, 60, 18);
+    const wide = renderDashboard(state, preview, noTheme, 100, 40);
+    expect(narrow.lines).toHaveLength(15);
+    expect(wide.lines).toHaveLength(34);
+    expect(narrow.offset).toBeLessThan(99);
+    expect(wide.offset).toBeLessThan(narrow.offset);
+    expect(narrow.lines.every((line) => visibleWidth(line) === 60)).toBe(true);
     expect(wide.lines.every((line) => visibleWidth(line) === 100)).toBe(true);
+    expect(narrow.lines.at(-1)).toContain("┗");
     expect(wide.lines.at(-1)).toContain("┗");
-    expect(wide.lines.join("\n")).toContain("Save changes");
-    expect(wide.offset).toBeLessThan(99);
   });
 
   it("preserves exact geometry at the minimum framed width", () => {
     const state = initDashboardState(config(), [], true);
     const result = renderDashboard(state, preview, noTheme, 7, 40);
+    expect(result.lines).toHaveLength(34);
     expect(result.lines.every((line) => visibleWidth(line) === 7)).toBe(true);
     expect(result.lines.at(-1)).toContain("┗");
   });
 
   it("renders a bounded fallback below normal chrome height", () => {
     const state = initDashboardState(config(), [], true);
-    const result = renderDashboard(state, preview, noTheme, 40, 1);
+    const result = renderDashboard(state, preview, noTheme, 40, 5);
+    expect(result.lines).toHaveLength(4);
     expect(result.lines.every((line) => visibleWidth(line) === 40)).toBe(true);
-    expect(result.lines.join("\n")).toMatch(/Terminal too small/);
+    expect(result.lines.join("\n")).toContain("Terminal too small");
   });
 
   it("renders a bounded fallback below the minimum frame width", () => {

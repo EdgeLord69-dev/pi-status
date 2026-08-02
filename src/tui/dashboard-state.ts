@@ -16,6 +16,7 @@ export const DASHBOARD_TABS = [
 ] as const;
 
 export type DashboardTabId = (typeof DASHBOARD_TABS)[number]["id"];
+export type DraftTabId = "layout" | "statuses" | "settings";
 export type PresetDisplay = "custom" | "minimal" | "balanced" | "telemetry";
 
 export interface TabNavigation {

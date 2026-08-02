@@ -263,7 +263,7 @@ describe("dashboard transitions", () => {
   it.each(["layout", "statuses", "settings"] as const)(
     "emits the whole draft from the %s Save row and remains dirty until saved",
     (tab) => {
-      let state = initDashboardState(config(), ["alpha"], true);
+      const state = initDashboardState(config(), ["alpha"], true);
       state.draft.completionNotifications = true;
       state.draft.extensionSegments.hidden = ["alpha"];
       state.activeTab = tab;

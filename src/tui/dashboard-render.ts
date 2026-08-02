@@ -121,6 +121,7 @@ function logicalBody(
 
   if (tab === "layout") {
     for (const row of rows) {
+      if (row.type === "save") continue;
       if (row.type === "preset") {
         pushSelectable(row, "↔", "Preset", PRESET_LABELS[state.preset]);
       } else if (row.type === "zone") {
@@ -137,10 +138,14 @@ function logicalBody(
           `${metadata?.label ?? row.id} (${position})`,
           metadata?.description ?? "",
         );
-      } else if (row.type === "save") {
-        pushSelectable(row, " ", "Save changes");
       }
     }
+    lines.push(
+      "",
+      ...buildFooterRowsFromResolved(resolveFooter(previewInput, state.draft, theme), theme, width),
+    );
+    const save = rows.at(-1);
+    if (save?.type === "save") pushSelectable(save, " ", "Save changes");
   } else if (tab === "statuses") {
     lines.push(`Search: ${renderState.navigation.statuses.query}`);
     const statuses = rows.filter(
@@ -167,17 +172,6 @@ function logicalBody(
     if (save?.type === "save") pushSelectable(save, " ", "Save changes");
   }
 
-  if (tab === "layout") {
-    const previewRows = buildFooterRowsFromResolved(
-      resolveFooter(previewInput, state.draft, theme),
-      theme,
-      width,
-    );
-    selectedLine = lines.length;
-    lines.push(...previewRows);
-    lines.push("");
-  }
-
   return {
     lines: lines.map((line) => truncateToWidth(line, width, "")),
     selectedLine,
@@ -200,22 +194,22 @@ export function renderDashboard(
     natural.map(({ lines }) => lines.length),
     terminalRows,
   );
-  const shortHeight = Math.max(1, Math.floor(terminalRows * 0.85));
   if (safeWidth < MIN_FRAME_WIDTH || target < MIN_NORMAL_OVERLAY_ROWS) {
-    return { lines: renderTooSmall(safeWidth, shortHeight, theme), offset: 0 };
+    return { lines: renderTooSmall(safeWidth, target, theme), offset: 0 };
   }
 
   const active = logicalBody(state, state.activeTab, previewInput, theme, contentWidth, false);
   const viewport = fitViewport(
     active.lines,
     active.selectedLine,
-    Math.max(1, bodyRowBudget(target)),
+    bodyRowBudget(target),
     state.navigation[state.activeTab].offset,
   );
   const content = [
     renderTabBar([...DASHBOARD_TABS], state.activeTab, contentWidth, theme),
     "",
     ...viewport.lines,
+    "",
     theme.dim(truncateToWidth(FOOTERS[state.activeTab], contentWidth, "")),
   ];
   return { lines: frame(content, safeWidth, theme), offset: viewport.offset };
