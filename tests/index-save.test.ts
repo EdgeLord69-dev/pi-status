@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { OverlayHandle, TUI } from "@earendil-works/pi-tui";
 import type { PiStatusConfig } from "../src/shared/types.ts";
+import type { StatusLineDashboardComponent } from "../src/tui/dashboard.ts";
+import { isDashboardDirty } from "../src/tui/dashboard-state.ts";
 import {
   buildPiWithHandlers,
   buildSetFooterSpy,
@@ -14,22 +16,6 @@ afterEach(() => {
   vi.doUnmock("../src/core/config.ts");
   vi.resetModules();
 });
-
-interface Deferred<T> {
-  promise: Promise<T>;
-  resolve: (value: T) => void;
-  reject: (error: unknown) => void;
-}
-
-function deferred<T>(): Deferred<T> {
-  let resolve!: (value: T) => void;
-  let reject!: (error: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
-}
 
 function config(): PiStatusConfig {
   return {
@@ -47,9 +33,8 @@ function config(): PiStatusConfig {
 interface DeferredCustomHost {
   custom: ReturnType<typeof vi.fn>;
   resolveCustom: (value: unknown) => void;
-  capturedFactory: () => unknown;
-  capturedOptions: () => Record<string, unknown> | undefined;
-  handle: OverlayHandle;
+  component: () => StatusLineDashboardComponent;
+  done: ReturnType<typeof vi.fn>;
 }
 
 function deferredCustomHost(): DeferredCustomHost {
@@ -61,46 +46,30 @@ function deferredCustomHost(): DeferredCustomHost {
     unfocus: vi.fn(),
     isFocused: vi.fn(() => true),
   } as unknown as OverlayHandle;
-  let capturedFactory: DeferredCustomHost["capturedFactory"];
-  let capturedOptions: Record<string, unknown> | undefined;
-  let resolveCustom: (value: unknown) => void;
+  let resolveCustom!: (value: unknown) => void;
+  let component!: StatusLineDashboardComponent;
   const customPromise = new Promise((resolve) => {
     resolveCustom = resolve;
   });
+  const done = vi.fn((value: unknown) => {
+    component.dispose();
+    resolveCustom(value);
+  });
   const custom = vi.fn((factory, options) => {
-    capturedFactory = factory as DeferredCustomHost["capturedFactory"];
-    capturedOptions = options as Record<string, unknown>;
-    const fakeTui = {
-      terminal: { columns: 80, rows: 30 },
-      requestRender: vi.fn(),
-    } as unknown as TUI;
-    const component = (
-      capturedFactory as (
-        tui: TUI,
-        theme: unknown,
-        keys: unknown,
-        done: (value: unknown) => void,
-      ) => { handleInput: (data: string) => void; dispose: () => void }
-    )(fakeTui, null, {}, (value: unknown) => {
-      component.dispose();
-      resolveCustom(value);
-    });
-    if (
-      options &&
-      typeof options === "object" &&
-      "onHandle" in options &&
-      typeof (options as { onHandle?: (h: OverlayHandle) => void }).onHandle === "function"
-    ) {
-      (options as { onHandle: (h: OverlayHandle) => void }).onHandle(handle);
-    }
+    component = factory(
+      { terminal: { columns: 80, rows: 30 }, requestRender: vi.fn() } as unknown as TUI,
+      null,
+      {},
+      done,
+    ) as StatusLineDashboardComponent;
+    options?.onHandle?.(handle);
     return customPromise;
   });
   return {
-    custom: custom as unknown as ReturnType<typeof vi.fn>,
-    resolveCustom: (value) => resolveCustom(value),
-    capturedFactory: () => capturedFactory,
-    capturedOptions: () => capturedOptions,
-    handle,
+    custom,
+    resolveCustom: (value) => done(value),
+    component: () => component,
+    done,
   };
 }
 
@@ -135,19 +104,7 @@ describe("/statusline persistence", () => {
     );
 
     await new Promise((resolve) => setImmediate(resolve));
-    const component = (
-      host.capturedFactory() as (
-        tui: TUI,
-        theme: unknown,
-        keys: unknown,
-        done: (value: unknown) => void,
-      ) => { handleInput: (data: string) => void; dispose: () => void }
-    )(
-      { terminal: { columns: 80, rows: 30 } as never, requestRender: () => {} } as unknown as TUI,
-      null,
-      {},
-      () => {},
-    );
+    const component = host.component();
 
     // Settings tab via Shift+Tab
     component.handleInput("\x1b[Z");
@@ -159,6 +116,8 @@ describe("/statusline persistence", () => {
       expect.objectContaining({ completionNotifications: true }),
     );
     expect(renderWithFactory(footerSpy.calls.at(-1))).toContain("project");
+    expect(isDashboardDirty(component.getState())).toBe(false);
+    expect(host.done).not.toHaveBeenCalled();
 
     host.resolveCustom(undefined);
     await commandPromise;
@@ -192,24 +151,15 @@ describe("/statusline persistence", () => {
     );
 
     await new Promise((resolve) => setImmediate(resolve));
-    const component = (
-      host.capturedFactory() as (
-        tui: TUI,
-        theme: unknown,
-        keys: unknown,
-        done: (value: unknown) => void,
-      ) => { handleInput: (data: string) => void; dispose: () => void }
-    )(
-      { terminal: { columns: 80, rows: 30 } as never, requestRender: () => {} } as unknown as TUI,
-      null,
-      {},
-      () => {},
-    );
+    const component = host.component();
     component.handleInput("\x1b[Z");
     component.handleInput("\r");
     component.handleInput("\x1b[B");
     component.handleInput("\r");
     expect(ctx.ui.notify).toHaveBeenCalledWith("Failed to save statusline config", "warning");
+    expect(ctx.ui.notify).toHaveBeenCalledTimes(1);
+    expect(isDashboardDirty(component.getState())).toBe(true);
+    expect(host.done).not.toHaveBeenCalled();
 
     host.resolveCustom(undefined);
     await commandPromise;

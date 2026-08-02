@@ -269,6 +269,7 @@ describe("StatusLineDashboardComponent", () => {
     component.handleInput("\x1b[B");
     component.handleInput("\r");
     expect(ctx.ui.notify).toHaveBeenCalledWith("Failed to save statusline config", "warning");
+    expect(isDashboardDirty(component.getState())).toBe(true);
   });
 
   it("replaces confirmed tool rows after an applied toggle", () => {
@@ -286,6 +287,45 @@ describe("StatusLineDashboardComponent", () => {
     expect(pi.setActiveTools).not.toHaveBeenCalled();
     expect(component.getState().tools[0]?.enabled).toBe(true);
     expect(ctx.ui.notify).toHaveBeenCalledWith("At least one tool must remain active", "warning");
+  });
+
+  it("preserves confirmed tool rows when the live snapshot read fails", () => {
+    let reads = 0;
+    const { component, ctx } = makeDashboard({
+      piOverrides: {
+        getActiveTools: vi.fn(() => {
+          reads += 1;
+          if (reads === 1) return ["read", "bash"];
+          throw new Error("snapshot failed");
+        }),
+      },
+    });
+    const confirmed = component.getState().tools;
+    for (let index = 0; index < 3; index += 1) component.handleInput("\t");
+    component.handleInput("\r");
+    expect(component.getState().tools).toEqual(confirmed);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      "Could not update Pi tools: snapshot failed",
+      "warning",
+    );
+  });
+
+  it("preserves confirmed tool rows when the live write fails", () => {
+    const { component, ctx } = makeDashboard({
+      piOverrides: {
+        setActiveTools: vi.fn(() => {
+          throw new Error("write failed");
+        }),
+      },
+    });
+    const confirmed = component.getState().tools;
+    for (let index = 0; index < 3; index += 1) component.handleInput("\t");
+    component.handleInput("\r");
+    expect(component.getState().tools).toEqual(confirmed);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      "Could not update Pi tools: write failed",
+      "warning",
+    );
   });
 
   it("closes cleanly via q", () => {
@@ -348,6 +388,21 @@ describe("StatusLineDashboardComponent", () => {
     expect(handle.focus).toHaveBeenCalled();
   });
 
+  it("ignores keyboard input while a dialog is pending", async () => {
+    const input = deferred<string | undefined>();
+    const { component, done } = makeDashboard({ input: input.promise });
+    component.handleInput("\t");
+    component.handleInput("\t");
+    component.handleInput("\r");
+    component.handleInput("\t");
+    component.handleInput("q");
+    expect(component.getState().activeTab).toBe("session");
+    expect(done).not.toHaveBeenCalled();
+    input.resolve(undefined);
+    await input.promise;
+    await Promise.resolve();
+  });
+
   it("closes and disposes before confirmed compaction starts", async () => {
     const { component, ctx, order } = makeDashboard({ confirm: true });
     component.handleInput("\t"); // Statuses
@@ -358,6 +413,19 @@ describe("StatusLineDashboardComponent", () => {
     await Promise.resolve();
     expect(ctx.compact).toHaveBeenCalledOnce();
     expect(order).toEqual(["done", "dispose", "compact"]);
+  });
+
+  it("keeps the dashboard open when compaction is cancelled", async () => {
+    const { component, ctx, done, handle } = makeDashboard();
+    component.handleInput("\t");
+    component.handleInput("\t");
+    component.handleInput("\x1b[B");
+    component.handleInput("\r");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(ctx.compact).not.toHaveBeenCalled();
+    expect(done).not.toHaveBeenCalled();
+    expect(handle.focus).toHaveBeenCalled();
   });
 
   it("focuses the overlay when rename is cancelled", async () => {
@@ -484,6 +552,7 @@ describe("openStatusLineDashboard", () => {
       ctxOverrides?: Partial<ExtensionCommandContext>;
       piOverrides?: Partial<ExtensionAPI>;
       input?: Promise<string | undefined>;
+      handleFirst?: boolean;
     } = {},
   ): OpenHost {
     const handle = {
@@ -523,6 +592,7 @@ describe("openStatusLineDashboard", () => {
         custom: vi.fn((factory, options) => {
           ctxState.factory = factory as (...args: unknown[]) => unknown;
           ctxState.options = options as typeof ctxState.options;
+          if (extraOverrides.handleFirst) options?.onHandle?.(handle);
           const fakeTui = {
             terminal: { columns: 80, rows: 30 },
             requestRender: vi.fn(),
@@ -543,7 +613,7 @@ describe("openStatusLineDashboard", () => {
             resolveCustom?.(value);
           });
           ctxState.component = component;
-          if (options?.onHandle) options.onHandle(handle);
+          if (!extraOverrides.handleFirst) options?.onHandle?.(handle);
           return customPromise;
         }),
         notify: vi.fn(),
@@ -617,29 +687,32 @@ describe("openStatusLineDashboard", () => {
     expect(host.capturedOptions()).toBeDefined();
   });
 
-  it("focuses the overlay when rename dialog completes", async () => {
-    const input = deferred<string | undefined>();
-    const host = setupOpenHost({ input: input.promise });
-    const promise = import("../../src/tui/dashboard.ts").then((mod) =>
-      mod.openStatusLineDashboard(host.options),
-    );
-    await new Promise((resolve) => setImmediate(resolve));
-    expect(typeof host.capturedFactory()).toBe("function");
-    const component = (
-      host as unknown as { capturedComponent: () => unknown }
-    ).capturedComponent() as {
-      handleInput: (d: string) => void;
-      dispose: () => void;
-    };
-    component.handleInput("\t");
-    component.handleInput("\t");
-    component.handleInput("\r");
-    input.resolve("NewName");
-    await input.promise;
-    await new Promise((resolve) => setImmediate(resolve));
-    await new Promise((resolve) => setImmediate(resolve));
-    host.callDone(undefined);
-    await promise;
-    expect(host.handle.focus).toHaveBeenCalled();
-  });
+  it.each([false, true])(
+    "focuses the overlay when onHandle runs beforeFactory=%s",
+    async (handleFirst) => {
+      const input = deferred<string | undefined>();
+      const host = setupOpenHost({ input: input.promise, handleFirst });
+      const promise = import("../../src/tui/dashboard.ts").then((mod) =>
+        mod.openStatusLineDashboard(host.options),
+      );
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(typeof host.capturedFactory()).toBe("function");
+      const component = (
+        host as unknown as { capturedComponent: () => unknown }
+      ).capturedComponent() as {
+        handleInput: (d: string) => void;
+        dispose: () => void;
+      };
+      component.handleInput("\t");
+      component.handleInput("\t");
+      component.handleInput("\r");
+      input.resolve("NewName");
+      await input.promise;
+      await new Promise((resolve) => setImmediate(resolve));
+      await new Promise((resolve) => setImmediate(resolve));
+      host.callDone(undefined);
+      await promise;
+      expect(host.handle.focus).toHaveBeenCalled();
+    },
+  );
 });

@@ -8,6 +8,7 @@ import {
   type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import createExtension from "../src/index.ts";
+import type { StatusLineDashboardComponent } from "../src/tui/dashboard.ts";
 
 let agentDir: string;
 
@@ -789,7 +790,7 @@ describe("extension wiring", () => {
     const commandPromise = handler("", ctx);
     await new Promise((resolve) => setImmediate(resolve));
     expect(footerSpy.calls.length).toBe(footerCallsBeforeOpen);
-    resolveCustom!(undefined);
+    resolveCustom?.(undefined);
     await commandPromise;
   });
 
@@ -810,7 +811,7 @@ describe("extension wiring", () => {
     customMock.mockImplementationOnce(() => customPromise);
     const commandPromise = handler("", ctx);
     await new Promise((resolve) => setImmediate(resolve));
-    resolveCustom!(undefined);
+    resolveCustom?.(undefined);
     await commandPromise;
     expect(renderWithFactory(footerSpy.calls.at(-1))).toContain("GPT-5 [med]");
   });
@@ -1603,42 +1604,51 @@ describe("/statusline dashboard wiring", () => {
   interface DeferredCustomHost {
     custom: ReturnType<typeof vi.fn>;
     resolveCustom: (value: unknown) => void;
-    capturedFactory: () => unknown;
+    component: () => StatusLineDashboardComponent;
     capturedOptions: () => Record<string, unknown> | undefined;
+    done: ReturnType<typeof vi.fn>;
+    order: string[];
   }
 
   function deferredCustomHost(): DeferredCustomHost {
-    let capturedFactory: unknown;
     let capturedOptions: Record<string, unknown> | undefined;
     let resolveCustom!: (value: unknown) => void;
+    let component!: StatusLineDashboardComponent;
+    const order: string[] = [];
     const customPromise = new Promise((resolve) => {
       resolveCustom = resolve;
     });
+    const done = vi.fn((value: unknown) => {
+      order.push("done");
+      component.dispose();
+      order.push("dispose");
+      resolveCustom(value);
+    });
     const custom = vi.fn((factory, options) => {
-      capturedFactory = factory as unknown;
       capturedOptions = options as Record<string, unknown>;
-      const fakeTui = {
-        terminal: { columns: 80, rows: 30 },
-        requestRender: vi.fn(),
-      };
-      const component = (
-        capturedFactory as (
-          tui: unknown,
-          theme: unknown,
-          keys: unknown,
-          done: (value: unknown) => void,
-        ) => { handleInput: (data: string) => void; dispose: () => void }
-      )(fakeTui, null, {}, (value: unknown) => {
-        component.dispose();
-        resolveCustom(value);
+      component = factory(
+        { terminal: { columns: 80, rows: 30 }, requestRender: vi.fn() },
+        null,
+        {},
+        done,
+      ) as StatusLineDashboardComponent;
+      options?.onHandle?.({
+        focus: vi.fn(),
+        hide: vi.fn(),
+        setHidden: vi.fn(),
+        isHidden: vi.fn(() => false),
+        unfocus: vi.fn(),
+        isFocused: vi.fn(() => true),
       });
       return customPromise;
     });
     return {
-      custom: custom as unknown as ReturnType<typeof vi.fn>,
-      resolveCustom: (value) => resolveCustom(value),
-      capturedFactory: () => capturedFactory,
+      custom,
+      resolveCustom: (value) => done(value),
+      component: () => component,
       capturedOptions: () => capturedOptions,
+      done,
+      order,
     };
   }
 
@@ -1655,6 +1665,7 @@ describe("/statusline dashboard wiring", () => {
       },
     });
     for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+    const footerCallsBeforeOpen = footerSpy.calls.length;
     const commandPromise = getRegisteredCommand(registerCommandCalls, "statusline").handler(
       "",
       ctx,
@@ -1666,7 +1677,7 @@ describe("/statusline dashboard wiring", () => {
       overlayOptions: { anchor: "center", maxHeight: "85%", width: "92%" },
       onHandle: expect.any(Function),
     });
-    expect(footerSpy.calls).toHaveLength(footerSpy.calls.length);
+    expect(footerSpy.calls).toHaveLength(footerCallsBeforeOpen);
     host.resolveCustom(undefined);
     await commandPromise;
   });
@@ -1738,16 +1749,13 @@ describe("/statusline dashboard wiring", () => {
   it("warns on custom rejection and retries on a later invocation", async () => {
     const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
     const footerSpy = buildSetFooterSpy();
+    const custom = vi.fn().mockRejectedValueOnce(new Error("Overlay rejected"));
     createExtension(pi);
     const ctx = createContext({
       ui: {
         ...createContext().ui,
         setFooter: footerSpy.setFooter,
-        custom: vi
-          .fn()
-          .mockRejectedValueOnce(
-            new Error("Overlay rejected"),
-          ) as unknown as ExtensionContext["ui"]["custom"],
+        custom: custom as unknown as ExtensionContext["ui"]["custom"],
       },
     });
     for (const h of handlers.get("session_start") ?? []) h({}, ctx);
@@ -1757,99 +1765,62 @@ describe("/statusline dashboard wiring", () => {
       "warning",
     );
     await getRegisteredCommand(registerCommandCalls, "statusline").handler("", ctx);
+    expect(custom).toHaveBeenCalledTimes(2);
   });
 
-  it.each(["session_start", "session_tree"] as const)(
-    "closes a pending dashboard before %s replacement",
-    async (event) => {
-      const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
-      const footerSpy = buildSetFooterSpy();
-      createExtension(pi);
-      const host = deferredCustomHost();
-      const input = deferred<string | undefined>();
-      const ctx = createContext({
-        ui: {
-          ...createContext().ui,
-          setFooter: footerSpy.setFooter,
-          custom: host.custom as unknown as ExtensionContext["ui"]["custom"],
-          input: vi.fn(() => input.promise),
-        },
-      });
-      for (const h of handlers.get("session_start") ?? []) h({}, ctx);
-      const commandPromise = getRegisteredCommand(registerCommandCalls, "statusline").handler(
-        "",
-        ctx,
-      );
-      await new Promise((resolve) => setImmediate(resolve));
-      const component = (
-        host.capturedFactory() as (
-          tui: unknown,
-          theme: unknown,
-          keys: unknown,
-          done: (value: unknown) => void,
-        ) => { handleInput: (data: string) => void; dispose: () => void }
-      )({ terminal: { columns: 80, rows: 30 }, requestRender: () => {} }, null, {}, () => {});
-      component.handleInput("\t");
-      component.handleInput("\t");
-      component.handleInput("\r");
-      await new Promise((resolve) => setImmediate(resolve));
-      for (const h of handlers.get(event) ?? []) h({}, createContext());
-      input.resolve("Late");
-      await input.promise;
-      await new Promise((resolve) => setImmediate(resolve));
-      host.resolveCustom(undefined);
-      await commandPromise;
-      expect(ctx.ui.notify).not.toHaveBeenCalledWith(expect.stringContaining("renamed"), "info");
-      expect(host.custom).toHaveBeenCalledTimes(1);
-    },
-  );
-
-  it("closes a pending dashboard when matching session_shutdown fires", async () => {
+  it.each([
+    ["session_start", "rename"],
+    ["session_start", "compact"],
+    ["session_tree", "rename"],
+    ["session_tree", "compact"],
+    ["session_shutdown", "rename"],
+    ["session_shutdown", "compact"],
+  ] as const)("closes the hosted dashboard before %s with pending %s", async (event, action) => {
     const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
     const footerSpy = buildSetFooterSpy();
-    createExtension(pi);
     const host = deferredCustomHost();
+    const input = deferred<string | undefined>();
     const confirm = deferred<boolean>();
+    createExtension(pi);
     const ctx = createContext({
-      sessionManager: {
-        getSessionId: () => "abcdef123456",
-        getSessionFile: () => undefined,
-        getBranch: () => [],
-        getEntries: () => [],
-      } as unknown as ExtensionContext["sessionManager"],
       ui: {
         ...createContext().ui,
         setFooter: footerSpy.setFooter,
         custom: host.custom as unknown as ExtensionContext["ui"]["custom"],
+        input: vi.fn(() => input.promise),
         confirm: vi.fn(() => confirm.promise),
       },
     });
     for (const h of handlers.get("session_start") ?? []) h({}, ctx);
-    const commandPromise = getRegisteredCommand(registerCommandCalls, "statusline").handler(
-      "",
-      ctx,
-    );
+    const { handler } = getRegisteredCommand(registerCommandCalls, "statusline");
+    const commandPromise = handler("", ctx);
     await new Promise((resolve) => setImmediate(resolve));
-    const component = (
-      host.capturedFactory() as (
-        tui: unknown,
-        theme: unknown,
-        keys: unknown,
-        done: (value: unknown) => void,
-      ) => { handleInput: (data: string) => void; dispose: () => void }
-    )({ terminal: { columns: 80, rows: 30 }, requestRender: () => {} }, null, {}, () => {});
+
+    const component = host.component();
     component.handleInput("\t");
     component.handleInput("\t");
-    component.handleInput("\x1b[B");
+    if (action === "compact") component.handleInput("\x1b[B");
     component.handleInput("\r");
     await new Promise((resolve) => setImmediate(resolve));
-    for (const h of handlers.get("session_shutdown") ?? []) h({}, ctx);
-    confirm.resolve(true);
-    await confirm.promise;
+
+    const eventCtx = event === "session_shutdown" ? ctx : createContext();
+    for (const h of handlers.get(event) ?? []) h({}, eventCtx);
+    if (action === "rename") input.resolve("Late");
+    else confirm.resolve(true);
+    await (action === "rename" ? input.promise : confirm.promise);
     await new Promise((resolve) => setImmediate(resolve));
-    host.resolveCustom(undefined);
     await commandPromise;
+
+    expect(host.done).toHaveBeenCalledTimes(1);
+    expect(host.order).toEqual(["done", "dispose"]);
+    expect(pi.setSessionName).not.toHaveBeenCalled();
     expect(ctx.compact).not.toHaveBeenCalled();
+    expect(ctx.ui.notify).not.toHaveBeenCalledWith(expect.stringContaining("renamed"), "info");
+
+    const reopenCustom = vi.fn(async () => undefined);
+    ctx.ui.custom = reopenCustom as unknown as ExtensionContext["ui"]["custom"];
+    await handler("", ctx);
+    expect(reopenCustom).toHaveBeenCalledOnce();
   });
 
   it("ignores stale unrelated session_shutdown", async () => {

@@ -183,7 +183,6 @@ export default function createExtension(pi: ExtensionAPI): void {
           refreshFooterProviderState(footerData);
 
           const snap = runtimeState.snapshot();
-          const activeCtx = snap.ctx ?? ctx;
           const statusTheme = noColorRequested() ? noTheme : fromPiTheme(theme);
           const snapshot = currentFooterInput(ctx);
           return buildFooterRowsFromResolved(
@@ -197,11 +196,6 @@ export default function createExtension(pi: ExtensionAPI): void {
 
     ctx.ui.setFooter(factory as never);
     syncWorkspacePulse(runtimeState.snapshot().config);
-  }
-
-  function installEmptyFooter(_ctx: ExtensionContext): void {
-    // Retained for backwards compatibility; the dashboard overlay no longer
-    // replaces the live footer while open.
   }
 
   function handleNotificationsCommand(
@@ -292,14 +286,7 @@ export default function createExtension(pi: ExtensionAPI): void {
           discoveredStatuses: discovered,
           usageAvailable: usageRuntime.getAvailable(),
           getPreviewInput: () => currentFooterInput(ctx),
-          save: (next) => {
-            try {
-              saveAndApplyConfig(next);
-            } catch {
-              ctx.ui.notify("Failed to save statusline config", "warning");
-              throw new Error("save failed");
-            }
-          },
+          save: saveAndApplyConfig,
           onComponent(component) {
             activeDashboard = component;
           },
