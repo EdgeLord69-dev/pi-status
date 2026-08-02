@@ -9,7 +9,6 @@ import {
 } from "./dashboard-layout.ts";
 import {
   DASHBOARD_TABS,
-  type DashboardSelectableRow,
   type DashboardState,
   type DashboardTabId,
   findSegmentAssignment,
@@ -107,12 +106,7 @@ function logicalBody(
   const lines: string[] = [];
   let interactiveIndex = 0;
   let selectedLine: number | undefined;
-  const pushSelectable = (
-    _row: DashboardSelectableRow,
-    checkbox: string,
-    label: string,
-    description = "",
-  ): void => {
+  const pushSelectable = (checkbox: string, label: string, description = ""): void => {
     const selected = !ignoreQuery && interactiveIndex === selectedIndex;
     if (selected) selectedLine = lines.length;
     lines.push(selectableLine(selected, checkbox, label, description, width, theme));
@@ -123,9 +117,9 @@ function logicalBody(
     for (const row of rows) {
       if (row.type === "save") continue;
       if (row.type === "preset") {
-        pushSelectable(row, "↔", "Preset", PRESET_LABELS[state.preset]);
+        pushSelectable("↔", "Preset", PRESET_LABELS[state.preset]);
       } else if (row.type === "zone") {
-        pushSelectable(row, "↔", "Active zone", ZONE_LABELS[state.activeZone]);
+        pushSelectable("↔", "Active zone", ZONE_LABELS[state.activeZone]);
       } else if (row.type === "segment") {
         const metadata = SEGMENT_METADATA.get(row.id);
         const assignment = findSegmentAssignment(state.draft.zones, row.id);
@@ -133,7 +127,6 @@ function logicalBody(
           ? `${ZONE_LABELS[assignment.zone]} ${assignment.index + 1}`
           : "Disabled";
         pushSelectable(
-          row,
           assignment ? "[•]" : "[ ]",
           `${metadata?.label ?? row.id} (${position})`,
           metadata?.description ?? "",
@@ -144,33 +137,25 @@ function logicalBody(
       "",
       ...buildFooterRowsFromResolved(resolveFooter(previewInput, state.draft, theme), theme, width),
     );
-    const save = rows.at(-1);
-    if (save?.type === "save") pushSelectable(save, " ", "Save changes");
   } else if (tab === "statuses") {
     lines.push(`Search: ${renderState.navigation.statuses.query}`);
-    const statuses = rows.filter(
-      (row): row is Extract<DashboardSelectableRow, { type: "status" }> => row.type === "status",
-    );
+    const statuses = rows.filter((row) => row.type === "status");
     if (statuses.length === 0) lines.push(theme.dim("No matching statuses."));
     for (const row of statuses) {
       const shown = !state.draft.extensionSegments.hidden.includes(row.key);
-      pushSelectable(row, shown ? "[•]" : "[ ]", row.key, "Show in the status line");
+      pushSelectable(shown ? "[•]" : "[ ]", row.key, "Show in the status line");
     }
-    const save = rows.at(-1);
-    if (save?.type === "save") pushSelectable(save, " ", "Save changes");
   } else {
     const notifications = rows[0];
     if (notifications?.type === "notifications") {
       pushSelectable(
-        notifications,
         state.draft.completionNotifications ? "[•]" : "[ ]",
         "Completion notifications",
         "Notify when Pi finishes a response",
       );
     }
-    const save = rows.at(-1);
-    if (save?.type === "save") pushSelectable(save, " ", "Save changes");
   }
+  if (rows.at(-1)?.type === "save") pushSelectable(" ", "Save changes");
 
   return {
     lines: lines.map((line) => truncateToWidth(line.replace(/[\r\n]+/g, " "), width, "")),

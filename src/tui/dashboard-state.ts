@@ -16,7 +16,6 @@ export const DASHBOARD_TABS = [
 ] as const;
 
 export type DashboardTabId = (typeof DASHBOARD_TABS)[number]["id"];
-export type DraftTabId = "layout" | "statuses" | "settings";
 export type PresetDisplay = "custom" | "minimal" | "balanced" | "telemetry";
 
 export interface TabNavigation {
@@ -153,20 +152,6 @@ export function findSegmentAssignment(
     const index = zones[zone].indexOf(id);
     if (index >= 0) return { zone, index };
   }
-  return undefined;
-}
-
-function cloneConfig(config: PiStatusConfig): PiStatusConfig {
-  return {
-    zones: {
-      topLeft: [...config.zones.topLeft],
-      topRight: [...config.zones.topRight],
-      bottomLeft: [...config.zones.bottomLeft],
-      bottomRight: [...config.zones.bottomRight],
-    },
-    extensionSegments: { hidden: [...config.extensionSegments.hidden] },
-    completionNotifications: config.completionNotifications,
-  };
 }
 
 function sameArray(left: readonly string[], right: readonly string[]): boolean {
@@ -229,14 +214,14 @@ export function initDashboardState(
   discoveredStatuses: string[],
   usageAvailable = true,
 ): DashboardState {
-  const baseline = cloneConfig(config);
+  const baseline = structuredClone(config);
   const visibleSegmentIds = SEGMENT_ORDER.map(({ id }) => id).filter(
     (id) => usageAvailable || !isUsageSegment(id),
   );
   return {
     activeTab: "layout",
     baseline,
-    draft: cloneConfig(config),
+    draft: structuredClone(config),
     activeZone: "topLeft",
     preset: presetForZones(config.zones, visibleSegmentIds),
     discoveredStatuses: [...new Set(discoveredStatuses)].sort((a, b) => a.localeCompare(b)),
@@ -333,24 +318,11 @@ function reconcileStatusSelection(
   return clampSelection(state);
 }
 
-function cloneState(state: DashboardState): DashboardState {
-  return {
-    ...state,
-    baseline: cloneConfig(state.baseline),
-    draft: cloneConfig(state.draft),
-    discoveredStatuses: [...state.discoveredStatuses],
-    visibleSegmentIds: [...state.visibleSegmentIds],
-    navigation: Object.fromEntries(
-      Object.entries(state.navigation).map(([key, value]) => [key, { ...value }]),
-    ) as DashboardState["navigation"],
-  };
-}
-
 export function reduceDashboardState(
   current: DashboardState,
   action: DashboardAction,
 ): DashboardTransition {
-  const state = cloneState(current);
+  const state = structuredClone(current);
   const tabs = DASHBOARD_TABS.map(({ id }) => id);
   if (action.type === "next_tab" || action.type === "previous_tab") {
     const index = tabs.indexOf(state.activeTab);
@@ -399,8 +371,8 @@ export function reduceDashboardState(
     return { state };
   }
   if (action.type === "saved") {
-    state.baseline = cloneConfig(action.config);
-    state.draft = cloneConfig(action.config);
+    state.baseline = structuredClone(action.config);
+    state.draft = structuredClone(action.config);
     state.preset = presetForZones(action.config.zones, state.visibleSegmentIds);
     return { state: clampSelection(state) };
   }
@@ -445,7 +417,7 @@ export function reduceDashboardState(
   if (action.type !== "activate") return { state };
 
   if (row.type === "save") {
-    return { state, effect: { type: "save", config: cloneConfig(state.draft) } };
+    return { state, effect: { type: "save", config: structuredClone(state.draft) } };
   }
   if (row.type === "notifications") {
     state.draft.completionNotifications = !state.draft.completionNotifications;
