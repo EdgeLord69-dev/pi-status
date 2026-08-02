@@ -173,7 +173,7 @@ function logicalBody(
   }
 
   return {
-    lines: lines.map((line) => truncateToWidth(line, width, "")),
+    lines: lines.map((line) => truncateToWidth(line.replace(/[\r\n]+/g, " "), width, "")),
     selectedLine,
   };
 }

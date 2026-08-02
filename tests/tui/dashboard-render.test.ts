@@ -85,6 +85,22 @@ describe("dashboard render", () => {
     expect(renderDashboard(state, live, noTheme, 100, 60).lines.join("\n")).not.toContain("ready");
   });
 
+  it("normalizes line breaks in dynamic dashboard content", () => {
+    const state = initDashboardState(config(), ["build\nbroken"], true);
+    const live = buildSnapshot({
+      ...snapshotInput,
+      extensionStatuses: new Map([["build", "build: ready\r\nINJECTED"]]),
+    });
+
+    const layout = renderDashboard(state, live, noTheme, 100, 60);
+    state.activeTab = "statuses";
+    const statuses = renderDashboard(state, live, noTheme, 100, 60);
+
+    expect([...layout.lines, ...statuses.lines].every((line) => !/[\r\n]/.test(line))).toBe(true);
+    expect(layout.lines.join("\n")).toContain("ready INJECT");
+    expect(statuses.lines.join("\n")).toContain("build broken");
+  });
+
   it("renders all tabs at the exact capped height without mutating query", () => {
     const state = initDashboardState(
       config(),
