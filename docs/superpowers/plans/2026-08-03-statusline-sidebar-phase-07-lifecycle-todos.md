@@ -32,7 +32,7 @@ When the TODO panel is configured visible and `sidebarController.isEffectivelyVi
 
 - [ ] **Step 1: Add session-owned resources**
 
-Create registry/controller instances per generation, request contribution discovery, dispose prior resources before replacement, and ignore stale footer factories/callbacks.
+Create registry/controller instances per generation. Registry construction performs its one automatic contribution-discovery request; do not send a duplicate initial request from the lifecycle owner. Dispose prior resources before replacement and ignore stale footer factories/callbacks.
 
 - [ ] **Step 2: Build safe live snapshots**
 
