@@ -1,7 +1,11 @@
 import { Input, visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it } from "vitest";
 import { buildSnapshot } from "../../src/core/resolve-footer.ts";
-import type { PiStatusConfig, StatusLineZones } from "../../src/shared/types.ts";
+import {
+  BUILTIN_SIDEBAR_PANEL_IDS,
+  type PiStatusConfig,
+  type StatusLineZones,
+} from "../../src/shared/types.ts";
 import type { DashboardTool } from "../../src/tui/tool-controls.ts";
 import type { SessionDetails } from "../../src/tui/session-actions.ts";
 import {
@@ -28,6 +32,7 @@ function config(overrides: Partial<PiStatusConfig> = {}): PiStatusConfig {
     extensionSegments: { hidden: [] },
     completionNotifications: false,
     showSidebarToolNames: false,
+    sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
     ...overrides,
   };
 }

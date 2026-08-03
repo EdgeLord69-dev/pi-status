@@ -36,6 +36,33 @@ export interface SessionMetrics {
 
 export type ExtensionSegments = { hidden: string[] };
 
+export const BUILTIN_SIDEBAR_PANEL_IDS = [
+  "agent",
+  "activity",
+  "alerts",
+  "statuses",
+  "todos",
+  "context",
+  "workspace",
+  "usage",
+  "tools",
+] as const;
+
+export type BuiltinSidebarPanelId = (typeof BUILTIN_SIDEBAR_PANEL_IDS)[number];
+export type ContributedSidebarPanelId = `${string}:${string}`;
+export type SidebarPanelId = BuiltinSidebarPanelId | ContributedSidebarPanelId;
+export type SidebarPanelLayoutEntry = { id: SidebarPanelId; visible: boolean };
+export type SidebarPanelLayout = SidebarPanelLayoutEntry[];
+
+export const DEFAULT_SIDEBAR_PANEL_LAYOUT: readonly Readonly<SidebarPanelLayoutEntry>[] =
+  BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true }));
+
+export interface NormalizedTodo {
+  id: number;
+  text: string;
+  status: "pending" | "in_progress" | "completed";
+}
+
 export const STATUS_LINE_ZONE_ORDER = ["topLeft", "topRight", "bottomLeft", "bottomRight"] as const;
 
 export type StatusLineZone = (typeof STATUS_LINE_ZONE_ORDER)[number];
@@ -52,6 +79,7 @@ export type PiStatusConfig = {
   extensionSegments: ExtensionSegments;
   completionNotifications: boolean;
   showSidebarToolNames: boolean;
+  sidebarPanelLayout: SidebarPanelLayout;
 };
 
 export const KNOWN_SEGMENTS: readonly StatusLineSegmentId[] = [

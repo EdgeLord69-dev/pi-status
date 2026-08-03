@@ -10,11 +10,15 @@ import {
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { dirname, join } from "node:path";
 import {
+  BUILTIN_SIDEBAR_PANEL_IDS,
+  DEFAULT_SIDEBAR_PANEL_LAYOUT,
   DEFAULT_ZONES,
   isKnownSegment,
   type ConfigStore,
   type ExtensionSegments,
   type PiStatusConfig,
+  type SidebarPanelId,
+  type SidebarPanelLayout,
   type StatusLineSegmentId,
   type StatusLineZones,
 } from "../shared/types.ts";
@@ -24,6 +28,7 @@ export const DEFAULT_CONFIG: PiStatusConfig = {
   extensionSegments: { hidden: [] },
   completionNotifications: false,
   showSidebarToolNames: false,
+  sidebarPanelLayout: cloneSidebarPanelLayout(DEFAULT_SIDEBAR_PANEL_LAYOUT),
 };
 
 function cloneDefaultConfig(): PiStatusConfig {
@@ -32,7 +37,14 @@ function cloneDefaultConfig(): PiStatusConfig {
     extensionSegments: { hidden: [...DEFAULT_CONFIG.extensionSegments.hidden] },
     completionNotifications: DEFAULT_CONFIG.completionNotifications,
     showSidebarToolNames: DEFAULT_CONFIG.showSidebarToolNames,
+    sidebarPanelLayout: cloneSidebarPanelLayout(DEFAULT_CONFIG.sidebarPanelLayout),
   };
+}
+
+function cloneSidebarPanelLayout(
+  layout: readonly Readonly<{ id: SidebarPanelId; visible: boolean }>[],
+): SidebarPanelLayout {
+  return layout.map(({ id, visible }) => ({ id, visible }));
 }
 
 function cloneZones(zones: StatusLineZones): StatusLineZones {
@@ -132,6 +144,41 @@ export function normalizeExtensionSegments(input: unknown): ExtensionSegments {
   return { hidden: normalizeFilterValues((input as { hidden?: unknown }).hidden) };
 }
 
+const BUILTIN_SIDEBAR_PANEL_ID_SET = new Set<string>(BUILTIN_SIDEBAR_PANEL_IDS);
+const CONTRIBUTED_SIDEBAR_PANEL_ID_PATTERN = /^[a-z][a-z0-9_-]*:[a-z][a-z0-9_-]*$/;
+
+function isSidebarPanelId(input: unknown): input is SidebarPanelId {
+  return (
+    typeof input === "string" &&
+    (BUILTIN_SIDEBAR_PANEL_ID_SET.has(input) ||
+      (input.length <= 128 && CONTRIBUTED_SIDEBAR_PANEL_ID_PATTERN.test(input)))
+  );
+}
+
+export function normalizeSidebarPanelLayout(input: unknown): SidebarPanelLayout {
+  if (!Array.isArray(input)) return cloneSidebarPanelLayout(DEFAULT_SIDEBAR_PANEL_LAYOUT);
+
+  const normalized: SidebarPanelLayout = [];
+  const seen = new Set<SidebarPanelId>();
+  for (const value of input) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    const entry = value as { id?: unknown; visible?: unknown };
+    if (!isSidebarPanelId(entry.id) || seen.has(entry.id)) continue;
+    seen.add(entry.id);
+    normalized.push({ id: entry.id, visible: entry.visible === true });
+  }
+
+  for (const id of BUILTIN_SIDEBAR_PANEL_IDS) {
+    if (!seen.has(id)) normalized.push({ id, visible: true });
+  }
+
+  if (!normalized.some(({ visible }) => visible)) {
+    const agent = normalized.find(({ id }) => id === "agent");
+    if (agent) agent.visible = true;
+  }
+  return normalized;
+}
+
 function parseConfig(content: string): Record<string, unknown> | null {
   try {
     const parsed: unknown = JSON.parse(content);
@@ -153,6 +200,7 @@ function normalizeConfig(input: Record<string, unknown>): PiStatusConfig {
     extensionSegments: normalizeExtensionSegments(input.extensionSegments),
     completionNotifications: input.completionNotifications === true,
     showSidebarToolNames: input.showSidebarToolNames === true,
+    sidebarPanelLayout: normalizeSidebarPanelLayout(input.sidebarPanelLayout),
   };
 }
 
@@ -179,6 +227,7 @@ export function saveConfig(
     extensionSegments: { hidden: [...config.extensionSegments.hidden] },
     completionNotifications: config.completionNotifications,
     showSidebarToolNames: config.showSidebarToolNames,
+    sidebarPanelLayout: cloneSidebarPanelLayout(config.sidebarPanelLayout),
   };
   store.write(path, `${JSON.stringify(next, null, 2)}\n`);
   return { path };

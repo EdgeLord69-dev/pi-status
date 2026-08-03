@@ -165,10 +165,22 @@ function sameArray(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
+function sameSidebarPanelLayout(left: PiStatusConfig, right: PiStatusConfig): boolean {
+  return (
+    left.sidebarPanelLayout.length === right.sidebarPanelLayout.length &&
+    left.sidebarPanelLayout.every(
+      (entry, index) =>
+        entry.id === right.sidebarPanelLayout[index]?.id &&
+        entry.visible === right.sidebarPanelLayout[index]?.visible,
+    )
+  );
+}
+
 export function configsEqual(left: PiStatusConfig, right: PiStatusConfig): boolean {
   return (
     STATUS_LINE_ZONE_ORDER.every((zone) => sameArray(left.zones[zone], right.zones[zone])) &&
     sameArray(left.extensionSegments.hidden, right.extensionSegments.hidden) &&
+    sameSidebarPanelLayout(left, right) &&
     left.completionNotifications === right.completionNotifications &&
     left.showSidebarToolNames === right.showSidebarToolNames
   );

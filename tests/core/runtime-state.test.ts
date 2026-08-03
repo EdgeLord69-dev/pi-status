@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createRuntimeStateMachine } from "../../src/core/runtime-state.ts";
-import type { PiStatusConfig } from "../../src/shared/types.ts";
+import { BUILTIN_SIDEBAR_PANEL_IDS, type PiStatusConfig } from "../../src/shared/types.ts";
 
 const defaultConfig: PiStatusConfig = {
   zones: {
@@ -13,6 +13,7 @@ const defaultConfig: PiStatusConfig = {
   extensionSegments: { hidden: [] },
   completionNotifications: false,
   showSidebarToolNames: false,
+  sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
 };
 
 function stubCtx(cwd = "/test"): ExtensionContext {
@@ -77,6 +78,7 @@ describe("RuntimeStateMachine", () => {
       extensionSegments: { hidden: ["x"] },
       completionNotifications: false,
       showSidebarToolNames: false,
+      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
     };
     sm.update({ type: "config_reload", config: newConfig });
     expect(sm.snapshot().config).toEqual(newConfig);
