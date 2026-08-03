@@ -955,19 +955,12 @@ describe("buildFooterRows", () => {
     });
 
     const wide = buildFooterRows(configured, identityTheme, 120)[0] ?? "";
-    for (const value of [
-      "Cache read: 1.2k",
-      "GPT-5",
-      "/work",
-      "idle",
-      "Access: metered",
-      "Cost: $0.1234",
-    ]) {
+    for (const value of ["CR 1.2k", "GPT-5", "/work", "idle", "METERED", "$0.1234"]) {
       expect(wide).toContain(value);
     }
-    expect(wide.indexOf("Cache read: 1.2k")).toBeLessThan(wide.indexOf("GPT-5"));
+    expect(wide.indexOf("CR 1.2k")).toBeLessThan(wide.indexOf("GPT-5"));
     expect(wide.indexOf("GPT-5")).toBeLessThan(wide.indexOf("/work"));
-    expect(wide.indexOf("Access: metered")).toBeLessThan(wide.indexOf("Cost: $0.1234"));
+    expect(wide.indexOf("METERED")).toBeLessThan(wide.indexOf("$0.1234"));
 
     expect(buildFooterRows(configured, identityTheme, 20)).toEqual(["GPT-5 · /work · idle"]);
     expect(buildFooterRows(configured, identityTheme, 12)).toEqual(["GPT-5 · idle"]);

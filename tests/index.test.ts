@@ -59,8 +59,8 @@ describe("extension wiring", () => {
     });
     for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
 
-    expect(renderWithFactory(footerSpy.calls[0])).toContain("Cost: $0.0100");
-    expect(renderWithFactory(footerSpy.calls[0])).toContain("Access: subscription");
+    expect(renderWithFactory(footerSpy.calls[0])).toContain("$0.0100");
+    expect(renderWithFactory(footerSpy.calls[0])).toContain("SUBSCRIPTION");
     expect(getEntries).toHaveBeenCalled();
     expect(getBranch).not.toHaveBeenCalled();
   });
@@ -95,13 +95,13 @@ describe("extension wiring", () => {
         { id: "kimi", name: "Kimi", provider: "kimi-coding", reasoning: false } as never,
         false,
       ),
-    ).toContain("Access: subscription");
+    ).toContain("SUBSCRIPTION");
     expect(
       renderAccess(
         { id: "gpt-5", name: "GPT-5", provider: "openai", reasoning: false } as never,
         false,
       ),
-    ).toContain("Access: metered");
+    ).toContain("METERED");
     expect(renderAccess(undefined, false)).not.toContain("Access:");
   });
 
@@ -152,8 +152,8 @@ describe("extension wiring", () => {
     resolveCustom?.(undefined);
     await commandPromise;
 
-    expect(preview).toContain("Cost: $0.0100");
-    expect(preview).toContain("Access: subscription");
+    expect(preview).toContain("$0.0100");
+    expect(preview).toContain("SUBSCRIPTION");
   });
 
   it("does not call action methods during extension loading", () => {

@@ -205,7 +205,7 @@ export function formatCacheReadTokens(
   _theme: ThemeLike,
 ): [string, FooterRenderColor | null] | null {
   const value = input.sessionMetrics?.cacheReadTokens;
-  return value === undefined ? null : [`Cache read: ${formatCompactNumber(value)}`, "dim"];
+  return value === undefined ? null : [`CR ${formatCompactNumber(value)}`, "dim"];
 }
 
 export function formatCacheWriteTokens(
@@ -213,7 +213,7 @@ export function formatCacheWriteTokens(
   _theme: ThemeLike,
 ): [string, FooterRenderColor | null] | null {
   const value = input.sessionMetrics?.cacheWriteTokens;
-  return value === undefined ? null : [`Cache write: ${formatCompactNumber(value)}`, "dim"];
+  return value === undefined ? null : [`CW ${formatCompactNumber(value)}`, "dim"];
 }
 
 export function formatCacheHit(
@@ -221,7 +221,7 @@ export function formatCacheHit(
   _theme: ThemeLike,
 ): [string, FooterRenderColor | null] | null {
   const value = input.sessionMetrics?.latestCacheHitPercent;
-  return value === undefined ? null : [`Cache hit: ${Math.round(value)}%`, "dim"];
+  return value === undefined ? null : [`Hit ${Math.round(value)}%`, "dim"];
 }
 
 export function formatSessionCost(
@@ -229,14 +229,14 @@ export function formatSessionCost(
   _theme: ThemeLike,
 ): [string, FooterRenderColor | null] | null {
   const value = input.sessionMetrics?.costUsd;
-  return value === undefined ? null : [`Cost: $${value.toFixed(value < 1 ? 4 : 2)}`, "dim"];
+  return value === undefined ? null : [`$${value.toFixed(value < 1 ? 4 : 2)}`, "dim"];
 }
 
 export function formatAccessType(
   input: FooterRenderInput,
   _theme: ThemeLike,
 ): [string, FooterRenderColor | null] | null {
-  return input.accessType ? [`Access: ${input.accessType}`, "dim"] : null;
+  return input.accessType ? [`${input.accessType.toUpperCase()}`, "dim"] : null;
 }
 
 export function formatTurnProgress(
@@ -259,7 +259,9 @@ export function formatTurnProgress(
     const oldest = active[0];
     const calls = active.filter((tool) => tool.name === oldest.name).length;
     const hidden = active.length - calls;
-    parts.push(`${oldest.name}${calls > 1 ? `×${calls}` : ""}${hidden > 0 ? ` +${hidden}` : ""}`);
+    parts.push(
+      `${oldest.name}${calls > 1 ? `\u00d7${calls}` : ""}${hidden > 0 ? ` +${hidden}` : ""}`,
+    );
     return [parts.join(" · "), "accent"];
   }
 
