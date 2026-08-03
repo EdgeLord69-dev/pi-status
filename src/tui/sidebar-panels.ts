@@ -1,8 +1,6 @@
 // biome-ignore-all lint/suspicious/noControlCharactersInRegex: sanitizer intentionally matches ANSI and control characters.
 // Public protocol constants and the direct-side registry for contributed
-// sidebar panels. This module is Task 2 of the panel foundation: it defines
-// the protocol seam, sanitization, and direct registry operations. Revision
-// tracking, discovery, and publisher lifecycle remain Task 3 seams.
+// sidebar panels.
 
 import type {
   ContributedSidebarPanelId,
@@ -31,6 +29,8 @@ export const SIDEBAR_PANEL_MAX_ROW_CHARS = 160;
 export const SIDEBAR_PANEL_MAX_RAW_TITLE_CODE_UNITS = SIDEBAR_PANEL_MAX_TITLE_CHARS * 8;
 /** Maximum raw UTF-16 code units inspected for a contributed row string or row.text. */
 export const SIDEBAR_PANEL_MAX_RAW_ROW_CODE_UNITS = SIDEBAR_PANEL_MAX_ROW_CHARS * 8;
+/** Maximum raw UTF-16 code units accepted for discovery correlation IDs. */
+export const SIDEBAR_PANEL_MAX_RAW_REQUEST_ID_CODE_UNITS = 256;
 /** Maximum characters accepted for a namespaced contributed panel ID. */
 export const SIDEBAR_PANEL_MAX_ID_CHARS = 128;
 /** Maximum characters accepted for a contributed panel source name. */
@@ -117,6 +117,34 @@ export interface SidebarPanelDiscoveryEvent {
   version: typeof SIDEBAR_PANEL_PROTOCOL_VERSION;
   type: "discover";
   requestId: string;
+}
+
+export type SidebarPanelEvent =
+  | SidebarPanelRegisterEvent
+  | SidebarPanelUnregisterEvent
+  | SidebarPanelDiscoveryEvent;
+
+export function isSidebarPanelRequestId(value: unknown): value is string {
+  if (
+    typeof value !== "string" ||
+    value.trim() === "" ||
+    value.length > SIDEBAR_PANEL_MAX_RAW_REQUEST_ID_CODE_UNITS ||
+    /[\x00-\x1f\x7f-\x9f]/.test(value)
+  )
+    return false;
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const low = value.charCodeAt(index + 1);
+      if (!Number.isFinite(low) || low < 0xdc00 || low > 0xdfff) return false;
+      index += 1;
+    } else if (code >= 0xdc00 && code <= 0xdfff) return false;
+  }
+  return true;
+}
+
+function isSafeRevision(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value);
 }
 
 export interface SidebarPanelEventTransport {
@@ -309,7 +337,98 @@ function copyPanelData(data: SidebarPanelData): SidebarPanelData {
   };
 }
 
-/** Create a lifecycle-safe registry backed only by Pi's public event bus. */
+const REVISION_STATE = new WeakMap<object, Map<string, number>>();
+let discoverySequence = 0;
+
+function nextRevision(bus: object, source: string): number | undefined {
+  let revisions = REVISION_STATE.get(bus);
+  if (!revisions) {
+    revisions = new Map();
+    REVISION_STATE.set(bus, revisions);
+  }
+  if (!revisions.has(source) && revisions.size >= SIDEBAR_PANEL_MAX_TRACKED_SOURCES)
+    return undefined;
+  const revision = (revisions.get(source) ?? 0) + 1;
+  if (!Number.isSafeInteger(revision)) return undefined;
+  revisions.set(source, revision);
+  return revision;
+}
+
+export function registerSidebarPanel(
+  pi: { events: SidebarPanelEventTransport },
+  panel: SidebarPanelContribution,
+  options: { source?: string } = {},
+): { update(panel: SidebarPanelContribution): void; dispose(): void } {
+  const safe = sanitizeContribution(panel);
+  const source = options.source ?? (safe ? sourceFor(safe.id) : "");
+  if (!safe || !isSidebarPanelSource(source)) return { update() {}, dispose() {} };
+  const revision = nextRevision(pi.events, source);
+  if (revision === undefined) return { update() {}, dispose() {} };
+  let current = safe;
+  let next = revision;
+  const emit = (event: SidebarPanelEvent): void => pi.events.emit(SIDEBAR_PANEL_CHANNEL, event);
+  emit({
+    version: SIDEBAR_PANEL_PROTOCOL_VERSION,
+    type: "register",
+    source,
+    revision: next,
+    panel: current,
+  });
+  const unsubscribe = pi.events.on(SIDEBAR_PANEL_CHANNEL, (data) => {
+    if (
+      !isRecord(data) ||
+      data.version !== SIDEBAR_PANEL_PROTOCOL_VERSION ||
+      data.type !== "discover" ||
+      !isSidebarPanelRequestId(data.requestId)
+    )
+      return;
+    const replay = nextRevision(pi.events, source);
+    if (replay === undefined) return;
+    next = replay;
+    emit({
+      version: SIDEBAR_PANEL_PROTOCOL_VERSION,
+      type: "register",
+      source,
+      revision: next,
+      panel: current,
+      requestId: data.requestId,
+    });
+  });
+  let disposed = false;
+  return {
+    update(nextPanel) {
+      if (disposed) return;
+      const updated = sanitizeContribution(nextPanel);
+      if (!updated) return;
+      updated.id = current.id;
+      current = updated;
+      const rev = nextRevision(pi.events, source);
+      if (rev === undefined) return;
+      next = rev;
+      emit({
+        version: SIDEBAR_PANEL_PROTOCOL_VERSION,
+        type: "register",
+        source,
+        revision: next,
+        panel: current,
+      });
+    },
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      unsubscribe();
+      const rev = nextRevision(pi.events, source);
+      if (rev !== undefined)
+        emit({
+          version: SIDEBAR_PANEL_PROTOCOL_VERSION,
+          type: "unregister",
+          source,
+          revision: rev,
+          id: current.id,
+        });
+    },
+  };
+}
 export function createSidebarPanelRegistry(
   options: SidebarPanelRegistryOptions = {},
 ): SidebarPanelRegistry {
@@ -370,12 +489,62 @@ export function createSidebarPanelRegistry(
     changed();
     return removed;
   };
-  if (options.events) {
-    unsubscribe = options.events.on(SIDEBAR_PANEL_CHANNEL, () => {
-      // Task 3 wires revisions and discovery through this handler. For
-      // now the registry tolerates incoming events without consuming
-      // any registry state.
+  const revisions = new Map<string, number>();
+  const accept = (source: string, revision: number): boolean => {
+    if (
+      !isSidebarPanelSource(source) ||
+      !isSafeRevision(revision) ||
+      revision <= 0 ||
+      revision <= (revisions.get(source) ?? 0) ||
+      (!revisions.has(source) && revisions.size >= SIDEBAR_PANEL_MAX_TRACKED_SOURCES)
+    )
+      return false;
+    revisions.set(source, revision);
+    return true;
+  };
+  const handleEvent = (data: unknown): void => {
+    if (disposed || !isRecord(data) || data.version !== SIDEBAR_PANEL_PROTOCOL_VERSION) return;
+    if (data.type === "discover") return;
+    if (
+      data.type === "register" &&
+      isSidebarPanelSource(data.source) &&
+      isSafeRevision(data.revision)
+    ) {
+      const safe = sanitizeContribution(data.panel);
+      if (
+        !safe ||
+        (owners.has(safe.id) && owners.get(safe.id) !== data.source) ||
+        (!panels.has(safe.id) && panels.size >= SIDEBAR_PANEL_MAX_PANELS)
+      )
+        return;
+      if (accept(data.source, data.revision)) applyRegister(safe, data.source);
+    } else if (
+      data.type === "unregister" &&
+      isSidebarPanelSource(data.source) &&
+      isSafeRevision(data.revision) &&
+      isSidebarPanelContributionId(data.id) &&
+      owners.get(data.id) === data.source &&
+      accept(data.source, data.revision)
+    ) {
+      owners.delete(data.id);
+      panels.delete(data.id);
+      changed();
+    }
+  };
+
+  const requestDiscovery = (): void => {
+    if (!options.events || disposed) return;
+    discoverySequence = discoverySequence >= Number.MAX_SAFE_INTEGER ? 1 : discoverySequence + 1;
+    options.events.emit(SIDEBAR_PANEL_CHANNEL, {
+      version: SIDEBAR_PANEL_PROTOCOL_VERSION,
+      type: "discover",
+      requestId: `pi-status-${discoverySequence}`,
     });
+  };
+
+  if (options.events) {
+    unsubscribe = options.events.on(SIDEBAR_PANEL_CHANNEL, handleEvent);
+    requestDiscovery();
   }
   return {
     register,
@@ -385,12 +554,8 @@ export function createSidebarPanelRegistry(
       const panel = panels.get(id);
       return panel ? copyPanelData(panel) : undefined;
     },
-    handleEvent: () => {
-      // Task 3 implements revision-scoped event handling here.
-    },
-    requestDiscovery: () => {
-      // Task 3 implements the bounded discovery request emission here.
-    },
+    handleEvent,
+    requestDiscovery,
     dispose: () => {
       if (disposed) return;
       disposed = true;
