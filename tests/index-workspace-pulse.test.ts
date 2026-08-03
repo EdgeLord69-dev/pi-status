@@ -112,7 +112,7 @@ describe("workspace pulse wiring", () => {
 
   it("creates a fresh runtime for a replacement session cwd", async () => {
     withEnabledZone({ bottomLeft: ["workspace-pulse"] });
-    fourCommandMock((options) => options.cwd);
+    const nextInspection = fourCommandMock((options) => options.cwd);
 
     const { pi, handlers } = buildPiWithHandlers();
     createExtension(pi);
@@ -122,6 +122,7 @@ describe("workspace pulse wiring", () => {
     for (const h of handlers.get("session_start") ?? []) h({}, first);
     await new Promise((r) => setImmediate(r));
     await new Promise((r) => setImmediate(r));
+    nextInspection();
     for (const h of handlers.get("session_start") ?? []) h({}, second);
     await new Promise((r) => setImmediate(r));
     await new Promise((r) => setImmediate(r));
@@ -194,18 +195,20 @@ describe("workspace pulse wiring", () => {
     await new Promise((r) => setImmediate(r));
     await new Promise((r) => setImmediate(r));
     const callsBeforeTool = execFileMock.mock.calls.length;
+    refreshableMock();
 
     for (const h of handlers.get("tool_execution_end") ?? []) {
       h({ toolCallId: "t1", isError: false }, ctx);
     }
     await new Promise((r) => setTimeout(r, 260));
-    expect(execFileMock.mock.calls.length).toBeGreaterThan(callsBeforeTool);
-    refreshableMock();
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+    expect(execFileMock.mock.calls.length).toBe(callsBeforeTool + 4);
   });
 
   it("refreshes immediately on turn_start", async () => {
     withEnabledZone({ bottomLeft: ["workspace-pulse"] });
-    fourCommandMock(() => "/repo");
+    const nextInspection = fourCommandMock(() => "/repo");
 
     const { pi, handlers } = buildPiWithHandlers();
     createExtension(pi);
@@ -214,13 +217,14 @@ describe("workspace pulse wiring", () => {
     await new Promise((r) => setImmediate(r));
     await new Promise((r) => setImmediate(r));
     const callsBeforeTurn = execFileMock.mock.calls.length;
+    nextInspection();
 
     for (const h of handlers.get("turn_start") ?? []) {
       h({ turnIndex: 0, timestamp: Date.now() }, ctx);
     }
     await new Promise((r) => setImmediate(r));
     await new Promise((r) => setImmediate(r));
-    expect(execFileMock.mock.calls.length).toBeGreaterThan(callsBeforeTurn);
+    expect(execFileMock.mock.calls.length).toBe(callsBeforeTurn + 4);
   });
 
   it("disposes the runtime on session_shutdown", async () => {

@@ -1,4 +1,5 @@
 import { execFile as nodeExecFile, type ExecException } from "node:child_process";
+import { relative as relativePath } from "node:path";
 import type { Readable } from "node:stream";
 
 export type WorkspacePulseStatus =
@@ -149,7 +150,10 @@ function parseRecords(text: string, into: MutableRecordState): void {
         (recordType !== "u" && !fields.slice(6, 8).every((f) => OID_PATTERN.test(f))) ||
         (recordType === "u" && !fields.slice(3, 7).every((f) => MODE_PATTERN.test(f))) ||
         (recordType === "u" && !fields.slice(7, 10).every((f) => OID_PATTERN.test(f))) ||
-        (recordType === "2" && !/^[RC]\d+$/.test(fields[8] ?? ""))
+        (recordType === "2" &&
+          (!/[RC]/.test(fields[1] ?? "") ||
+            !/^[RC]\d+$/.test(fields[8] ?? "") ||
+            Number((fields[8] ?? "").slice(1)) > 100))
       ) {
         throw new Error("malformed tracked record");
       }
@@ -259,17 +263,24 @@ export function parseNumstat(text: string, submodulePaths: ReadonlySet<string>):
   }
   const limited = records.slice(0, -1);
 
-  for (const raw of limited) {
-    if (raw.length === 0) continue;
+  for (let index = 0; index < limited.length; index += 1) {
+    const raw = limited[index] ?? "";
+    if (raw.length === 0) throw new Error("empty numstat record");
     const firstTab = raw.indexOf("\t");
-    if (firstTab < 0) continue;
+    if (firstTab < 0) throw new Error("malformed numstat entry");
     if (firstTab === 0) throw new Error("malformed numstat entry");
     const secondTab = raw.indexOf("\t", firstTab + 1);
     if (secondTab <= firstTab) throw new Error("malformed numstat entry");
     const added = raw.slice(0, firstTab);
     const removed = raw.slice(firstTab + 1, secondTab);
-    const path = raw.slice(secondTab + 1);
-    if (!path) throw new Error("numstat missing destination");
+    let path = raw.slice(secondTab + 1);
+    if (!path) {
+      const source = limited[index + 1];
+      const destination = limited[index + 2];
+      if (!source || !destination) throw new Error("incomplete numstat rename");
+      path = destination;
+      index += 2;
+    }
     if (submodulePaths.has(path)) continue;
     if (added === "-" && removed === "-") {
       aggregates.binaryFiles += 1;
@@ -283,8 +294,13 @@ export function parseNumstat(text: string, submodulePaths: ReadonlySet<string>):
     if (!Number.isSafeInteger(addedCount) || !Number.isSafeInteger(removedCount)) {
       throw new Error("numstat counts out of range");
     }
-    aggregates.linesAdded += addedCount;
-    aggregates.linesRemoved += removedCount;
+    const linesAdded = aggregates.linesAdded + addedCount;
+    const linesRemoved = aggregates.linesRemoved + removedCount;
+    if (!Number.isSafeInteger(linesAdded) || !Number.isSafeInteger(linesRemoved)) {
+      throw new Error("numstat totals out of range");
+    }
+    aggregates.linesAdded = linesAdded;
+    aggregates.linesRemoved = linesRemoved;
   }
   return aggregates;
 }
@@ -359,6 +375,7 @@ function runGit(
                 : "";
           if (
             classifyNotRepository &&
+            error.code === 128 &&
             stderrText.trim().startsWith("fatal: not a git repository")
           ) {
             reject(
@@ -369,18 +386,11 @@ function runGit(
             );
             return;
           }
-          if (classifyNotRepository && isUnbornHeadError(stderrText)) {
-            reject(
-              Object.assign(new Error("unborn"), {
-                kind: "unborn",
-                stderr: stderrText,
-              }),
-            );
-            return;
-          }
           reject(
             Object.assign(new Error("git-failed"), {
               kind: "failed",
+              code: error.code,
+              killed: error.killed,
               stderr: stderrText,
             }),
           );
@@ -395,18 +405,6 @@ function runGit(
       });
     });
   });
-}
-
-function isUnbornHeadError(stderr: string): boolean {
-  return /bad revision|ambiguous argument.*HEAD|unknown revision or path|not a tree object/i.test(
-    stderr,
-  );
-}
-
-function relativeCwd(root: string, directory: string): string {
-  if (directory === root) return "";
-  const prefix = root.endsWith("/") ? root : `${root}/`;
-  return directory.startsWith(prefix) ? directory.slice(prefix.length) : "";
 }
 
 export async function defaultInspect(
@@ -455,13 +453,14 @@ export async function defaultInspect(
       const headResult = await runGit(exec, ["rev-parse", "--verify", "HEAD^{tree}"], root, signal);
       baseline = headResult.stdout.trim();
     } catch (headError: unknown) {
-      const kind = isExecError(headError) ? (headError as { kind?: string }).kind : undefined;
-      if (kind === "unborn" || state.unborn) {
+      const failure = headError as { code?: unknown; killed?: unknown };
+      if (state.unborn && typeof failure.code === "number" && failure.killed !== true) {
         baseline = EMPTY_TREE;
       } else {
         throw headError;
       }
     }
+    if (!baseline) throw new Error("missing tree baseline");
 
     const diffResult = await runGit(
       exec,
@@ -474,7 +473,7 @@ export async function defaultInspect(
     return {
       kind: "repository",
       root,
-      relativeCwd: relativeCwd(root, directory),
+      relativeCwd: relativePath(root, directory),
       ...(state.branch !== undefined ? { branch: state.branch } : {}),
       ...(state.upstream !== undefined ? { upstream: state.upstream } : {}),
       ahead: state.ahead,

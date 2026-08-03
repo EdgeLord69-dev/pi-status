@@ -14,6 +14,7 @@ import {
   createWorkspacePulseRuntime,
   formatWorkspacePulse,
   parseGitStatusV2,
+  parseNumstat,
   WorkspacePulseRuntime,
   type WorkspaceInspection,
   type WorkspacePulseSnapshot,
@@ -257,6 +258,26 @@ describe("parseGitStatusV2", () => {
     ],
     ["short rename record", ["# branch.oid abc", "# branch.head main", "2 R.", ""]],
     [
+      "rename score above 100",
+      [
+        "# branch.oid abc",
+        "# branch.head main",
+        "2 R. N... 100644 100644 100644 aaa bbb R101 file.ts",
+        "old.ts",
+        "",
+      ],
+    ],
+    [
+      "rename record without rename or copy status",
+      [
+        "# branch.oid abc",
+        "# branch.head main",
+        "2 M. N... 100644 100644 100644 aaa bbb R100 file.ts",
+        "old.ts",
+        "",
+      ],
+    ],
+    [
       "rename without original path",
       [
         "# branch.oid abc",
@@ -311,6 +332,28 @@ describe("parseGitStatusV2", () => {
   it("rejects empty status records after splitting on NUL", () => {
     const text = ["# branch.oid abc", "", "# branch.head main", ""].join("\0");
     expect(() => parseGitStatusV2(text)).toThrow(/empty|malformed|nul/i);
+  });
+});
+
+describe("parseNumstat", () => {
+  it("uses the destination path from a NUL-delimited rename record", () => {
+    const text = ["5\t2\t", "src/old.ts", "src/new.ts", ""].join("\0");
+
+    expect(parseNumstat(text, new Set())).toEqual({
+      linesAdded: 5,
+      linesRemoved: 2,
+      binaryFiles: 0,
+    });
+  });
+
+  it("rejects malformed records instead of silently dropping them", () => {
+    expect(() => parseNumstat("not-numstat\0", new Set())).toThrow(/malformed/);
+  });
+
+  it("rejects aggregate totals above the safe-integer range", () => {
+    const text = [`${Number.MAX_SAFE_INTEGER}\t0\tfirst.ts`, "1\t0\tsecond.ts", ""].join("\0");
+
+    expect(() => parseNumstat(text, new Set())).toThrow(/range/);
   });
 });
 
@@ -499,10 +542,10 @@ describe("WorkspacePulseRuntime — fixed-command inspector", () => {
 });
 
 describe("WorkspacePulseRuntime — NUL-safe inspection and rich metrics", () => {
-  async function startWith(responses: readonly MockResponse[]) {
+  async function startWith(responses: readonly MockResponse[], directory = "/work") {
     execFileMock.mockReset();
     pushMock(responses);
-    const runtime = new WorkspacePulseRuntime({ directory: "/work", inspect: undefined });
+    const runtime = new WorkspacePulseRuntime({ directory, inspect: undefined });
     runtime.start();
     await new Promise((r) => setImmediate(r));
     await new Promise((r) => setImmediate(r));
@@ -510,43 +553,48 @@ describe("WorkspacePulseRuntime — NUL-safe inspection and rich metrics", () =>
   }
 
   it("publishes rich aggregates from a NUL-delimited fixture", async () => {
-    const runtime = await startWith([
-      { stdout: "/work/repo\n" },
-      {
-        stdout: statusFixture([
-          "# branch.oid abcdefabcdefabcdefabcdefabcdefabcdefabcd",
-          "# branch.head main",
-          "# branch.upstream origin/main",
-          "# branch.ab +2 -1",
-          "1 M. N... 100644 100644 100644 aaa aaa src/staged.ts",
-          "1 .M N... 100644 100644 100644 aaa aaa src/unstaged.ts",
-          "1 M. N... 100644 100644 100644 aaa aaa src/extra.ts",
-          "1 .M N... 100644 100644 100644 aaa aaa src/another.ts",
-          "2 R. N... 100644 100644 100644 aaa bbb R100 src/renamed.ts",
-          "src/old.ts",
-          "1 .M SC.. 160000 160000 160000 aaa aaa vendor/sub",
-          "? newfile.ts",
-          "! ignored.ts",
-        ]),
-      },
-      { stdout: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n" },
-      {
-        stdout: [
-          "3\t1\tsrc/staged.ts",
-          "5\t2\tsrc/unstaged.ts",
-          "1\t0\tsrc/extra.ts",
-          "3\t0\tsrc/another.ts",
-          "0\t0\tsrc/renamed.ts",
-          "-\t-\tassets/img.bin",
-          "",
-        ].join("\0"),
-      },
-    ]);
+    const runtime = await startWith(
+      [
+        { stdout: "/work/repo\n" },
+        {
+          stdout: statusFixture([
+            "# branch.oid abcdefabcdefabcdefabcdefabcdefabcdefabcd",
+            "# branch.head main",
+            "# branch.upstream origin/main",
+            "# branch.ab +2 -1",
+            "1 M. N... 100644 100644 100644 aaa aaa src/staged.ts",
+            "1 .M N... 100644 100644 100644 aaa aaa src/unstaged.ts",
+            "1 M. N... 100644 100644 100644 aaa aaa src/extra.ts",
+            "1 .M N... 100644 100644 100644 aaa aaa src/another.ts",
+            "2 R. N... 100644 100644 100644 aaa bbb R100 src/renamed.ts",
+            "src/old.ts",
+            "1 .M SC.. 160000 160000 160000 aaa aaa vendor/sub",
+            "? newfile.ts",
+            "! ignored.ts",
+          ]),
+        },
+        { stdout: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n" },
+        {
+          stdout: [
+            "3\t1\tsrc/staged.ts",
+            "5\t2\tsrc/unstaged.ts",
+            "1\t0\tsrc/extra.ts",
+            "3\t0\tsrc/another.ts",
+            "0\t0\t",
+            "src/old.ts",
+            "src/renamed.ts",
+            "-\t-\tassets/img.bin",
+            "",
+          ].join("\0"),
+        },
+      ],
+      "/work/repo/packages/app",
+    );
 
     expect(runtime.snapshot()).toMatchObject({
       status: "changed",
       root: "/work/repo",
-      relativeCwd: "",
+      relativeCwd: "packages/app",
       branch: "main",
       upstream: "origin/main",
       ahead: 2,
@@ -558,6 +606,20 @@ describe("WorkspacePulseRuntime — NUL-safe inspection and rich metrics", () =>
       submodules: 1,
       counts: { staged: 3, unstaged: 3, untracked: 1, conflicts: 0 },
     });
+  });
+
+  it("normalizes the repository-relative cwd", async () => {
+    const runtime = await startWith(
+      [
+        { stdout: "/work/repo\n" },
+        { stdout: "# branch.oid abc\0# branch.head main\0" },
+        { stdout: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n" },
+        { stdout: "" },
+      ],
+      "/work/repo/packages/../app",
+    );
+
+    expect(runtime.snapshot().relativeCwd).toBe("app");
   });
 
   it("falls back to the empty tree when HEAD^{tree} fails and the repo is unborn", async () => {
@@ -575,6 +637,30 @@ describe("WorkspacePulseRuntime — NUL-safe inspection and rich metrics", () =>
     expect(diffArgs).toContain(EMPTY_TREE);
     expect(diffArgs).not.toContain("undefined");
     expect(runtime.snapshot().branch).toBe("main");
+  });
+
+  it("does not treat a timed-out HEAD lookup as an unborn Git exit", async () => {
+    const runtime = await startWith([
+      { stdout: "/work/repo\n" },
+      { stdout: "# branch.oid (initial)\0# branch.head main\0" },
+      { error: Object.assign(new Error("git timed out"), { killed: true, signal: "SIGTERM" }) },
+      { stdout: "" },
+    ]);
+
+    expect(execFileMock).toHaveBeenCalledTimes(3);
+    expect(runtime.snapshot().status).toBe("unavailable");
+  });
+
+  it("rejects an empty tree baseline before running diff", async () => {
+    const runtime = await startWith([
+      { stdout: "/work/repo\n" },
+      { stdout: "# branch.oid abc\0# branch.head main\0" },
+      { stdout: "\n" },
+      { stdout: "" },
+    ]);
+
+    expect(execFileMock).toHaveBeenCalledTimes(3);
+    expect(runtime.snapshot().status).toBe("unavailable");
   });
 
   it("publishes unavailable when status records are malformed mid-stream (renames)", async () => {
