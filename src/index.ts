@@ -321,7 +321,7 @@ export default function createExtension(pi: ExtensionAPI): void {
 
   pi.on("tool_execution_start", (event, ctx) => {
     if (isActiveTuiSession(ctx, activeTuiSessionManager)) {
-      activityRuntime.startTool(event.toolCallId, event.toolName);
+      activityRuntime.startTool(event.toolCallId, event.toolName, event.args, ctx.cwd);
     }
   });
 

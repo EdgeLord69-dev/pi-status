@@ -1,5 +1,6 @@
+import { visibleWidth } from "@earendil-works/pi-tui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createActivityRuntime } from "../../src/core/activity-runtime.ts";
+import { createActivityRuntime, summarizeTool } from "../../src/core/activity-runtime.ts";
 
 describe("createActivityRuntime", () => {
   beforeEach(() => {
@@ -14,6 +15,33 @@ describe("createActivityRuntime", () => {
     vi.setSystemTime(new Date(ms));
   }
 
+  it("summarizes only allowlisted tool arguments safely and within 26 columns", () => {
+    expect(summarizeTool("bash", { command: "pnpm test\n--run" }, "/work/app")).toBe(
+      "pnpm test --run",
+    );
+    expect(summarizeTool("read", { path: "/work/app/src/a.ts" }, "/work/app")).toBe("src/a.ts");
+    expect(summarizeTool("edit", { path: "src/a.ts" }, "/work/app")).toBe("src/a.ts");
+    expect(summarizeTool("write", { path: "/tmp/a.ts" }, "/work/app")).toBe("/tmp/a.ts");
+    expect(summarizeTool("read", { path: `${process.env.HOME}/src/a.ts` }, "/work/app")).toBe(
+      "~/src/a.ts",
+    );
+    expect(summarizeTool("ls", { path: "." }, "/work/app")).toBe(".");
+    expect(summarizeTool("grep", { pattern: "needle", path: "src" }, "/work/app")).toBe(
+      "needle in src",
+    );
+    expect(summarizeTool("find", { pattern: "*.ts", path: "/work/app" }, "/work/app")).toBe(
+      "*.ts in .",
+    );
+    expect(summarizeTool("bash", { command: "\u001b[31mok\u001b[0m\u0000now" }, "/work/app")).toBe(
+      "ok now",
+    );
+    expect(summarizeTool("unknown", { secret: "do not retain" }, "/work/app")).toBe("");
+    expect(summarizeTool("read", {}, "/work/app")).toBe("");
+    const unicodeSummary = summarizeTool("bash", { command: "界".repeat(26) }, "/work/app");
+    expect(unicodeSummary).toMatch(/…$/);
+    expect(visibleWidth(unicodeSummary)).toBeLessThanOrEqual(26);
+  });
+
   it("starts in an idle snapshot with no active values", () => {
     const runtime = createActivityRuntime();
     const snap = runtime.snapshot();
@@ -21,6 +49,8 @@ describe("createActivityRuntime", () => {
     expect(snap.turn).toEqual({ status: "idle", number: 0, durationMs: 0 });
     expect(snap.activeTools).toEqual([]);
     expect(snap.recentTools).toEqual([]);
+    expect(snap.completedToolCount).toBe(0);
+    expect(snap.failedToolCount).toBe(0);
     expect(snap.response).toEqual({ status: "idle" });
     expect(snap.updatedAt).toBe(0);
   });
@@ -132,8 +162,8 @@ describe("createActivityRuntime", () => {
   it("tracks overlapping tools and ignores unknown completions", () => {
     const runtime = createActivityRuntime();
     runtime.startRun(1000);
-    runtime.startTool("a", "read", 1100);
-    runtime.startTool("b", "write", 1200);
+    runtime.startTool("a", "read", { path: "a" }, "/work/app", 1100);
+    runtime.startTool("b", "write", { path: "b" }, "/work/app", 1200);
     runtime.finishTool("a", false, 1500);
     runtime.finishTool("missing", false, 1600);
     const snap = runtime.snapshot();
@@ -145,22 +175,36 @@ describe("createActivityRuntime", () => {
   it("ignores duplicate active tool call IDs", () => {
     const runtime = createActivityRuntime();
     runtime.startRun(1000);
-    runtime.startTool("a", "read", 1100);
-    runtime.startTool("a", "read", 1200);
+    runtime.startTool("a", "read", { path: "a" }, "/work/app", 1100);
+    runtime.startTool("a", "read", { path: "a" }, "/work/app", 1200);
     expect(runtime.snapshot().activeTools).toHaveLength(1);
   });
 
-  it("marks settled tools as failed when finishTool is told so", () => {
+  it("records summaries and increments each settlement counter once", () => {
     const runtime = createActivityRuntime();
     runtime.startRun(1000);
-    runtime.startTool("a", "read", 1100);
-    runtime.finishTool("a", true, 1500);
-    expect(runtime.snapshot().recentTools[0]?.status).toBe("failed");
+    runtime.startTool("ok", "read", { path: "/work/app/src/a.ts" }, "/work/app", 1100);
+    expect(runtime.snapshot().activeTools).toMatchObject([{ callId: "ok", summary: "src/a.ts" }]);
+    runtime.finishTool("ok", false, 1300);
+    runtime.startTool("bad", "bash", { command: "false" }, "/work/app", 1400);
+    runtime.finishTool("bad", true, 1500);
+    runtime.finishTool("bad", true, 1600);
+    runtime.finishTool("missing", false, 1700);
+    expect(runtime.snapshot()).toMatchObject({
+      completedToolCount: 1,
+      failedToolCount: 1,
+      recentTools: [
+        { callId: "bad", summary: "false", status: "failed" },
+        { callId: "ok", summary: "src/a.ts", status: "complete" },
+      ],
+    });
+    runtime.startRun(1800);
+    expect(runtime.snapshot()).toMatchObject({ completedToolCount: 0, failedToolCount: 0 });
   });
 
   it("clamps completed tool durations when the clock moves backwards", () => {
     const runtime = createActivityRuntime();
-    runtime.startTool("a", "read", 1500);
+    runtime.startTool("a", "read", { path: "a" }, "/work/app", 1500);
     runtime.finishTool("a", false, 1000);
     expect(runtime.snapshot().recentTools[0]?.durationMs).toBe(0);
   });
@@ -169,7 +213,7 @@ describe("createActivityRuntime", () => {
     const runtime = createActivityRuntime();
     runtime.startRun(1000);
     for (let i = 0; i < 7; i++) {
-      runtime.startTool(`c${i}`, "read", 1100 + i * 10);
+      runtime.startTool(`c${i}`, "read", { path: `c${i}` }, "/work/app", 1100 + i * 10);
       runtime.finishTool(`c${i}`, false, 1100 + i * 10 + 5);
     }
     const snap = runtime.snapshot();
@@ -306,7 +350,7 @@ describe("createActivityRuntime", () => {
   it("returns fresh array and tool records on every snapshot", () => {
     const runtime = createActivityRuntime();
     runtime.startRun(1000);
-    runtime.startTool("a", "read", 1100);
+    runtime.startTool("a", "read", { path: "a" }, "/work/app", 1100);
     const first = runtime.snapshot();
     first.activeTools.length = 0;
     first.recentTools.push({} as never);
@@ -321,7 +365,7 @@ describe("createActivityRuntime", () => {
   it("keeps completed tool durations immutable across snapshots", () => {
     const runtime = createActivityRuntime();
     runtime.startRun(1000);
-    runtime.startTool("a", "read", 1100);
+    runtime.startTool("a", "read", { path: "a" }, "/work/app", 1100);
     runtime.finishTool("a", false, 1500);
     const snap = runtime.snapshot();
     expect(snap.recentTools[0]?.durationMs).toBe(400);
@@ -351,18 +395,20 @@ describe("createActivityRuntime", () => {
     expect(snap.run.status).toBe("complete");
   });
 
-  it("finishRun moves any leftover active tools to recent as failed", () => {
+  it("finishRun moves active tools to recent as failed exactly once", () => {
     const runtime = createActivityRuntime();
     runtime.startRun(1000);
-    runtime.startTool("a", "read", 1100);
-    runtime.startTool("b", "write", 1200);
+    runtime.startTool("a", "read", { path: "a" }, "/work/app", 1100);
+    runtime.startTool("b", "write", { path: "b" }, "/work/app", 1200);
     runtime.finishRun(2000);
+    runtime.finishRun(3000);
     const snap = runtime.snapshot();
     expect(snap.activeTools).toEqual([]);
     expect(snap.recentTools.map((t) => [t.callId, t.status])).toEqual([
       ["b", "failed"],
       ["a", "failed"],
     ]);
+    expect(snap).toMatchObject({ completedToolCount: 0, failedToolCount: 2 });
   });
 
   it("finishRun preserves available response metrics when the response was still streaming", () => {
@@ -381,7 +427,7 @@ describe("createActivityRuntime", () => {
   it("finishRun is idempotent and does not move already-settled tools", () => {
     const runtime = createActivityRuntime();
     runtime.startRun(1000);
-    runtime.startTool("a", "read", 1100);
+    runtime.startTool("a", "read", { path: "a" }, "/work/app", 1100);
     runtime.finishTool("a", false, 1500);
     runtime.finishRun(2000);
     runtime.finishRun(3000);
@@ -400,6 +446,7 @@ describe("createActivityRuntime", () => {
     runtime.reset();
     expect(listener).toHaveBeenCalledTimes(2);
     expect(runtime.snapshot().run.status).toBe("idle");
+    expect(runtime.snapshot()).toMatchObject({ completedToolCount: 0, failedToolCount: 0 });
     vi.advanceTimersByTime(5_000);
     expect(listener).toHaveBeenCalledTimes(2);
   });

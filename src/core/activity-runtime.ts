@@ -1,12 +1,102 @@
+import nodePath from "node:path";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { LiveActivitySnapshot, ToolActivity } from "../shared/types.ts";
 
 const RECENT_TOOL_LIMIT = 5;
+const MAX_SUMMARY_COLUMNS = 26;
 const TICK_MS = 1_000;
 
 function clampElapsed(start: number | undefined, end: number, hadEnd?: number): number {
   if (start === undefined) return 0;
   const reference = hadEnd ?? end;
   return Math.max(0, reference - start);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function getString(record: Record<string, unknown>, key: string): string {
+  const value = record[key];
+  return typeof value === "string" ? value : "";
+}
+
+function sanitizeText(value: string): string {
+  return (
+    value
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: strip ANSI escape sequences.
+      .replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, "")
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: strip untrusted control characters.
+      .replace(/[\u0000-\u001f\u007f-\u009f]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+  );
+}
+
+function safeRelativePath(fromPath: string, toPath: string): string | undefined {
+  const relativePath = nodePath.relative(fromPath, toPath);
+  if (relativePath === "") return ".";
+  if (
+    nodePath.isAbsolute(relativePath) ||
+    relativePath === ".." ||
+    relativePath.startsWith(`..${nodePath.sep}`)
+  ) {
+    return undefined;
+  }
+  return relativePath;
+}
+
+function shortenPath(pathValue: string, cwd: string): string {
+  const safePath = sanitizeText(pathValue);
+  if (safePath.length === 0) return "";
+
+  const normalizedCwd = nodePath.resolve(sanitizeText(cwd));
+  const normalizedPath = nodePath.isAbsolute(safePath)
+    ? nodePath.normalize(safePath)
+    : nodePath.resolve(normalizedCwd, safePath);
+  const projectRelativePath = safeRelativePath(normalizedCwd, normalizedPath);
+  if (projectRelativePath !== undefined) return projectRelativePath;
+
+  const home = sanitizeText(process.env.HOME ?? "");
+  if (home.length > 0) {
+    const homeRelativePath = safeRelativePath(nodePath.resolve(home), normalizedPath);
+    if (homeRelativePath !== undefined)
+      return homeRelativePath === "." ? "~" : `~/${homeRelativePath}`;
+  }
+  return normalizedPath;
+}
+
+function truncateSummary(value: string, maxColumns: number): string {
+  return sanitizeText(truncateToWidth(value, maxColumns, "…"));
+}
+
+function summarizePatternTool(args: Record<string, unknown>, cwd: string): string {
+  const pattern = sanitizeText(getString(args, "pattern"));
+  if (pattern.length === 0) return "";
+  const targetPath = shortenPath(getString(args, "path"), cwd);
+  if (targetPath.length === 0) return truncateSummary(pattern, MAX_SUMMARY_COLUMNS);
+  const combined = `${pattern} in ${targetPath}`;
+  return visibleWidth(combined) <= MAX_SUMMARY_COLUMNS
+    ? combined
+    : truncateSummary(pattern, MAX_SUMMARY_COLUMNS);
+}
+
+export function summarizeTool(name: string, args: unknown, cwd: string): string {
+  if (!isRecord(args)) return "";
+  switch (name) {
+    case "bash":
+      return truncateSummary(sanitizeText(getString(args, "command")), MAX_SUMMARY_COLUMNS);
+    case "read":
+    case "edit":
+    case "write":
+    case "ls":
+      return truncateSummary(shortenPath(getString(args, "path"), cwd), MAX_SUMMARY_COLUMNS);
+    case "grep":
+    case "find":
+      return summarizePatternTool(args, cwd);
+    default:
+      return "";
+  }
 }
 
 export function createActivityRuntime() {
@@ -17,6 +107,8 @@ export function createActivityRuntime() {
   let turnEnd: number | undefined;
   const activeTools = new Map<string, ToolActivity>();
   const recentTools: ToolActivity[] = [];
+  let completedToolCount = 0;
+  let failedToolCount = 0;
   let responseStartedAt: number | undefined;
   let responseFirstTokenAt: number | undefined;
   let responseEndedAt: number | undefined;
@@ -69,6 +161,8 @@ export function createActivityRuntime() {
     turnEnd = undefined;
     activeTools.clear();
     recentTools.length = 0;
+    completedToolCount = 0;
+    failedToolCount = 0;
     responseStartedAt = undefined;
     responseFirstTokenAt = undefined;
     responseEndedAt = undefined;
@@ -94,6 +188,7 @@ export function createActivityRuntime() {
       tool.endedAt = end;
       tool.durationMs = Math.max(0, end - tool.startedAt);
       recentTools.unshift({ ...tool });
+      failedToolCount += 1;
     }
     activeTools.clear();
     if (recentTools.length > RECENT_TOOL_LIMIT) {
@@ -121,11 +216,12 @@ export function createActivityRuntime() {
     notify();
   }
 
-  function startTool(callId: string, name: string, at?: number): void {
+  function startTool(callId: string, name: string, args: unknown, cwd: string, at?: number): void {
     if (activeTools.has(callId)) return;
     activeTools.set(callId, {
       callId,
       name,
+      summary: summarizeTool(name, args, cwd),
       status: "active",
       startedAt: at ?? Date.now(),
       durationMs: 0,
@@ -144,6 +240,8 @@ export function createActivityRuntime() {
       durationMs: Math.max(0, end - tool.startedAt),
     };
     activeTools.delete(callId);
+    if (failed) failedToolCount += 1;
+    else completedToolCount += 1;
     recentTools.unshift(completed);
     if (recentTools.length > RECENT_TOOL_LIMIT) {
       recentTools.length = RECENT_TOOL_LIMIT;
@@ -243,6 +341,8 @@ export function createActivityRuntime() {
       },
       activeTools: activeList,
       recentTools: recentList,
+      completedToolCount,
+      failedToolCount,
       response: responseSnap,
       updatedAt: now,
     };
@@ -254,6 +354,8 @@ export function createActivityRuntime() {
       turnStart !== undefined ||
       activeTools.size > 0 ||
       recentTools.length > 0 ||
+      completedToolCount > 0 ||
+      failedToolCount > 0 ||
       responseStatus !== "idle";
     runStart = undefined;
     runEnd = undefined;
@@ -262,6 +364,8 @@ export function createActivityRuntime() {
     turnEnd = undefined;
     activeTools.clear();
     recentTools.length = 0;
+    completedToolCount = 0;
+    failedToolCount = 0;
     responseStartedAt = undefined;
     responseFirstTokenAt = undefined;
     responseEndedAt = undefined;
