@@ -37,6 +37,7 @@ describe("createActivityRuntime", () => {
     );
     expect(summarizeTool("unknown", { secret: "do not retain" }, "/work/app")).toBe("");
     expect(summarizeTool("read", {}, "/work/app")).toBe("");
+    expect(summarizeTool("read", null, "/work/app")).toBe("");
     const unicodeSummary = summarizeTool("bash", { command: "界".repeat(26) }, "/work/app");
     expect(unicodeSummary).toMatch(/…$/);
     expect(visibleWidth(unicodeSummary)).toBeLessThanOrEqual(26);
@@ -442,13 +443,16 @@ describe("createActivityRuntime", () => {
     const listener = vi.fn();
     runtime.setOnChange(listener);
     runtime.startRun(1000);
-    expect(listener).toHaveBeenCalledTimes(1);
+    runtime.startTool("a", "read", { path: "a" }, "/work/app", 1100);
+    runtime.finishTool("a", false, 1200);
+    expect(runtime.snapshot().completedToolCount).toBe(1);
+    listener.mockClear();
     runtime.reset();
-    expect(listener).toHaveBeenCalledTimes(2);
+    expect(listener).toHaveBeenCalledOnce();
     expect(runtime.snapshot().run.status).toBe("idle");
     expect(runtime.snapshot()).toMatchObject({ completedToolCount: 0, failedToolCount: 0 });
     vi.advanceTimersByTime(5_000);
-    expect(listener).toHaveBeenCalledTimes(2);
+    expect(listener).toHaveBeenCalledOnce();
   });
 
   it("reset does not notify when there was no active state", () => {

@@ -263,6 +263,7 @@ describe("config — direct extension file", () => {
 describe("config — sidebar tool names", () => {
   it.each([
     ["missing", undefined, false],
+    ["literal false", false, false],
     ["literal true", true, true],
     ["string yes", "yes", false],
   ])("normalizes showSidebarToolNames: %s", (_case, value, expected) => {
