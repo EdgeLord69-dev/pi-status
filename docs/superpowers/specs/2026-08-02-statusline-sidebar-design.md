@@ -37,11 +37,12 @@ Render panels in this order:
 
 1. **Agent** — ready/working/queued state, model, provider, thinking level, and access type.
 2. **Activity** — run/turn summary, fixed TTFT/TPS row, active tools, up to three recent tools, durations, and total completed/failed counts.
-3. **Alerts** — conditional warning/error extension statuses only; routine healthy statuses stay hidden.
-4. **Context** — current tokens, context window, percentage, and segmented meter.
-5. **Workspace** — project, branch and state, relative directory, tracked and untracked counts, added/removed lines, binary/submodule/conflict details, session name, branch-entry count, and persisted/ephemeral state.
-6. **Usage** — input, output, cache-read, latest cache hit, cost, plus available 5-hour and weekly remaining limits from `pi-usage`.
-7. **Tools** — active/available count and, when enabled and wide enough, exact active tool names.
+3. **Alerts** — non-hidden extension statuses that indicate a warning or error, sorted by key and retained ahead of routine statuses when height is constrained.
+4. **Statuses** — all remaining non-hidden extension statuses, sorted by key. Do not apply the footer's five-status cap; every value participates in layout, although lower-priority rows may be dropped when terminal height is insufficient.
+5. **Context** — current tokens, context window, percentage, and segmented meter.
+6. **Workspace** — project, branch and state, relative directory, staged/unstaged/tracked/untracked/conflict counts, ahead/behind counts, added/removed lines, binary/submodule details, session name and identifier, branch-entry count, and persisted/ephemeral state.
+7. **Usage** — total used tokens, input, output, cache-read, cache-write, latest cache hit, cost, plus available 5-hour and weekly remaining limits from `pi-usage`.
+8. **Tools** — active/available count and, when enabled and wide enough, exact active tool names.
 
 Use Atelier's sanitization, ANSI-safe sizing, panel crowns, divider, truncation, compact reflow, intrinsic metric columns, and height-based drop ranking. Do not port Atelier's playful working-label generator; map the existing `pi-status` run state to Ready, Working, or Queued.
 
@@ -54,7 +55,7 @@ Responsive constants match Atelier's implementation:
 - effective sidebar visibility begins at 92 terminal columns;
 - compact sidebar layout applies at 43 columns or fewer and suppresses expanded tool names.
 
-Auto-hiding preserves the requested shown state, so widening restores the sidebar. As terminal height contracts, Agent, Activity core, and Context remain required; optional activity, alerts, workspace, usage, and tool details follow Atelier's existing drop ranks. The renderer always returns exactly the requested terminal height, filling unused rows without wrapping.
+Auto-hiding preserves the requested shown state, so widening restores the sidebar. As terminal height contracts, Agent, Activity core, and Context remain required; optional activity, extension statuses, workspace, usage, and tool details follow Atelier's existing drop ranks. Warning/error extension rows outlive routine status rows. The renderer always returns exactly the requested terminal height, filling unused rows without wrapping.
 
 ## Architecture and State
 
@@ -68,7 +69,7 @@ Use one shared runtime pipeline for the footer and sidebar:
 
 Keep the pure renderer separate from host lifecycle code. Port the split-pane controller as a focused module. Keep sidebar-only palette roles with the renderer rather than introducing a general theming abstraction.
 
-The sidebar snapshot adds project/session identity, branch-entry count, persisted state, active tool names, extension-status values, and the current richer Workspace Pulse. It must not retain prompt text, assistant text, arbitrary tool arguments, tool results, changed-file paths, or Git stderr.
+The sidebar snapshot adds project/session identity, branch-entry count, persisted state, active tool names, extension-status values, and the current richer Workspace Pulse. Apply the existing `extensionSegments.hidden` list before separating extension values into warning/error Alerts and routine Statuses. Sanitize and ANSI-safely truncate each displayed value to the available panel width. It must not retain prompt text, assistant text, arbitrary tool arguments, tool results, changed-file paths, or Git stderr.
 
 Extend `PiStatusConfig` with:
 
@@ -136,6 +137,8 @@ Add focused automated coverage for:
 
 - snapshot sanitization, safe tool summaries, session metadata, usage-limit availability, and absence of arbitrary arguments/results;
 - panel order, fixed palette, `NO_COLOR`, compact/wide layouts, ANSI-safe widths, exact terminal height, missing data, alerts, and height drop order;
+- complete built-in segment coverage by mapping every `KNOWN_SEGMENTS` ID to a sidebar field, including total used tokens, session ID, and cache-write tokens;
+- extension-status sorting, hidden-key filtering, warning/error classification, routine status rendering without the footer's five-item cap, sanitization, truncation, and constrained-height priority;
 - split thresholds, width clamping, renderer wrapping/restoration, resize mouse parsing, keyboard steps, accept/cancel, error rollback, and disposal;
 - controller show/hide idempotence, persistent-overlay identity, exact-handle hiding/disposal, generation guards, animation, overlay options, fullscreen warning, and cleanup without closing a dashboard above it;
 - Settings-row immediate behavior, persistence failure, unchanged dirty-state semantics, and live dashboard/sidebar geometry;
@@ -148,6 +151,8 @@ Run focused tests first, then `pnpm check`, `pnpm pack --dry-run`, and `git diff
 
 - Regular-mode sessions start with an Atelier-equivalent right sidebar at 44 columns while preserving at least 64 columns for Pi.
 - The sidebar matches Atelier's panels, palette, responsive behavior, resize controls, and safe failure behavior, with pi-status's 5-hour and weekly limit rows added.
+- Every current `StatusLineSegmentId` has an explicit sidebar representation, and a coverage test fails when a future built-in segment is not mapped.
+- Every non-hidden extension status participates in sidebar rendering; warning/error values appear under Alerts and routine values under Statuses, subject only to responsive height dropping.
 - The existing footer remains behaviorally unchanged and visible beneath normal Pi content.
 - `/statusline` remains the only dashboard command and stays centered within Pi's left pane while the sidebar is visible.
 - Settings controls apply immediately with the specified session and persistence semantics and do not create false dirty state.
