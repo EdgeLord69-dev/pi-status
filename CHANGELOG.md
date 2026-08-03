@@ -24,7 +24,7 @@ All notable changes to `@pi-vault/pi-status` are documented in this file.
 - Footer rows now fit independently at narrow widths, dropping lower-priority items before truncating remaining content.
 - `NO_COLOR` is honored by presence for both the footer and dashboard.
 - Token totals now include usage from assistant, tool-result, branch-summary, and compaction session entries.
-- Layout, Statuses, and Settings share one draft/save flow; Tools apply immediately; Session rename and compaction use Pi dialogs.
+- Layout, Statuses, and Settings share one draft/save flow; Tools apply immediately; session rename, compaction confirmation, and dirty-close discard stay inside the centered dashboard overlay.
 - Dashboard rendering is bounded across narrow terminal sizes, while the saved footer remains visible behind the overlay.
 
 ### Fixed
