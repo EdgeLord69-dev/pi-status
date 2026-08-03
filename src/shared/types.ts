@@ -51,6 +51,7 @@ export type PiStatusConfig = {
   zones: StatusLineZones;
   extensionSegments: ExtensionSegments;
   completionNotifications: boolean;
+  showSidebarToolNames: boolean;
 };
 
 export const KNOWN_SEGMENTS: readonly StatusLineSegmentId[] = [
@@ -106,6 +107,7 @@ export type ActivityStatus = "idle" | "active" | "complete";
 export interface ToolActivity {
   callId: string;
   name: string;
+  summary: string;
   status: "active" | "complete" | "failed";
   startedAt: number;
   endedAt?: number;
@@ -134,6 +136,8 @@ export interface LiveActivitySnapshot {
   };
   activeTools: ToolActivity[];
   recentTools: ToolActivity[];
+  completedToolCount: number;
+  failedToolCount: number;
   response: ResponsePerformance;
   updatedAt: number;
 }

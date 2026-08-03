@@ -119,6 +119,8 @@ describe("render", () => {
           turn: { status: "active", number: 3, startedAt: 2000, durationMs: 1000 },
           activeTools: [],
           recentTools: [],
+          completedToolCount: 0,
+          failedToolCount: 0,
           response: {
             status: "streaming",
             startedAt: 2000,

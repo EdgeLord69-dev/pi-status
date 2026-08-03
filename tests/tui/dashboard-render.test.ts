@@ -27,6 +27,7 @@ function config(overrides: Partial<PiStatusConfig> = {}): PiStatusConfig {
     zones: zones(),
     extensionSegments: { hidden: [] },
     completionNotifications: false,
+    showSidebarToolNames: false,
     ...overrides,
   };
 }

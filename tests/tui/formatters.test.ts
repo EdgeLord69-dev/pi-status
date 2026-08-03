@@ -515,6 +515,8 @@ describe("formatTurnProgress", () => {
     turn: { status: "idle" as const, number: 0, durationMs: 0 },
     activeTools: [],
     recentTools: [],
+    completedToolCount: 0,
+    failedToolCount: 0,
     response: { status: "idle" as const },
     updatedAt: 0,
   };
@@ -544,10 +546,38 @@ describe("formatTurnProgress", () => {
       ...idleActivity,
       turn: { status: "active" as const, number: 1, startedAt: 1000, durationMs: 0 },
       activeTools: [
-        { callId: "a", name: "read", status: "active" as const, startedAt: 1000, durationMs: 0 },
-        { callId: "b", name: "read", status: "active" as const, startedAt: 1100, durationMs: 0 },
-        { callId: "c", name: "write", status: "active" as const, startedAt: 1200, durationMs: 0 },
-        { callId: "d", name: "bash", status: "active" as const, startedAt: 1300, durationMs: 0 },
+        {
+          callId: "a",
+          name: "read",
+          summary: "",
+          status: "active" as const,
+          startedAt: 1000,
+          durationMs: 0,
+        },
+        {
+          callId: "b",
+          name: "read",
+          summary: "",
+          status: "active" as const,
+          startedAt: 1100,
+          durationMs: 0,
+        },
+        {
+          callId: "c",
+          name: "write",
+          summary: "",
+          status: "active" as const,
+          startedAt: 1200,
+          durationMs: 0,
+        },
+        {
+          callId: "d",
+          name: "bash",
+          summary: "",
+          status: "active" as const,
+          startedAt: 1300,
+          durationMs: 0,
+        },
       ],
     };
     expect(formatTurnProgress(input({ activity }), identityTheme)).toEqual([
@@ -563,6 +593,7 @@ describe("formatTurnProgress", () => {
         {
           callId: "a",
           name: "read",
+          summary: "",
           status: "complete" as const,
           startedAt: 1000,
           endedAt: 1100,
@@ -600,9 +631,30 @@ describe("formatTurnProgress", () => {
       ...idleActivity,
       turn: { status: "active" as const, number: 1, startedAt: 1000, durationMs: 0 },
       activeTools: [
-        { callId: "a", name: "read", status: "active" as const, startedAt: 1000, durationMs: 0 },
-        { callId: "b", name: "read", status: "active" as const, startedAt: 1100, durationMs: 0 },
-        { callId: "c", name: "read", status: "active" as const, startedAt: 1200, durationMs: 0 },
+        {
+          callId: "a",
+          name: "read",
+          summary: "",
+          status: "active" as const,
+          startedAt: 1000,
+          durationMs: 0,
+        },
+        {
+          callId: "b",
+          name: "read",
+          summary: "",
+          status: "active" as const,
+          startedAt: 1100,
+          durationMs: 0,
+        },
+        {
+          callId: "c",
+          name: "read",
+          summary: "",
+          status: "active" as const,
+          startedAt: 1200,
+          durationMs: 0,
+        },
       ],
     };
     expect(formatTurnProgress(input({ activity }), identityTheme)).toEqual([
@@ -618,6 +670,8 @@ describe("formatResponsePerformance", () => {
     turn: { status: "idle" as const, number: 0, durationMs: 0 },
     activeTools: [],
     recentTools: [],
+    completedToolCount: 0,
+    failedToolCount: 0,
     response: { status: "idle" as const },
     updatedAt: 0,
   };

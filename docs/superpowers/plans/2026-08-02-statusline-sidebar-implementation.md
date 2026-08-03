@@ -6,7 +6,7 @@
 
 **Architecture:** Reuse the existing footer snapshot, activity runtime, usage runtime, dashboard reducer, and Workspace Pulse lifecycle. Add a pure sidebar snapshot/renderer, a mechanically ported split-pane controller, and one session-owned controller that installs a retained `showOverlay()` handle directly from the footer factory; `src/index.ts` remains the lifecycle composition root.
 
-**Tech Stack:** TypeScript 6, Pi/Pi TUI public 0.83 APIs, Vitest 4, Biome, pnpm, Node 24.
+**Tech Stack:** TypeScript 6, Pi/Pi TUI public 0.83 APIs, Vitest 4, Biome, pnpm, Node 24.15.0 via mise.
 
 ---
 
@@ -62,9 +62,11 @@ test -z "$(git status --short)"
 git merge-base --is-ancestor 5b4ea4615d8dcc934ee55ebe4003516ebd1c427e HEAD
 git -C /Users/lanh/Developer/pi-packages/michaelmjhhhh-pi-atelier cat-file -e '36e5640^{commit}'
 git -C /Users/lanh/Developer/pi-packages/pi cat-file -e '583f153d502aa8e958eefdb9af0fbd3344e68f95^{commit}'
+mise exec node@24.15.0 -- node --version
+mise exec node@24.15.0 -- pnpm install --frozen-lockfile
 ```
 
-Expected: exit 0 with no output.
+Expected: Node reports `v24.15.0`, the pinned commits exist, and the lockfile remains unchanged.
 
 - [ ] **Step 2: Verify the host contracts this plan relies on**
 
@@ -112,7 +114,7 @@ expect(loadConfig({ agentDir: "/agent", store }).showSidebarToolNames).toBe(fals
 - [ ] **Step 2: Run the focused tests and verify red**
 
 ```bash
-pnpm vitest run tests/core/config.test.ts tests/tui/dashboard-state.test.ts
+mise exec node@24.15.0 -- pnpm vitest run tests/core/config.test.ts tests/tui/dashboard-state.test.ts
 ```
 
 Expected: FAIL because `PiStatusConfig` and normalized config do not contain `showSidebarToolNames`.
@@ -145,8 +147,8 @@ Do not change assertions unrelated to configuration shape.
 - [ ] **Step 5: Verify and commit**
 
 ```bash
-pnpm vitest run tests/core/config.test.ts tests/core/resolve-footer.test.ts tests/core/runtime-state.test.ts tests/tui/dashboard-state.test.ts tests/tui/dashboard-render.test.ts tests/tui/dashboard.test.ts tests/index.test.ts tests/index-save.test.ts
-pnpm typecheck
+mise exec node@24.15.0 -- pnpm vitest run tests/core/config.test.ts tests/core/resolve-footer.test.ts tests/core/runtime-state.test.ts tests/tui/dashboard-state.test.ts tests/tui/dashboard-render.test.ts tests/tui/dashboard.test.ts tests/index.test.ts tests/index-save.test.ts
+mise exec node@24.15.0 -- pnpm typecheck
 git add src/shared/types.ts src/core/config.ts src/tui/dashboard-state.ts tests/core/config.test.ts tests/core/resolve-footer.test.ts tests/core/runtime-state.test.ts tests/index-save.test.ts tests/index.test.ts tests/tui/dashboard-render.test.ts tests/tui/dashboard-state.test.ts tests/tui/dashboard.test.ts
 git commit -m "feat: add sidebar configuration state"
 ```
@@ -161,11 +163,12 @@ Expected: focused tests and typecheck pass; commit succeeds.
 - Modify: `src/core/activity-runtime.ts`
 - Modify: `src/index.ts`
 - Modify: `tests/core/activity-runtime.test.ts`
-- Modify: `tests/activity-adapter.test.ts`
+- Verify/update: `tests/activity-adapter.test.ts`
+- Update typed fixtures: `tests/tui/formatters.test.ts`, `tests/tui/render.test.ts`
 
 - [ ] **Step 1: Add failing allowlist and counter tests**
 
-Port the `summarizeTool` cases from Atelier `tests/run-activity.test.ts`, retaining pi-status's five-item recent history. Cover `bash.command`, read/edit/write/ls path, grep/find pattern and path, project-relative and home-relative paths, ANSI/control stripping, 26-column Unicode truncation, unknown tools, and non-object args. Add:
+Port the `summarizeTool` cases from Atelier `tests/run-activity.test.ts`, retaining pi-status's five-item recent history. Cover `bash.command`, read/edit/write/ls path, grep/find pattern and path, project-relative and home-relative paths, ANSI/control stripping, 26-column Unicode truncation, unknown tools, non-object args, summaries on active/recent records, and zero/missing arguments. Extend existing tests for zero counters, reset, active-tool settlement, unknown completions, and idempotent `finishRun()`. Add `summary: ""` and zero counters to typed formatter/render fixtures, and update every existing `startTool` call to pass `args`, `cwd`, and timestamp in the new order. Add:
 
 ```ts
 expect(summarizeTool("bash", { command: "pnpm test\n--run" }, "/work/app")).toBe(
@@ -184,7 +187,7 @@ expect(runtime.snapshot()).toMatchObject({ completedToolCount: 1, failedToolCoun
 - [ ] **Step 2: Verify red**
 
 ```bash
-pnpm vitest run tests/core/activity-runtime.test.ts tests/activity-adapter.test.ts
+mise exec node@24.15.0 -- pnpm vitest run tests/core/activity-runtime.test.ts tests/activity-adapter.test.ts tests/tui/formatters.test.ts tests/tui/render.test.ts
 ```
 
 Expected: FAIL because `summarizeTool`, summaries, counters, and the widened `startTool` signature are absent.
@@ -241,7 +244,7 @@ function startTool(callId: string, name: string, args: unknown, cwd: string, at?
 }
 ```
 
-Reset both counters in `startRun()` and `reset()`. Increment the matching counter in `finishTool()` and count active tools converted to failed in `finishRun()`. Return both values from `snapshot()`.
+Reset both counters in `startRun()` and `reset()`. Increment the matching counter in `finishTool()` and count active tools converted to failed in `finishRun()`. Return both values from `snapshot()`. Unknown or duplicate completions must not increment counters, and repeated `finishRun()` calls must not double-count.
 
 - [ ] **Step 4: Pass trusted event data through the adapter**
 
@@ -251,14 +254,14 @@ Change only the call in `tool_execution_start`:
 activityRuntime.startTool(event.toolCallId, event.toolName, event.args, ctx.cwd);
 ```
 
-Never inspect or store `tool_execution_end.result`.
+Never inspect or store `tool_execution_end.result`. The widened TypeScript signature provides compile-time coverage for the adapter change; keep existing adapter footer-compatibility assertions.
 
 - [ ] **Step 5: Verify and commit**
 
 ```bash
-pnpm vitest run tests/core/activity-runtime.test.ts tests/activity-adapter.test.ts tests/tui/formatters.test.ts
-pnpm typecheck
-git add src/core/activity-runtime.ts src/index.ts src/shared/types.ts tests/core/activity-runtime.test.ts tests/activity-adapter.test.ts
+mise exec node@24.15.0 -- pnpm vitest run tests/core/activity-runtime.test.ts tests/activity-adapter.test.ts tests/tui/formatters.test.ts tests/tui/render.test.ts
+mise exec node@24.15.0 -- pnpm typecheck
+git add src/core/activity-runtime.ts src/index.ts src/shared/types.ts tests/core/activity-runtime.test.ts tests/activity-adapter.test.ts tests/tui/formatters.test.ts tests/tui/render.test.ts
 git commit -m "feat: enrich sidebar activity telemetry"
 ```
 

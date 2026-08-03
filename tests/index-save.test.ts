@@ -27,6 +27,7 @@ function config(): PiStatusConfig {
     },
     extensionSegments: { hidden: [] },
     completionNotifications: false,
+    showSidebarToolNames: false,
   };
 }
 
@@ -63,6 +64,7 @@ describe("/statusline persistence", () => {
       zones: { topLeft: ["model"], topRight: [], bottomLeft: ["current-dir"], bottomRight: [] },
       extensionSegments: { hidden: [] },
       completionNotifications: false,
+      showSidebarToolNames: false,
     };
     const loadConfig = vi.fn(() => initial);
     const saveConfig = vi.fn();

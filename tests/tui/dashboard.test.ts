@@ -18,6 +18,7 @@ function config(): PiStatusConfig {
     },
     extensionSegments: { hidden: [] },
     completionNotifications: false,
+    showSidebarToolNames: false,
   };
 }
 

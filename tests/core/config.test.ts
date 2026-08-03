@@ -27,6 +27,7 @@ const config: PiStatusConfig = {
   zones: { topLeft: ["git-branch"], topRight: [], bottomLeft: [], bottomRight: [] },
   extensionSegments: { hidden: ["alpha"] },
   completionNotifications: false,
+  showSidebarToolNames: false,
 };
 
 describe("config — normalization", () => {
@@ -156,6 +157,7 @@ describe("config — direct extension file", () => {
       zones: DEFAULT_ZONES,
       extensionSegments: { hidden: [] },
       completionNotifications: false,
+      showSidebarToolNames: false,
     });
     expect(store.accessPaths).toEqual([path]);
     expect(store.accessPaths.some((accessed) => accessed.includes("settings.json"))).toBe(false);
@@ -187,6 +189,7 @@ describe("config — direct extension file", () => {
         zones: DEFAULT_ZONES,
         extensionSegments: { hidden: [] },
         completionNotifications: false,
+        showSidebarToolNames: false,
       });
     },
   );
@@ -257,6 +260,34 @@ describe("config — direct extension file", () => {
   });
 });
 
+describe("config — sidebar tool names", () => {
+  it.each([
+    ["missing", undefined, false],
+    ["literal false", false, false],
+    ["literal true", true, true],
+    ["string yes", "yes", false],
+  ])("normalizes showSidebarToolNames: %s", (_case, value, expected) => {
+    const store = new MemoryConfigStore();
+    const input = { zones: DEFAULT_ZONES, extensionSegments: { hidden: [] } } as Record<
+      string,
+      unknown
+    >;
+    if (value !== undefined) input.showSidebarToolNames = value;
+    store.seed(getConfigPath("/agent"), JSON.stringify(input));
+
+    expect(loadConfig({ agentDir: "/agent", store }).showSidebarToolNames).toBe(expected);
+  });
+
+  it("serializes showSidebarToolNames: true through saveConfig", () => {
+    const store = new MemoryConfigStore();
+    const path = getConfigPath("/agent");
+
+    saveConfig({ ...config, showSidebarToolNames: true }, { agentDir: "/agent", store });
+
+    expect(JSON.parse(store.read(path) as string).showSidebarToolNames).toBe(true);
+  });
+});
+
 describe("config — filesystem", () => {
   let agentDir: string;
 
@@ -274,6 +305,7 @@ describe("config — filesystem", () => {
       zones: DEFAULT_ZONES,
       extensionSegments: { hidden: [] },
       completionNotifications: false,
+      showSidebarToolNames: false,
     });
     vi.mocked(mkdtempSync).mockClear();
     expect(saveConfig(config)).toEqual({ path });
@@ -309,6 +341,7 @@ describe("config — completion notifications", () => {
         zones: DEFAULT_ZONES,
         extensionSegments: { hidden: [] },
         completionNotifications: false,
+        showSidebarToolNames: false,
       }),
     );
     expect(loadConfig({ agentDir: "/agent", store }).completionNotifications).toBe(false);
@@ -338,6 +371,7 @@ describe("config — completion notifications", () => {
         zones: DEFAULT_ZONES,
         extensionSegments: { hidden: [] },
         completionNotifications: true,
+        showSidebarToolNames: false,
       }),
     );
     expect(loadConfig({ agentDir: "/agent", store }).completionNotifications).toBe(true);
@@ -371,7 +405,7 @@ describe("config — completion notifications", () => {
     const written = JSON.parse(store.read(path) as string);
     expect(written).toEqual({ ...config, completionNotifications: true });
     expect(Object.keys(written).sort()).toEqual(
-      ["completionNotifications", "extensionSegments", "zones"].sort(),
+      ["completionNotifications", "extensionSegments", "showSidebarToolNames", "zones"].sort(),
     );
   });
 

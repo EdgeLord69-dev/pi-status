@@ -14,7 +14,7 @@
 
 - Design: `docs/superpowers/specs/2026-08-02-statusline-sidebar-design.md`
 - Unchanged detailed parent: `docs/superpowers/plans/2026-08-02-statusline-sidebar-implementation.md`
-- Frozen parent SHA-256: `1faa916827f22ce4dbb1da72ce5932e145b4d2276d9e87268c7a5d710db1fce4`
+- Frozen parent SHA-256: `0483c33399ab902342ba3797b460b9b5652ca553173189fad2ec8eea66b3cdab`
 - Pi Atelier reference: `/Users/lanh/Developer/pi-packages/michaelmjhhhh-pi-atelier` at `36e5640`
 - Pi host reference: `/Users/lanh/Developer/pi-packages/pi` at `583f153d502aa8e958eefdb9af0fbd3344e68f95`
 
@@ -47,7 +47,7 @@ git merge-base --is-ancestor dae5612 HEAD
 shasum -a 256 docs/superpowers/plans/2026-08-02-statusline-sidebar-implementation.md
 ```
 
-Expected: exit 0 and parent checksum `1faa916827f22ce4dbb1da72ce5932e145b4d2276d9e87268c7a5d710db1fce4`.
+Expected: exit 0 and parent checksum `0483c33399ab902342ba3797b460b9b5652ca553173189fad2ec8eea66b3cdab`.
 
 - [ ] **Step 2: Create an ignored execution marker**
 
@@ -91,8 +91,8 @@ Follow `docs/superpowers/plans/2026-08-02-statusline-sidebar-phase-06-release-ve
 - [ ] **Step 1: Run the repository gate**
 
 ```bash
-pnpm check
-pnpm pack:dry-run
+mise exec node@24.15.0 -- pnpm check
+mise exec node@24.15.0 -- pnpm pack:dry-run
 git diff --check
 ```
 
@@ -102,7 +102,7 @@ Expected: every command exits 0.
 
 ```bash
 set -e
-shasum -a 256 docs/superpowers/plans/2026-08-02-statusline-sidebar-implementation.md | grep -F '1faa916827f22ce4dbb1da72ce5932e145b4d2276d9e87268c7a5d710db1fce4'
+shasum -a 256 docs/superpowers/plans/2026-08-02-statusline-sidebar-implementation.md | grep -F '0483c33399ab902342ba3797b460b9b5652ca553173189fad2ec8eea66b3cdab'
 test "$(git diff --name-only "$(cat .superpowers/statusline-sidebar-phased-base)"...HEAD -- package.json pnpm-lock.yaml | wc -l | tr -d ' ')" = "0"
 git log --oneline "$(cat .superpowers/statusline-sidebar-phased-base)"..HEAD
 ```
