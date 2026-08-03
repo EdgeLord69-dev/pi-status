@@ -13,12 +13,12 @@
 ## Source authority
 
 - Design: `docs/superpowers/specs/2026-08-02-statusline-sidebar-design.md`
-- Unchanged detailed parent: `docs/superpowers/plans/2026-08-02-statusline-sidebar-implementation.md`
-- Frozen parent SHA-256: `0483c33399ab902342ba3797b460b9b5652ca553173189fad2ec8eea66b3cdab`
+- Detailed parent: `docs/superpowers/plans/2026-08-02-statusline-sidebar-implementation.md`
+- Frozen parent SHA-256: `2f48d3c3d273bf8d8782f7e4c17b89b5b570575e2a37ade85de5881d290e7dfb`
 - Pi Atelier reference: `/Users/lanh/Developer/pi-packages/michaelmjhhhh-pi-atelier` at `36e5640`
 - Pi host reference: `/Users/lanh/Developer/pi-packages/pi` at `583f153d502aa8e958eefdb9af0fbd3344e68f95`
 
-If this roadmap and the unchanged detailed parent disagree, follow the approved design first and the detailed parent second. Phase plans repeat parent content so each can be executed in isolation; they do not replace the parent.
+If this roadmap and the detailed parent disagree, follow the approved design first and the detailed parent second. Phase plans repeat parent content so each can be executed in isolation; they do not replace the parent.
 
 ## Phase order
 
@@ -47,7 +47,7 @@ git merge-base --is-ancestor dae5612 HEAD
 shasum -a 256 docs/superpowers/plans/2026-08-02-statusline-sidebar-implementation.md
 ```
 
-Expected: exit 0 and parent checksum `0483c33399ab902342ba3797b460b9b5652ca553173189fad2ec8eea66b3cdab`.
+Expected: exit 0 and parent checksum `2f48d3c3d273bf8d8782f7e4c17b89b5b570575e2a37ade85de5881d290e7dfb`.
 
 - [ ] **Step 2: Create an ignored execution marker**
 
@@ -102,9 +102,9 @@ Expected: every command exits 0.
 
 ```bash
 set -e
-shasum -a 256 docs/superpowers/plans/2026-08-02-statusline-sidebar-implementation.md | grep -F '0483c33399ab902342ba3797b460b9b5652ca553173189fad2ec8eea66b3cdab'
+shasum -a 256 docs/superpowers/plans/2026-08-02-statusline-sidebar-implementation.md | grep -F '2f48d3c3d273bf8d8782f7e4c17b89b5b570575e2a37ade85de5881d290e7dfb'
 test "$(git diff --name-only "$(cat .superpowers/statusline-sidebar-phased-base)"...HEAD -- package.json pnpm-lock.yaml | wc -l | tr -d ' ')" = "0"
 git log --oneline "$(cat .superpowers/statusline-sidebar-phased-base)"..HEAD
 ```
 
-Expected: the detailed parent checksum is unchanged, dependency files are untouched, and the phase commits appear in order.
+Expected: the detailed parent checksum matches the updated roadmap, dependency files are untouched, and the phase commits appear in order.
