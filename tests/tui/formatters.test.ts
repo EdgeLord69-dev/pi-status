@@ -92,6 +92,11 @@ describe("workspace pulse segment", () => {
       counts: { staged: 0, unstaged: 0, untracked: 0, conflicts: 0 },
       ahead: 0,
       behind: 0,
+      trackedFiles: 0,
+      linesAdded: 0,
+      linesRemoved: 0,
+      binaryFiles: 0,
+      submodules: 0,
       checkedAt: 1,
       ...overrides,
     };

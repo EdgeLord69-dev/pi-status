@@ -78,14 +78,20 @@ function cleanRepo(value: Partial<WorkspaceInspection> = {}): WorkspaceInspectio
   return {
     kind: "repository",
     root: "/repo",
+    relativeCwd: "",
     branch: "main",
     upstream: undefined,
     ahead: 0,
     behind: 0,
     counts: { staged: 0, unstaged: 0, untracked: 0, conflicts: 0 },
     status: "clean",
+    trackedFiles: 0,
+    linesAdded: 0,
+    linesRemoved: 0,
+    binaryFiles: 0,
+    submodules: 0,
     ...value,
-  };
+  } as WorkspaceInspection;
 }
 
 afterEach(() => {
@@ -100,7 +106,8 @@ describe("parseGitStatusV2", () => {
       "# branch.head main",
       "# branch.upstream origin/main",
       "# branch.ab +0 -0",
-    ].join("\n");
+      "",
+    ].join("\0");
     expect(parseGitStatusV2(text)).toEqual({
       branch: "main",
       upstream: "origin/main",
@@ -112,7 +119,7 @@ describe("parseGitStatusV2", () => {
   });
 
   it("accepts (initial) oid and reports zero ahead/behind when no branch.ab is present", () => {
-    const text = ["# branch.oid (initial)", "# branch.head main"].join("\n");
+    const text = ["# branch.oid (initial)", "# branch.head main", ""].join("\0");
     expect(parseGitStatusV2(text)).toEqual({
       branch: "main",
       upstream: undefined,
@@ -129,7 +136,8 @@ describe("parseGitStatusV2", () => {
       "# branch.head feature/x",
       "# branch.upstream origin/feature/x",
       "# branch.ab +7 -3",
-    ].join("\n");
+      "",
+    ].join("\0");
     expect(parseGitStatusV2(text)).toMatchObject({
       branch: "feature/x",
       upstream: "origin/feature/x",
@@ -139,7 +147,7 @@ describe("parseGitStatusV2", () => {
   });
 
   it("maps (detached) to HEAD", () => {
-    const text = ["# branch.oid abc", "# branch.head (detached)"].join("\n");
+    const text = ["# branch.oid abc", "# branch.head (detached)", ""].join("\0");
     expect(parseGitStatusV2(text).branch).toBe("HEAD");
   });
 
@@ -151,11 +159,13 @@ describe("parseGitStatusV2", () => {
       "# branch.ab +2 -1",
       "1 M. N... 100644 100644 100644 aaa aaa src/staged.ts",
       "1 .M N... 100644 100644 100644 aaa aaa src/unstaged.ts",
-      "2 R. N... 100644 100644 100644 aaa bbb R100 new name.ts\told name.ts",
+      "2 R. N... 100644 100644 100644 aaa bbb R100 new name.ts",
+      "old name.ts",
       "u UU N... 100644 100644 100644 100644 aaa bbb ccc conflict.ts",
       "? untracked.ts",
       "! ignored.ts",
-    ].join("\n");
+      "",
+    ].join("\0");
     expect(parseGitStatusV2(text)).toEqual({
       branch: "feature/pulse",
       upstream: "origin/feature/pulse",
@@ -172,101 +182,220 @@ describe("parseGitStatusV2", () => {
       "# branch.head main",
       "1 M. N... 100644 100644 100644 aaa aaa src/staged.ts",
       "? untracked.ts",
-    ].join("\n");
+      "",
+    ].join("\0");
     expect(parseGitStatusV2(text).status).toBe("changed");
   });
 
-  it("ignores unknown # metadata and CRLF line endings", () => {
+  it("ignores unknown # metadata", () => {
     const text = [
       "# branch.oid abc",
       "# branch.head main",
-      "# future.metadata something-extra\r\n",
+      "# future.metadata something-extra",
       "# branch.someOtherKey value",
       "? untracked.ts",
-    ].join("\n");
+      "",
+    ].join("\0");
     const result = parseGitStatusV2(text);
     expect(result.branch).toBe("main");
     expect(result.counts.untracked).toBe(1);
   });
 
   it("rejects when branch.oid is missing", () => {
-    expect(() => parseGitStatusV2("# branch.head main")).toThrow(/branch\.oid/);
+    expect(() => parseGitStatusV2(["# branch.head main", ""].join("\0"))).toThrow(/branch\.oid/);
   });
 
   it("rejects when branch.head is missing", () => {
-    expect(() => parseGitStatusV2("# branch.oid abc")).toThrow(/branch\.head/);
+    expect(() => parseGitStatusV2(["# branch.oid abc", ""].join("\0"))).toThrow(/branch\.head/);
   });
 
   it("rejects malformed branch.ab values", () => {
     expect(() =>
-      parseGitStatusV2(["# branch.oid abc", "# branch.head main", "# branch.ab ++1 -1"].join("\n")),
+      parseGitStatusV2(
+        ["# branch.oid abc", "# branch.head main", "# branch.ab ++1 -1", ""].join("\0"),
+      ),
     ).toThrow(/branch\.ab/);
     expect(() =>
-      parseGitStatusV2(["# branch.oid abc", "# branch.head main", "# branch.ab +1"].join("\n")),
+      parseGitStatusV2(["# branch.oid abc", "# branch.head main", "# branch.ab +1", ""].join("\0")),
     ).toThrow(/branch\.ab/);
     expect(() =>
       parseGitStatusV2(
-        ["# branch.oid abc", "# branch.head main", `# branch.ab +${"9".repeat(100)} -0`].join("\n"),
+        ["# branch.oid abc", "# branch.head main", `# branch.ab +${"9".repeat(100)} -0`, ""].join(
+          "\0",
+        ),
       ),
     ).toThrow(/branch\.ab/);
   });
 
   it("rejects unknown data record codes", () => {
     expect(() =>
-      parseGitStatusV2(["# branch.oid abc", "# branch.head main", "9 ?? N... x"].join("\n")),
+      parseGitStatusV2(["# branch.oid abc", "# branch.head main", "9 ?? N... x", ""].join("\0")),
     ).toThrow(/unknown record/);
   });
 
   it.each([
-    ["invalid OID", ["# branch.oid not-an-oid", "# branch.head main"]],
-    ["empty upstream", ["# branch.oid abc", "# branch.head main", "# branch.upstream "]],
-    ["short ordinary record", ["# branch.oid abc", "# branch.head main", "1 M."]],
+    ["invalid OID", ["# branch.oid not-an-oid", "# branch.head main", ""]],
+    ["empty upstream", ["# branch.oid abc", "# branch.head main", "# branch.upstream ", ""]],
+    ["short ordinary record", ["# branch.oid abc", "# branch.head main", "1 M.", ""]],
     [
       "invalid XY flags",
-      ["# branch.oid abc", "# branch.head main", "1 ZZ N... 100644 100644 100644 aaa aaa file.ts"],
+      [
+        "# branch.oid abc",
+        "# branch.head main",
+        "1 ZZ N... 100644 100644 100644 aaa aaa file.ts",
+        "",
+      ],
     ],
     [
       "invalid ordinary metadata",
-      ["# branch.oid abc", "# branch.head main", "1 M. bad 100644 100644 100644 aaa aaa file.ts"],
+      [
+        "# branch.oid abc",
+        "# branch.head main",
+        "1 M. bad 100644 100644 100644 aaa aaa file.ts",
+        "",
+      ],
     ],
-    ["short rename record", ["# branch.oid abc", "# branch.head main", "2 R."]],
+    ["short rename record", ["# branch.oid abc", "# branch.head main", "2 R.", ""]],
     [
       "rename without original path",
       [
         "# branch.oid abc",
         "# branch.head main",
         "2 R. N... 100644 100644 100644 aaa bbb R100 file.ts",
+        "",
       ],
     ],
-    ["short unmerged record", ["# branch.oid abc", "# branch.head main", "u UU"]],
+    ["short unmerged record", ["# branch.oid abc", "# branch.head main", "u UU", ""]],
     [
       "invalid unmerged metadata",
       [
         "# branch.oid abc",
         "# branch.head main",
         "u UU bad 100644 100644 100644 100644 aaa bbb ccc file.ts",
+        "",
       ],
     ],
-    ["empty untracked path", ["# branch.oid abc", "# branch.head main", "? "]],
-    ["empty ignored path", ["# branch.oid abc", "# branch.head main", "! "]],
+    ["empty untracked path", ["# branch.oid abc", "# branch.head main", "? ", ""]],
+    ["empty ignored path", ["# branch.oid abc", "# branch.head main", "! ", ""]],
   ])("rejects malformed known data: %s", (_label, lines) => {
-    expect(() => parseGitStatusV2(lines.join("\n"))).toThrow();
+    expect(() => parseGitStatusV2(lines.join("\0"))).toThrow();
+  });
+
+  it("accepts NUL-delimited records with mixed stdout via -z", () => {
+    const text = [
+      "# branch.oid abc",
+      "# branch.head main",
+      "1 M. N... 100644 100644 100644 aaa aaa src/staged.ts",
+      "2 R. N... 100644 100644 100644 aaa bbb R100 src/renamed.ts",
+      "src/old.ts",
+      "? newfile.ts",
+      "",
+    ].join("\0");
+    expect(parseGitStatusV2(text)).toMatchObject({
+      branch: "main",
+      counts: { staged: 2, unstaged: 0, untracked: 1, conflicts: 0 },
+      status: "changed",
+    });
+  });
+
+  it("rejects incomplete NUL-terminated rename pairs", () => {
+    const text = [
+      "# branch.oid abc",
+      "# branch.head main",
+      "2 R. N... 100644 100644 100644 aaa bbb R100 src/renamed.ts",
+      "",
+    ].join("\0");
+    expect(() => parseGitStatusV2(text)).toThrow(/rename|incomplete/);
+  });
+
+  it("rejects empty status records after splitting on NUL", () => {
+    const text = ["# branch.oid abc", "", "# branch.head main", ""].join("\0");
+    expect(() => parseGitStatusV2(text)).toThrow(/empty|malformed|nul/i);
   });
 });
 
+interface MockResponse {
+  argv?: readonly string[];
+  stdout?: string;
+  error?: Error & { code?: number | string; stderr?: string; killed?: boolean };
+}
+
+function statusFixture(records: readonly string[]): string {
+  const withTrailingNul = [...records, ""];
+  return withTrailingNul.join("\0");
+}
+
+function pushMock(responses: readonly MockResponse[]): void {
+  for (const response of responses) {
+    execFileMock.mockImplementationOnce(((...args: unknown[]) => {
+      const cb = args[args.length - 1] as (err: unknown, stdout: string, stderr: string) => void;
+      if (response.error) {
+        const err = response.error;
+        const stderr = err.stderr ?? "";
+        cb(err, "", stderr);
+        if (typeof err.code === "number") {
+          return failChild(stderr, err.code);
+        }
+        return fakeChild();
+      }
+      cb(null, response.stdout ?? "", "");
+      return fakeChild();
+    }) as never);
+  }
+}
+
+function expectOptionShape(options: unknown): void {
+  expect(options).toMatchObject({
+    timeout: 2_000,
+    maxBuffer: 256 * 1024,
+    windowsHide: true,
+    shell: false,
+    env: expect.objectContaining({ GIT_OPTIONAL_LOCKS: "0", LC_ALL: "C", LANG: "C" }),
+  });
+  expect((options as { signal?: AbortSignal }).signal).toBeInstanceOf(AbortSignal);
+}
+
+function repoCallArgs(): {
+  cmd: string;
+  argv: readonly string[];
+  cwd: string;
+  options: unknown;
+  signal: AbortSignal;
+}[] {
+  return execFileMock.mock.calls.map((call) => {
+    const [cmd, argv, options] = call as unknown as [
+      string,
+      readonly string[],
+      { cwd: string; signal: AbortSignal },
+    ];
+    return { cmd, argv, cwd: options.cwd, options, signal: options.signal };
+  });
+}
+
 describe("WorkspacePulseRuntime — fixed-command inspector", () => {
-  it("issues exactly two git execFile calls in the documented order with bounded options", async () => {
-    execFileMock
-      .mockImplementationOnce(((...args: unknown[]) => {
-        const cb = args[args.length - 1] as (err: unknown, stdout: string, stderr: string) => void;
-        cb(null, "/repo with trailing space \n", "");
-        return fakeChild();
-      }) as never)
-      .mockImplementationOnce(((...args: unknown[]) => {
-        const cb = args[args.length - 1] as (err: unknown, stdout: string, stderr: string) => void;
-        cb(null, ["# branch.oid abc", "# branch.head main", "# branch.ab +0 -0"].join("\n"), "");
-        return fakeChild();
-      }) as never);
+  it("issues exactly four git execFile calls in the documented order with bounded options", async () => {
+    pushMock([
+      { argv: ["rev-parse", "--show-toplevel"], stdout: "/repo with trailing space \n" },
+      {
+        argv: ["status", "--porcelain=v2", "-z", "--branch", "--untracked-files=all"],
+        stdout: "# branch.oid abc\0# branch.head main\0# branch.ab +0 -0\0",
+      },
+      {
+        argv: ["rev-parse", "--verify", "HEAD^{tree}"],
+        stdout: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n",
+      },
+      {
+        argv: [
+          "diff",
+          "--numstat",
+          "-z",
+          "--find-renames",
+          "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+          "--",
+        ],
+        stdout: "",
+      },
+    ]);
 
     const runtime: WorkspacePulseRuntime = new WorkspacePulseRuntime({
       directory: "/work/sub",
@@ -275,28 +404,34 @@ describe("WorkspacePulseRuntime — fixed-command inspector", () => {
     runtime.start();
     await new Promise((r) => setImmediate(r));
     await new Promise((r) => setImmediate(r));
-    expect(execFileMock).toHaveBeenCalledTimes(2);
+    expect(execFileMock).toHaveBeenCalledTimes(4);
 
-    const [firstCmd, firstArgv, firstOptions] = execFileMock.mock.calls[0] ?? [];
-    expect(firstCmd).toBe("git");
-    expect(firstArgv).toEqual(["rev-parse", "--show-toplevel"]);
-    expect(firstOptions).toMatchObject({
-      cwd: "/work/sub",
-      timeout: 2_000,
-      maxBuffer: 256 * 1024,
-      windowsHide: true,
-      shell: false,
-      env: expect.objectContaining({ GIT_OPTIONAL_LOCKS: "0", LC_ALL: "C", LANG: "C" }),
-    });
-    expect((firstOptions as { signal?: AbortSignal }).signal).toBeInstanceOf(AbortSignal);
+    const calls = repoCallArgs();
+    expect(calls.map((c) => c.cmd)).toEqual(["git", "git", "git", "git"]);
+    expect(calls.map((c) => c.argv)).toEqual([
+      ["rev-parse", "--show-toplevel"],
+      ["status", "--porcelain=v2", "-z", "--branch", "--untracked-files=all"],
+      ["rev-parse", "--verify", "HEAD^{tree}"],
+      [
+        "diff",
+        "--numstat",
+        "-z",
+        "--find-renames",
+        "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+        "--",
+      ],
+    ]);
 
-    const [, secondArgv, secondOptions] = execFileMock.mock.calls[1] ?? [];
-    expect(secondArgv).toEqual(["status", "--porcelain=v2", "--branch", "--untracked-files=all"]);
-    expect(secondOptions).toMatchObject({
-      cwd: "/repo with trailing space ",
-      timeout: 2_000,
-      maxBuffer: 256 * 1024,
-    });
+    const sharedSignal = calls[0]?.signal;
+    expect(sharedSignal).toBeInstanceOf(AbortSignal);
+    for (const call of calls) {
+      expectOptionShape(call.options);
+      expect(call.signal).toBe(sharedSignal);
+    }
+    expect(calls[0]?.cwd).toBe("/work/sub");
+    expect(calls[1]?.cwd).toBe("/repo with trailing space ");
+    expect(calls[2]?.cwd).toBe("/repo with trailing space ");
+    expect(calls[3]?.cwd).toBe("/repo with trailing space ");
   });
 
   it("classifies root command exit 128 not-a-git-repository as not-repository", async () => {
@@ -317,18 +452,15 @@ describe("WorkspacePulseRuntime — fixed-command inspector", () => {
   });
 
   it("treats status exit 128 as a failed inspection, not a root classification", async () => {
-    execFileMock
-      .mockImplementationOnce(((...args: unknown[]) => {
-        const cb = args[args.length - 1] as (err: unknown, stdout: string, stderr: string) => void;
-        cb(null, "/repo\n", "");
-        return fakeChild();
-      }) as never)
-      .mockImplementationOnce(((...args: unknown[]) => {
-        const cb = args[args.length - 1] as (err: unknown, stdout: string, stderr: string) => void;
-        const stderr = "fatal: not a git repository";
-        cb(Object.assign(new Error("exit"), { code: 128, stderr }), "", stderr);
-        return failChild(stderr, 128);
-      }) as never);
+    pushMock([
+      { argv: ["rev-parse", "--show-toplevel"], stdout: "/repo\n" },
+      {
+        error: Object.assign(new Error("exit"), {
+          code: 128,
+          stderr: "fatal: not a git repository",
+        }),
+      },
+    ]);
 
     const runtime = new WorkspacePulseRuntime({ directory: "/work" });
     runtime.start();
@@ -338,12 +470,7 @@ describe("WorkspacePulseRuntime — fixed-command inspector", () => {
   });
 
   it("classifies nonzero git exit as unavailable", async () => {
-    execFileMock.mockImplementationOnce(((...args: unknown[]) => {
-      const cb = args[args.length - 1] as (err: unknown, stdout: string, stderr: string) => void;
-      const err = Object.assign(new Error("exit"), { code: 1, stderr: "boom" });
-      cb(err, "", "boom");
-      return failChild("boom", 1);
-    }) as never);
+    pushMock([{ error: Object.assign(new Error("exit"), { code: 1, stderr: "boom" }) }]);
     const runtime = new WorkspacePulseRuntime({ directory: "/work" });
     runtime.start();
     await new Promise((r) => setImmediate(r));
@@ -361,17 +488,249 @@ describe("WorkspacePulseRuntime — fixed-command inspector", () => {
       }),
     ],
   ])("classifies %s as unavailable", async (_label, error) => {
-    execFileMock.mockImplementationOnce(((...args: unknown[]) => {
-      const cb = args[args.length - 1] as (err: unknown, stdout: string, stderr: string) => void;
-      cb(error, "", "");
-      return fakeChild();
-    }) as never);
+    pushMock([{ error }]);
     const runtime = new WorkspacePulseRuntime({ directory: "/work" });
     runtime.start();
     await new Promise((r) => setImmediate(r));
     await new Promise((r) => setImmediate(r));
     expect(runtime.snapshot().status).toBe("unavailable");
     expect(runtime.snapshot().checkedAt).toEqual(expect.any(Number));
+  });
+});
+
+describe("WorkspacePulseRuntime — NUL-safe inspection and rich metrics", () => {
+  async function startWith(responses: readonly MockResponse[]) {
+    execFileMock.mockReset();
+    pushMock(responses);
+    const runtime = new WorkspacePulseRuntime({ directory: "/work", inspect: undefined });
+    runtime.start();
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+    return runtime;
+  }
+
+  it("publishes rich aggregates from a NUL-delimited fixture", async () => {
+    const runtime = await startWith([
+      { stdout: "/work/repo\n" },
+      {
+        stdout: statusFixture([
+          "# branch.oid abcdefabcdefabcdefabcdefabcdefabcdefabcd",
+          "# branch.head main",
+          "# branch.upstream origin/main",
+          "# branch.ab +2 -1",
+          "1 M. N... 100644 100644 100644 aaa aaa src/staged.ts",
+          "1 .M N... 100644 100644 100644 aaa aaa src/unstaged.ts",
+          "1 M. N... 100644 100644 100644 aaa aaa src/extra.ts",
+          "1 .M N... 100644 100644 100644 aaa aaa src/another.ts",
+          "2 R. N... 100644 100644 100644 aaa bbb R100 src/renamed.ts",
+          "src/old.ts",
+          "1 .M SC.. 160000 160000 160000 aaa aaa vendor/sub",
+          "? newfile.ts",
+          "! ignored.ts",
+        ]),
+      },
+      { stdout: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n" },
+      {
+        stdout: [
+          "3\t1\tsrc/staged.ts",
+          "5\t2\tsrc/unstaged.ts",
+          "1\t0\tsrc/extra.ts",
+          "3\t0\tsrc/another.ts",
+          "0\t0\tsrc/renamed.ts",
+          "-\t-\tassets/img.bin",
+          "",
+        ].join("\0"),
+      },
+    ]);
+
+    expect(runtime.snapshot()).toMatchObject({
+      status: "changed",
+      root: "/work/repo",
+      relativeCwd: "",
+      branch: "main",
+      upstream: "origin/main",
+      ahead: 2,
+      behind: 1,
+      trackedFiles: 6,
+      linesAdded: 12,
+      linesRemoved: 3,
+      binaryFiles: 1,
+      submodules: 1,
+      counts: { staged: 3, unstaged: 3, untracked: 1, conflicts: 0 },
+    });
+  });
+
+  it("falls back to the empty tree when HEAD^{tree} fails and the repo is unborn", async () => {
+    const runtime = await startWith([
+      { stdout: "/work/repo\n" },
+      { stdout: "# branch.oid (initial)\0# branch.head main\0" },
+      {
+        error: Object.assign(new Error("exit"), { code: 128, stderr: "fatal: not a tree object" }),
+      },
+      { stdout: "" },
+    ]);
+
+    const diffArgs = execFileMock.mock.calls[3]?.[1] as readonly string[];
+    const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+    expect(diffArgs).toContain(EMPTY_TREE);
+    expect(diffArgs).not.toContain("undefined");
+    expect(runtime.snapshot().branch).toBe("main");
+  });
+
+  it("publishes unavailable when status records are malformed mid-stream (renames)", async () => {
+    const runtime = await startWith([
+      { stdout: "/work/repo\n" },
+      { stdout: "# branch.oid abc\u0000# branch.head main\u00002 R.\u0000" },
+    ]);
+    expect(runtime.snapshot().status).toBe("unavailable");
+  });
+
+  it("publishes unavailable on unknown data record codes", async () => {
+    const runtime = await startWith([
+      { stdout: "/work/repo\n" },
+      { stdout: "# branch.oid abc\u0000# branch.head main\u00009 ?? N... x\u0000" },
+    ]);
+    expect(runtime.snapshot().status).toBe("unavailable");
+  });
+
+  it("publishes unavailable on malformed numstat entries", async () => {
+    const runtime = await startWith([
+      { stdout: "/work/repo\n" },
+      {
+        stdout:
+          "# branch.oid abc\0# branch.head main\0" +
+          "1 M. N... 100644 100644 100644 aaa aaa src/staged.ts\0",
+      },
+      { stdout: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n" },
+      { stdout: "notnumstat\tsrc/staged.ts\0" },
+    ]);
+    expect(runtime.snapshot().status).toBe("unavailable");
+  });
+
+  it("excludes submodule paths from line and binary aggregates", async () => {
+    const runtime = await startWith([
+      { stdout: "/work/repo\n" },
+      {
+        stdout: [
+          "# branch.oid abc",
+          "# branch.head main",
+          "1 .M SC.. 160000 160000 160000 aaa aaa vendor/sub",
+          "? newfile.ts",
+          "",
+        ].join("\0"),
+      },
+      { stdout: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n" },
+      {
+        stdout: ["5\t2\tvendor/sub", "-\t-\tassets/img.bin", ""].join("\0"),
+      },
+    ]);
+
+    expect(runtime.snapshot()).toMatchObject({
+      submodules: 1,
+      linesAdded: 0,
+      linesRemoved: 0,
+      binaryFiles: 1,
+      trackedFiles: 1,
+    });
+  });
+
+  it("publishes unavailable when a rename record is missing its trailing path", async () => {
+    const runtime = await startWith([
+      { stdout: "/work/repo\n" },
+      {
+        stdout: [
+          "# branch.oid abc",
+          "# branch.head main",
+          "2 R. N... 100644 100644 100644 aaa bbb R100 src/renamed.ts",
+          "",
+        ].join("\0"),
+      },
+      { stdout: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n" },
+      { stdout: "1\t1\tsrc/renamed.ts" },
+    ]);
+    expect(runtime.snapshot().status).toBe("unavailable");
+  });
+
+  it("publishes unavailable on status output that is not NUL-terminated", async () => {
+    const runtime = await startWith([
+      { stdout: "/work/repo\n" },
+      { stdout: "# branch.oid abc\n# branch.head main\n" },
+      { stdout: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n" },
+      { stdout: "" },
+    ]);
+    expect(runtime.snapshot().status).toBe("unavailable");
+  });
+
+  it("publishes unavailable when HEAD^{tree} fails on a non-unborn repo", async () => {
+    const runtime = await startWith([
+      { stdout: "/work/repo\n" },
+      { stdout: "# branch.oid abc\0# branch.head main\0" },
+      { error: Object.assign(new Error("exit"), { code: 128, stderr: "boom" }) },
+    ]);
+    expect(runtime.snapshot().status).toBe("unavailable");
+  });
+
+  it("publishes unavailable when the diff command fails outside the unborn case", async () => {
+    const runtime = await startWith([
+      { stdout: "/work/repo\n" },
+      { stdout: "# branch.oid abc\0# branch.head main\0" },
+      { stdout: "" },
+      { error: Object.assign(new Error("exit"), { code: 1, stderr: "diff boom" }) },
+    ]);
+    expect(runtime.snapshot().status).toBe("unavailable");
+  });
+
+  it("preserves rich fields across stale retention", async () => {
+    const runtime = await startWith([
+      { stdout: "/work/repo\n" },
+      {
+        stdout: [
+          "# branch.oid abc",
+          "# branch.head main",
+          "1 M. N... 100644 100644 100644 aaa aaa src/staged.ts",
+          "? newfile.ts",
+          "",
+        ].join("\0"),
+      },
+      { stdout: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n" },
+      { stdout: "3\t1\tsrc/staged.ts\0" },
+    ]);
+
+    expect(runtime.snapshot()).toMatchObject({
+      status: "changed",
+      trackedFiles: 1,
+      linesAdded: 3,
+      linesRemoved: 1,
+      binaryFiles: 0,
+      submodules: 0,
+    });
+
+    pushMock([{ error: new Error("later boom") }]);
+    await runtime.refresh();
+    expect(runtime.snapshot()).toMatchObject({
+      status: "stale",
+      trackedFiles: 1,
+      linesAdded: 3,
+      linesRemoved: 1,
+    });
+  });
+
+  it("enforces the 256 KiB buffer cap on every call", async () => {
+    await startWith([
+      { stdout: "/work/repo\n" },
+      { stdout: "# branch.oid abc\0# branch.head main\0" },
+      { stdout: "deadbeef\n" },
+      {
+        error: Object.assign(new RangeError("stdout maxBuffer length exceeded"), {
+          code: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER",
+        }),
+      },
+    ]);
+    const calls = execFileMock.mock.calls;
+    for (const call of calls) {
+      const [, , options] = call as unknown as [string, readonly string[], { maxBuffer: number }];
+      expect(options.maxBuffer).toBe(256 * 1024);
+    }
   });
 });
 
@@ -771,6 +1130,11 @@ describe("formatWorkspacePulse", () => {
     counts: { staged: 0, unstaged: 0, untracked: 0, conflicts: 0 },
     ahead: 0,
     behind: 0,
+    trackedFiles: 0,
+    linesAdded: 0,
+    linesRemoved: 0,
+    binaryFiles: 0,
+    submodules: 0,
   } as const;
 
   it("renders the clean check + branch for a clean repository", () => {
