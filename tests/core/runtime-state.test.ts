@@ -12,6 +12,7 @@ const defaultConfig: PiStatusConfig = {
   },
   extensionSegments: { hidden: [] },
   completionNotifications: false,
+  showSidebarToolNames: false,
 };
 
 function stubCtx(cwd = "/test"): ExtensionContext {
@@ -75,6 +76,7 @@ describe("RuntimeStateMachine", () => {
       zones: { topLeft: ["git-branch"], topRight: [], bottomLeft: [], bottomRight: [] },
       extensionSegments: { hidden: ["x"] },
       completionNotifications: false,
+      showSidebarToolNames: false,
     };
     sm.update({ type: "config_reload", config: newConfig });
     expect(sm.snapshot().config).toEqual(newConfig);

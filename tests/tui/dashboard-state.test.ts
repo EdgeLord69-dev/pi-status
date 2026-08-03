@@ -25,6 +25,7 @@ function config(overrides: Partial<PiStatusConfig> = {}): PiStatusConfig {
     zones: zones(),
     extensionSegments: { hidden: [] },
     completionNotifications: false,
+    showSidebarToolNames: false,
     ...overrides,
   };
 }
@@ -97,6 +98,7 @@ describe("dashboard draft initialization", () => {
     const first = config();
     expect(configsEqual(first, structuredClone(first))).toBe(true);
     expect(configsEqual(first, config({ completionNotifications: true }))).toBe(false);
+    expect(configsEqual(first, config({ showSidebarToolNames: true }))).toBe(false);
     expect(configsEqual(first, config({ extensionSegments: { hidden: ["alpha"] } }))).toBe(false);
     expect(
       configsEqual(

@@ -23,6 +23,7 @@ export const DEFAULT_CONFIG: PiStatusConfig = {
   zones: cloneZones(DEFAULT_ZONES),
   extensionSegments: { hidden: [] },
   completionNotifications: false,
+  showSidebarToolNames: false,
 };
 
 function cloneDefaultConfig(): PiStatusConfig {
@@ -30,6 +31,7 @@ function cloneDefaultConfig(): PiStatusConfig {
     zones: cloneZones(DEFAULT_CONFIG.zones),
     extensionSegments: { hidden: [...DEFAULT_CONFIG.extensionSegments.hidden] },
     completionNotifications: DEFAULT_CONFIG.completionNotifications,
+    showSidebarToolNames: DEFAULT_CONFIG.showSidebarToolNames,
   };
 }
 
@@ -150,6 +152,7 @@ function normalizeConfig(input: Record<string, unknown>): PiStatusConfig {
         : cloneZones(DEFAULT_ZONES),
     extensionSegments: normalizeExtensionSegments(input.extensionSegments),
     completionNotifications: input.completionNotifications === true,
+    showSidebarToolNames: input.showSidebarToolNames === true,
   };
 }
 
@@ -175,6 +178,7 @@ export function saveConfig(
     zones: cloneZones(config.zones),
     extensionSegments: { hidden: [...config.extensionSegments.hidden] },
     completionNotifications: config.completionNotifications,
+    showSidebarToolNames: config.showSidebarToolNames,
   };
   store.write(path, `${JSON.stringify(next, null, 2)}\n`);
   return { path };

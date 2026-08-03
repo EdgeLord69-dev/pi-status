@@ -51,6 +51,7 @@ export type PiStatusConfig = {
   zones: StatusLineZones;
   extensionSegments: ExtensionSegments;
   completionNotifications: boolean;
+  showSidebarToolNames: boolean;
 };
 
 export const KNOWN_SEGMENTS: readonly StatusLineSegmentId[] = [

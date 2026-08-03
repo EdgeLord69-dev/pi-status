@@ -633,6 +633,7 @@ describe("extension wiring", () => {
       },
       extensionSegments: { hidden: [] },
       completionNotifications: true,
+      showSidebarToolNames: false,
     });
   });
 
@@ -936,6 +937,7 @@ describe("extension wiring — completion notifications", () => {
         zones: { topLeft: [], topRight: [], bottomLeft: [], bottomRight: [] },
         extensionSegments: { hidden: [] },
         completionNotifications: true,
+        showSidebarToolNames: false,
       }),
       "utf8",
     );
