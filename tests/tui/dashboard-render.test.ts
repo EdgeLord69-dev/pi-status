@@ -1,4 +1,4 @@
-import { visibleWidth } from "@earendil-works/pi-tui";
+import { Input, visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it } from "vitest";
 import { buildSnapshot } from "../../src/core/resolve-footer.ts";
 import type { PiStatusConfig, StatusLineZones } from "../../src/shared/types.ts";
@@ -29,6 +29,10 @@ function config(overrides: Partial<PiStatusConfig> = {}): PiStatusConfig {
     completionNotifications: false,
     ...overrides,
   };
+}
+
+function stripAnsi(value: string): string {
+  return value.replace(new RegExp(`${String.fromCharCode(27)}\\[[\\d;]*m`, "g"), "");
 }
 
 const snapshotInput = {
@@ -245,6 +249,103 @@ describe("dashboard render", () => {
     const result = renderDashboard(state, preview, noTheme, 6, 40);
     expect(result.lines.every((line) => visibleWidth(line) === 6)).toBe(true);
     expect(result.lines.join("\n")).not.toContain("┏");
+  });
+
+  it("renders the bounded fallback instead of a dialog when too small", () => {
+    const state = initDashboardState(config(), [], true);
+    const result = renderDashboard(state, preview, noTheme, 40, 5, {
+      type: "confirm",
+      kind: "discard",
+      selectedIndex: 1,
+    });
+
+    expect(result.lines.join("\n")).toContain("Terminal too small");
+    expect(result.lines.join("\n")).not.toContain("Discard changes");
+  });
+
+  it("renders a discard confirmation inside the dashboard frame", () => {
+    const state = initDashboardState(config(), [], true);
+    const result = renderDashboard(state, preview, noTheme, 100, 40, {
+      type: "confirm",
+      kind: "discard",
+      selectedIndex: 0,
+    });
+
+    expect(result.lines.join("\n")).toContain("Discard unsaved changes?");
+    expect(result.lines.join("\n")).toContain("Discard changes");
+    expect(result.lines.find((line) => line.includes("Cancel"))).toContain("▸");
+    expect(result.lines.every((line) => visibleWidth(line) === 100)).toBe(true);
+    expect(result.offset).toBe(0);
+  });
+
+  it("renders compact confirmation inside the dashboard frame", () => {
+    const state = initDashboardState(config(), [], true);
+    const result = renderDashboard(state, preview, noTheme, 80, 24, {
+      type: "confirm",
+      kind: "compact",
+      selectedIndex: 0,
+    });
+
+    expect(result.lines.join("\n")).toContain("Compact session?");
+    expect(result.lines.join("\n")).toContain("Pi will summarize older context.");
+    expect(result.lines.find((line) => line.includes("Cancel"))).toContain("▸");
+    expect(result.lines.every((line) => visibleWidth(line) === 80)).toBe(true);
+  });
+
+  it("marks only the selected destructive confirmation action", () => {
+    const state = initDashboardState(config(), [], true);
+    const result = renderDashboard(state, preview, noTheme, 80, 24, {
+      type: "confirm",
+      kind: "discard",
+      selectedIndex: 1,
+    });
+
+    expect(result.lines.find((line) => line.includes("Discard changes"))).toContain("▸");
+    expect(result.lines.find((line) => line.includes("Cancel"))).not.toContain("▸");
+  });
+
+  it.each([
+    { kind: "discard", action: "Discard changes" },
+    { kind: "compact", action: "Compact session" },
+  ] as const)("keeps the selected $kind action visible in a one-row dialog viewport", (dialog) => {
+    const state = initDashboardState(config(), [], true);
+    const result = renderDashboard(state, preview, noTheme, 80, 11, {
+      type: "confirm",
+      kind: dialog.kind,
+      selectedIndex: 1,
+    });
+
+    expect(result.lines.find((line) => line.includes(dialog.action))).toContain("▸");
+    expect(result.lines.join("\n")).toContain("Space/Enter Choose");
+    expect(result.lines.at(-1)).toContain("┗");
+    expect(result.lines.every((line) => visibleWidth(line) === 80)).toBe(true);
+  });
+
+  it("preserves normal overlay height while Rename is open", () => {
+    const state = initDashboardState(config(), [], true);
+    const input = new Input();
+    const normal = renderDashboard(state, preview, noTheme, 80, 24);
+    const rename = renderDashboard(state, preview, noTheme, 80, 24, {
+      type: "rename",
+      input,
+    });
+
+    expect(rename.lines).toHaveLength(normal.lines.length);
+  });
+
+  it("keeps the rename input visible in a one-row dialog viewport", () => {
+    const state = initDashboardState(config(), [], true);
+    const input = new Input();
+    input.setValue("Release 🚀");
+    const result = renderDashboard(state, preview, noTheme, 80, 11, {
+      type: "rename",
+      input,
+    });
+
+    const output = stripAnsi(result.lines.join("\n"));
+    expect(output).toContain("Release 🚀");
+    expect(output).toContain("Enter Submit");
+    expect(result.lines.at(-1)).toContain("┗");
   });
 });
 
