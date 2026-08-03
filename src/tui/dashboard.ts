@@ -1,14 +1,15 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import {
   decodeKittyPrintable,
+  Input,
   Key,
   matchesKey,
   type Component,
-  type OverlayHandle,
+  type Focusable,
   type TUI,
 } from "@earendil-works/pi-tui";
 import type { PiStatusConfig } from "../shared/types.ts";
-import { renderDashboard } from "./dashboard-render.ts";
+import { renderDashboard, type DashboardDialog } from "./dashboard-render.ts";
 import {
   initDashboardState,
   reduceDashboardState,
@@ -53,11 +54,11 @@ function isSearchable(state: DashboardState): boolean {
   return state.activeTab === "statuses" || state.activeTab === "tools";
 }
 
-export class StatusLineDashboardComponent implements Component {
+export class StatusLineDashboardComponent implements Component, Focusable {
   private state: DashboardState;
-  private overlayHandle: OverlayHandle | undefined;
-  private busy = false;
+  private dialog: DashboardDialog | undefined;
   private closed = false;
+  private _focused = false;
 
   constructor(private readonly options: StatusLineDashboardOptions) {
     let tools: DashboardTool[] = [];
@@ -80,8 +81,13 @@ export class StatusLineDashboardComponent implements Component {
     );
   }
 
-  setOverlayHandle(handle: OverlayHandle): void {
-    this.overlayHandle = handle;
+  get focused(): boolean {
+    return this._focused;
+  }
+
+  set focused(value: boolean) {
+    this._focused = value;
+    if (this.dialog?.type === "rename") this.dialog.input.focused = value;
   }
 
   getState(): Readonly<DashboardState> {
@@ -95,8 +101,9 @@ export class StatusLineDashboardComponent implements Component {
       this.options.theme,
       width,
       this.options.tui.terminal.rows,
+      this.dialog,
     );
-    if (result.offset !== this.state.navigation[this.state.activeTab].offset) {
+    if (!this.dialog && result.offset !== this.state.navigation[this.state.activeTab].offset) {
       this.state = reduceDashboardState(this.state, {
         type: "set_offset",
         tab: this.state.activeTab,
@@ -106,10 +113,13 @@ export class StatusLineDashboardComponent implements Component {
     return result.lines;
   }
 
-  invalidate(): void {}
+  invalidate(): void {
+    if (this.dialog?.type === "rename") this.dialog.input.invalidate();
+  }
 
   handleInput(data: string): void {
-    if (this.busy || this.closed) return;
+    if (this.closed) return;
+    if (this.dialog) return void this.handleDialogInput(data);
     const printable = printableAscii(data);
 
     if (matchesKey(data, "shift+tab")) return void this.dispatch({ type: "previous_tab" });
@@ -141,13 +151,14 @@ export class StatusLineDashboardComponent implements Component {
 
   close(): void {
     if (this.closed) return;
+    this.clearDialog();
     this.closed = true;
     this.options.done();
   }
 
   dispose(): void {
+    this.clearDialog();
     this.closed = true;
-    this.overlayHandle = undefined;
   }
 
   private dispatch(action: DashboardAction): void {
@@ -182,10 +193,10 @@ export class StatusLineDashboardComponent implements Component {
       return;
     }
     if (effect.type === "rename_session") {
-      void this.renameSession();
+      this.openRenameDialog();
       return;
     }
-    void this.compactSession();
+    this.openConfirmDialog("compact");
   }
 
   private requestClose(): void {
@@ -193,56 +204,81 @@ export class StatusLineDashboardComponent implements Component {
       this.close();
       return;
     }
-    void this.withDialog(async () => {
-      const confirmed = await this.options.ctx.ui.confirm(
-        "Discard unsaved changes?",
-        "Unsaved Layout, Statuses, or Settings changes will be lost.",
-      );
-      if (this.closed) return;
-      if (confirmed) this.close();
-    });
+    this.openConfirmDialog("discard");
   }
 
-  private async renameSession(): Promise<void> {
-    await this.withDialog(async () => {
-      const input = await this.options.ctx.ui.input("Rename session", "Session name");
-      if (this.closed) return;
-      if (!input?.trim()) return;
-      const session = renameCurrentSession(this.options.pi, this.options.ctx, input);
-      this.dispatch({ type: "replace_session", session });
-      this.options.ctx.ui.notify(`Session renamed to ${session.name}`, "info");
-    });
+  private openRenameDialog(): void {
+    const input = new Input();
+    input.focused = this.focused;
+    input.onSubmit = (value) => {
+      if (this.closed || this.dialog?.type !== "rename" || this.dialog.input !== input) return;
+      if (!value.trim()) return void this.dismissDialog();
+      try {
+        const session = renameCurrentSession(this.options.pi, this.options.ctx, value);
+        this.dispatch({ type: "replace_session", session });
+        this.options.ctx.ui.notify(`Session renamed to ${session.name}`, "info");
+      } catch (error) {
+        this.warn(errorText(error));
+      }
+      this.dismissDialog();
+    };
+    input.onEscape = () => this.dismissDialog();
+    this.dialog = { type: "rename", input };
+    this.options.tui.requestRender();
   }
 
-  private async compactSession(): Promise<void> {
-    await this.withDialog(async () => {
-      const session = this.state.session;
-      if (!session) return;
-      const confirmed = await this.options.ctx.ui.confirm(
-        "Compact session?",
-        `Pi will summarize older context for session ${session.id}. Continue?`,
-      );
-      if (this.closed) return;
-      if (!confirmed) return;
-      this.close();
-      startSessionCompaction(this.options.ctx);
-    });
+  private openConfirmDialog(kind: "discard" | "compact"): void {
+    this.dialog = { type: "confirm", kind, selectedIndex: 0 };
+    this.options.tui.requestRender();
   }
 
-  private async withDialog(action: () => Promise<void>): Promise<void> {
-    if (this.busy || this.closed) return;
-    this.busy = true;
-    try {
-      await action();
-    } catch (error) {
-      this.warn(errorText(error));
-    } finally {
-      this.busy = false;
-      if (!this.closed) {
-        this.overlayHandle?.focus();
-        this.options.tui.requestRender();
+  private handleDialogInput(data: string): void {
+    const dialog = this.dialog;
+    if (!dialog) return;
+    if (dialog.type === "rename") {
+      dialog.input.handleInput(data);
+      if (!this.closed && this.dialog?.type === "rename") this.options.tui.requestRender();
+      return;
+    }
+
+    if (matchesKey(data, Key.up)) {
+      this.dialog = { ...dialog, selectedIndex: 0 };
+      this.options.tui.requestRender();
+      return;
+    }
+    if (matchesKey(data, Key.down)) {
+      this.dialog = { ...dialog, selectedIndex: 1 };
+      this.options.tui.requestRender();
+      return;
+    }
+    if (matchesKey(data, Key.escape) || printableAscii(data) === "q") {
+      this.dismissDialog();
+      return;
+    }
+    if (matchesKey(data, Key.space) || matchesKey(data, Key.enter)) {
+      if (dialog.selectedIndex === 0) {
+        this.dismissDialog();
+      } else if (dialog.kind === "discard") {
+        this.close();
+      } else {
+        this.close();
+        try {
+          startSessionCompaction(this.options.ctx);
+        } catch (error) {
+          this.warn(errorText(error));
+        }
       }
     }
+  }
+
+  private dismissDialog(): void {
+    this.clearDialog();
+    if (!this.closed) this.options.tui.requestRender();
+  }
+
+  private clearDialog(): void {
+    if (this.dialog?.type === "rename") this.dialog.input.focused = false;
+    this.dialog = undefined;
   }
 
   private warn(message: string): void {
@@ -257,27 +293,20 @@ export async function openStatusLineDashboard(
     onComponent?(component: StatusLineDashboardComponent): void;
   },
 ): Promise<void> {
-  let component: StatusLineDashboardComponent | undefined;
-  let handle: OverlayHandle | undefined;
   await options.ctx.ui.custom<void>(
     (tui, piTheme, _keys, done) => {
-      component = new StatusLineDashboardComponent({
+      const component = new StatusLineDashboardComponent({
         ...options,
         tui,
         theme: noColorRequested() ? noTheme : fromPiTheme(piTheme),
         done,
       });
-      if (handle) component.setOverlayHandle(handle);
       options.onComponent?.(component);
       return component;
     },
     {
       overlay: true,
       overlayOptions: { anchor: "center", maxHeight: "85%", width: "92%" },
-      onHandle(next) {
-        handle = next;
-        component?.setOverlayHandle(next);
-      },
     },
   );
 }
