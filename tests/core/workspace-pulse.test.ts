@@ -42,15 +42,6 @@ function fakeChild() {
   return child;
 }
 
-function failChild(stderr: string, code: number) {
-  const child = fakeChild();
-  process.nextTick(() => {
-    child.stderr.emit("data", Buffer.from(stderr, "utf8"));
-    child.emit("close", code, null);
-  });
-  return child;
-}
-
 function flushMicrotasks(): Promise<void> {
   return new Promise((resolve) => queueMicrotask(() => queueMicrotask(resolve)));
 }
@@ -358,14 +349,8 @@ describe("parseNumstat", () => {
 });
 
 interface MockResponse {
-  argv?: readonly string[];
   stdout?: string;
   error?: Error & { code?: number | string; stderr?: string; killed?: boolean };
-}
-
-function statusFixture(records: readonly string[]): string {
-  const withTrailingNul = [...records, ""];
-  return withTrailingNul.join("\0");
 }
 
 function pushMock(responses: readonly MockResponse[]): void {
@@ -374,11 +359,7 @@ function pushMock(responses: readonly MockResponse[]): void {
       const cb = args[args.length - 1] as (err: unknown, stdout: string, stderr: string) => void;
       if (response.error) {
         const err = response.error;
-        const stderr = err.stderr ?? "";
-        cb(err, "", stderr);
-        if (typeof err.code === "number") {
-          return failChild(stderr, err.code);
-        }
+        cb(err, "", err.stderr ?? "");
         return fakeChild();
       }
       cb(null, response.stdout ?? "", "");
@@ -387,57 +368,17 @@ function pushMock(responses: readonly MockResponse[]): void {
   }
 }
 
-function expectOptionShape(options: unknown): void {
-  expect(options).toMatchObject({
-    timeout: 2_000,
-    maxBuffer: 256 * 1024,
-    windowsHide: true,
-    shell: false,
-    env: expect.objectContaining({ GIT_OPTIONAL_LOCKS: "0", LC_ALL: "C", LANG: "C" }),
-  });
-  expect((options as { signal?: AbortSignal }).signal).toBeInstanceOf(AbortSignal);
-}
-
-function repoCallArgs(): {
-  cmd: string;
-  argv: readonly string[];
-  cwd: string;
-  options: unknown;
-  signal: AbortSignal;
-}[] {
-  return execFileMock.mock.calls.map((call) => {
-    const [cmd, argv, options] = call as unknown as [
-      string,
-      readonly string[],
-      { cwd: string; signal: AbortSignal },
-    ];
-    return { cmd, argv, cwd: options.cwd, options, signal: options.signal };
-  });
-}
-
 describe("WorkspacePulseRuntime — fixed-command inspector", () => {
   it("issues exactly four git execFile calls in the documented order with bounded options", async () => {
     pushMock([
-      { argv: ["rev-parse", "--show-toplevel"], stdout: "/repo with trailing space \n" },
+      { stdout: "/repo with trailing space \n" },
       {
-        argv: ["status", "--porcelain=v2", "-z", "--branch", "--untracked-files=all"],
         stdout: "# branch.oid abc\0# branch.head main\0# branch.ab +0 -0\0",
       },
       {
-        argv: ["rev-parse", "--verify", "HEAD^{tree}"],
         stdout: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n",
       },
-      {
-        argv: [
-          "diff",
-          "--numstat",
-          "-z",
-          "--find-renames",
-          "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
-          "--",
-        ],
-        stdout: "",
-      },
+      { stdout: "" },
     ]);
 
     const runtime: WorkspacePulseRuntime = new WorkspacePulseRuntime({
@@ -449,7 +390,14 @@ describe("WorkspacePulseRuntime — fixed-command inspector", () => {
     await new Promise((r) => setImmediate(r));
     expect(execFileMock).toHaveBeenCalledTimes(4);
 
-    const calls = repoCallArgs();
+    const calls = execFileMock.mock.calls.map((call) => {
+      const [cmd, argv, options] = call as unknown as [
+        string,
+        readonly string[],
+        { cwd: string; signal: AbortSignal },
+      ];
+      return { cmd, argv, cwd: options.cwd, options, signal: options.signal };
+    });
     expect(calls.map((c) => c.cmd)).toEqual(["git", "git", "git", "git"]);
     expect(calls.map((c) => c.argv)).toEqual([
       ["rev-parse", "--show-toplevel"],
@@ -468,7 +416,14 @@ describe("WorkspacePulseRuntime — fixed-command inspector", () => {
     const sharedSignal = calls[0]?.signal;
     expect(sharedSignal).toBeInstanceOf(AbortSignal);
     for (const call of calls) {
-      expectOptionShape(call.options);
+      expect(call.options).toMatchObject({
+        timeout: 2_000,
+        maxBuffer: 256 * 1024,
+        windowsHide: true,
+        shell: false,
+        env: expect.objectContaining({ GIT_OPTIONAL_LOCKS: "0", LC_ALL: "C", LANG: "C" }),
+      });
+      expect(call.signal).toBeInstanceOf(AbortSignal);
       expect(call.signal).toBe(sharedSignal);
     }
     expect(calls[0]?.cwd).toBe("/work/sub");
@@ -485,7 +440,7 @@ describe("WorkspacePulseRuntime — fixed-command inspector", () => {
         stderr: "fatal: not a git repository",
       });
       cb(err, "", "fatal: not a git repository");
-      return failChild("fatal: not a git repository", 128);
+      return fakeChild();
     }) as never);
     const runtime = new WorkspacePulseRuntime({ directory: "/work" });
     runtime.start();
@@ -496,7 +451,7 @@ describe("WorkspacePulseRuntime — fixed-command inspector", () => {
 
   it("treats status exit 128 as a failed inspection, not a root classification", async () => {
     pushMock([
-      { argv: ["rev-parse", "--show-toplevel"], stdout: "/repo\n" },
+      { stdout: "/repo\n" },
       {
         error: Object.assign(new Error("exit"), {
           code: 128,
@@ -557,7 +512,7 @@ describe("WorkspacePulseRuntime — NUL-safe inspection and rich metrics", () =>
       [
         { stdout: "/work/repo\n" },
         {
-          stdout: statusFixture([
+          stdout: [
             "# branch.oid abcdefabcdefabcdefabcdefabcdefabcdefabcd",
             "# branch.head main",
             "# branch.upstream origin/main",
@@ -571,7 +526,8 @@ describe("WorkspacePulseRuntime — NUL-safe inspection and rich metrics", () =>
             "1 .M SC.. 160000 160000 160000 aaa aaa vendor/sub",
             "? newfile.ts",
             "! ignored.ts",
-          ]),
+            "",
+          ].join("\0"),
         },
         { stdout: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n" },
         {

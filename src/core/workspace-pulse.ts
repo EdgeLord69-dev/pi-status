@@ -342,19 +342,14 @@ function buildEnv(): NodeJS.ProcessEnv {
   };
 }
 
-interface RunGitResult {
-  stdout: string;
-  stderr: string;
-}
-
 function runGit(
   exec: ExecFileFn,
   argv: readonly string[],
   cwd: string,
   signal: AbortSignal,
   classifyNotRepository = false,
-): Promise<RunGitResult> {
-  return new Promise<RunGitResult>((resolve, reject) => {
+): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
     const options: ExecFileOptions = {
       cwd,
       timeout: INSPECTOR_TIMEOUT_MS,
@@ -381,7 +376,6 @@ function runGit(
             reject(
               Object.assign(new Error("not-repository"), {
                 kind: "not-repository",
-                stderr: stderrText,
               }),
             );
             return;
@@ -391,7 +385,6 @@ function runGit(
               kind: "failed",
               code: error.code,
               killed: error.killed,
-              stderr: stderrText,
             }),
           );
           return;
@@ -399,10 +392,7 @@ function runGit(
         reject(error);
         return;
       }
-      resolve({
-        stdout: typeof stdout === "string" ? stdout : "",
-        stderr: typeof stderr === "string" ? stderr : "",
-      });
+      resolve(typeof stdout === "string" ? stdout : "");
     });
   });
 }
@@ -415,14 +405,9 @@ export async function defaultInspect(
     nodeExecFile(file, args as string[], options, cb) as unknown as Readable;
 
   try {
-    const rootResult = await runGit(
-      exec,
-      ["rev-parse", "--show-toplevel"],
-      directory,
-      signal,
-      true,
-    );
-    const root = rootResult.stdout.replace(/\r?\n$/, "");
+    const root = (
+      await runGit(exec, ["rev-parse", "--show-toplevel"], directory, signal, true)
+    ).replace(/\r?\n$/, "");
     const state: MutableRecordState = {
       ahead: 0,
       behind: 0,
@@ -434,13 +419,15 @@ export async function defaultInspect(
       submodulePaths: new Set(),
       unborn: false,
     };
-    const statusResult = await runGit(
-      exec,
-      ["status", "--porcelain=v2", "-z", "--branch", "--untracked-files=all"],
-      root,
-      signal,
+    parseRecords(
+      await runGit(
+        exec,
+        ["status", "--porcelain=v2", "-z", "--branch", "--untracked-files=all"],
+        root,
+        signal,
+      ),
+      state,
     );
-    parseRecords(statusResult.stdout, state);
     const statusKind: "clean" | "changed" | "conflict" =
       state.conflicts > 0
         ? "conflict"
@@ -450,8 +437,9 @@ export async function defaultInspect(
 
     let baseline: string;
     try {
-      const headResult = await runGit(exec, ["rev-parse", "--verify", "HEAD^{tree}"], root, signal);
-      baseline = headResult.stdout.trim();
+      baseline = (
+        await runGit(exec, ["rev-parse", "--verify", "HEAD^{tree}"], root, signal)
+      ).trim();
     } catch (headError: unknown) {
       const failure = headError as { code?: unknown; killed?: unknown };
       if (state.unborn && typeof failure.code === "number" && failure.killed !== true) {
@@ -462,13 +450,15 @@ export async function defaultInspect(
     }
     if (!baseline) throw new Error("missing tree baseline");
 
-    const diffResult = await runGit(
-      exec,
-      ["diff", "--numstat", "-z", "--find-renames", baseline, "--"],
-      root,
-      signal,
+    const numstat = parseNumstat(
+      await runGit(
+        exec,
+        ["diff", "--numstat", "-z", "--find-renames", baseline, "--"],
+        root,
+        signal,
+      ),
+      state.submodulePaths,
     );
-    const numstat = parseNumstat(diffResult.stdout, state.submodulePaths);
 
     return {
       kind: "repository",
