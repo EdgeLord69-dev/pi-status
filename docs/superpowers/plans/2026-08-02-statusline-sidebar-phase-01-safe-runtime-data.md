@@ -6,7 +6,7 @@
 
 **Architecture:** Extend the existing `PiStatusConfig`, `ToolActivity`, and `LiveActivitySnapshot` types in place. Reuse the current activity runtime and adapter; port only Atelier's allowlisted summary helpers, never its duplicate tracker or tool-result handling.
 
-**Tech Stack:** TypeScript 6, Vitest 4, Biome, pnpm, Node 24, existing Pi lifecycle events.
+**Tech Stack:** TypeScript 6, Vitest 4, Biome, pnpm, Node 24.15.0 via mise, existing Pi lifecycle events.
 
 ---
 
@@ -26,11 +26,11 @@ test -z "$(git status --short)"
 git merge-base --is-ancestor dae5612 HEAD
 git -C /Users/lanh/Developer/pi-packages/michaelmjhhhh-pi-atelier cat-file -e '36e5640^{commit}'
 git -C /Users/lanh/Developer/pi-packages/pi cat-file -e '583f153d502aa8e958eefdb9af0fbd3344e68f95^{commit}'
-node -e 'const [major, minor] = process.versions.node.split(".").map(Number); if (major < 24 || (major === 24 && minor < 15)) process.exit(1)'
-pnpm install --frozen-lockfile
+mise exec node@24.15.0 -- node --version
+mise exec node@24.15.0 -- pnpm install --frozen-lockfile
 ```
 
-Expected: exit 0 with Node 24.15.0 or newer and no lockfile change.
+Expected: Node reports `v24.15.0` and the lockfile remains unchanged.
 
 ## Task 1: Add `showSidebarToolNames`
 
@@ -42,7 +42,7 @@ Expected: exit 0 with Node 24.15.0 or newer and no lockfile change.
 - Test: `tests/core/config.test.ts`
 - Update typed fixtures: `tests/core/resolve-footer.test.ts`, `tests/core/runtime-state.test.ts`, `tests/index-save.test.ts`, `tests/index.test.ts`, `tests/tui/dashboard-render.test.ts`, `tests/tui/dashboard-state.test.ts`, `tests/tui/dashboard.test.ts`
 
-- [ ] **Step 1: Write failing normalization and equality tests**
+- [ ] **Step 1: Write failing normalization, persistence, and equality tests**
 
 ```ts
 it("normalizes the sidebar tool-name setting", () => {
@@ -62,10 +62,19 @@ it("compares the persisted sidebar setting", () => {
 });
 ```
 
+In `tests/core/config.test.ts`, use the existing `config` fixture to verify persistence:
+
+```ts
+const store = new MemoryConfigStore();
+const path = getConfigPath("/agent");
+saveConfig({ ...config, showSidebarToolNames: true }, { agentDir: "/agent", store });
+expect(JSON.parse(store.read(path) as string).showSidebarToolNames).toBe(true);
+```
+
 - [ ] **Step 2: Verify red**
 
 ```bash
-pnpm vitest run tests/core/config.test.ts tests/tui/dashboard-state.test.ts
+mise exec node@24.15.0 -- pnpm vitest run tests/core/config.test.ts tests/tui/dashboard-state.test.ts
 ```
 
 Expected: FAIL because the field is absent.
@@ -91,11 +100,13 @@ Add this field to every typed test config listed above:
 showSidebarToolNames: false,
 ```
 
+Update exact persisted-key assertions to include the new field while leaving unrelated assertions unchanged.
+
 - [ ] **Step 5: Verify green**
 
 ```bash
-pnpm vitest run tests/core/config.test.ts tests/core/resolve-footer.test.ts tests/core/runtime-state.test.ts tests/tui/dashboard-state.test.ts tests/tui/dashboard-render.test.ts tests/tui/dashboard.test.ts tests/index.test.ts tests/index-save.test.ts
-pnpm typecheck
+mise exec node@24.15.0 -- pnpm vitest run tests/core/config.test.ts tests/core/resolve-footer.test.ts tests/core/runtime-state.test.ts tests/tui/dashboard-state.test.ts tests/tui/dashboard-render.test.ts tests/tui/dashboard.test.ts tests/index.test.ts tests/index-save.test.ts
+mise exec node@24.15.0 -- pnpm typecheck
 ```
 
 Expected: all focused tests and typecheck pass.
@@ -115,7 +126,8 @@ git commit -m "feat: add sidebar configuration state"
 - Modify: `src/core/activity-runtime.ts`
 - Modify: `src/index.ts`
 - Test: `tests/core/activity-runtime.test.ts`
-- Test: `tests/activity-adapter.test.ts`
+- Verify/update: `tests/activity-adapter.test.ts`
+- Update typed fixtures: `tests/tui/formatters.test.ts`, `tests/tui/render.test.ts`
 
 - [ ] **Step 1: Write failing summary and counter tests**
 
@@ -133,12 +145,12 @@ runtime.finishTool("bad", true, 1_500);
 expect(runtime.snapshot()).toMatchObject({ completedToolCount: 1, failedToolCount: 1 });
 ```
 
-Add cases for read/edit/write/ls paths, grep/find pattern and path, project/home shortening, ANSI/control stripping, 26-column Unicode truncation, missing args, and five-item recent-history retention.
+Add cases for read/edit/write/ls paths, grep/find pattern and path, project/home shortening, ANSI/control stripping, 26-column Unicode truncation, missing args, summaries on active/recent records, and five-item recent-history retention. Extend existing tests to assert zero counters in idle snapshots, reset behavior, active-tool failures at `finishRun()`, unchanged counters for unknown completions, and idempotent settlement. Add `summary: ""` and zero counters to typed formatter/render fixtures, and update every existing `startTool` call to pass `args`, `cwd`, and timestamp in the new order.
 
 - [ ] **Step 2: Verify red**
 
 ```bash
-pnpm vitest run tests/core/activity-runtime.test.ts tests/activity-adapter.test.ts
+mise exec node@24.15.0 -- pnpm vitest run tests/core/activity-runtime.test.ts tests/activity-adapter.test.ts tests/tui/formatters.test.ts tests/tui/render.test.ts
 ```
 
 Expected: FAIL because summaries, counts, and the widened signature are absent.
@@ -178,7 +190,7 @@ function startTool(callId: string, name: string, args: unknown, cwd: string, at?
 }
 ```
 
-Reset counters in `startRun()` and `reset()`, increment them in `finishTool()`, count active tools converted to failures in `finishRun()`, and return both from `snapshot()`.
+Reset counters in `startRun()` and `reset()`, increment the matching counter in `finishTool()`, count active tools converted to failures in `finishRun()`, and return both from `snapshot()`. Unknown or duplicate completions must not increment counters, and repeated `finishRun()` calls must not double-count.
 
 - [ ] **Step 5: Pass only start arguments and cwd**
 
@@ -186,13 +198,13 @@ Reset counters in `startRun()` and `reset()`, increment them in `finishTool()`, 
 activityRuntime.startTool(event.toolCallId, event.toolName, event.args, ctx.cwd);
 ```
 
-Leave `tool_execution_end.result` unread.
+Leave `tool_execution_end.result` unread. The widened TypeScript signature provides compile-time coverage for this adapter change; keep existing adapter footer-compatibility assertions.
 
 - [ ] **Step 6: Verify green and footer compatibility**
 
 ```bash
-pnpm vitest run tests/core/activity-runtime.test.ts tests/activity-adapter.test.ts tests/tui/formatters.test.ts tests/tui/render.test.ts
-pnpm typecheck
+mise exec node@24.15.0 -- pnpm vitest run tests/core/activity-runtime.test.ts tests/activity-adapter.test.ts tests/tui/formatters.test.ts tests/tui/render.test.ts
+mise exec node@24.15.0 -- pnpm typecheck
 git diff --check
 ```
 
@@ -201,15 +213,16 @@ Expected: all commands pass and footer assertions remain unchanged.
 - [ ] **Step 7: Commit activity telemetry**
 
 ```bash
-git add src/shared/types.ts src/core/activity-runtime.ts src/index.ts tests/core/activity-runtime.test.ts tests/activity-adapter.test.ts
+git add src/shared/types.ts src/core/activity-runtime.ts src/index.ts tests/core/activity-runtime.test.ts tests/activity-adapter.test.ts tests/tui/formatters.test.ts tests/tui/render.test.ts
 git commit -m "feat: enrich sidebar activity telemetry"
 ```
 
 ## Phase gate
 
 ```bash
-pnpm vitest run tests/core/config.test.ts tests/core/activity-runtime.test.ts tests/activity-adapter.test.ts tests/tui/formatters.test.ts tests/tui/render.test.ts
-pnpm typecheck
+mise exec node@24.15.0 -- pnpm vitest run tests/core/config.test.ts tests/core/activity-runtime.test.ts tests/activity-adapter.test.ts tests/tui/formatters.test.ts tests/tui/render.test.ts
+mise exec node@24.15.0 -- pnpm typecheck
+mise exec node@24.15.0 -- pnpm check
 git diff --check
 ```
 
