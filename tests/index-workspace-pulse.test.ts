@@ -96,25 +96,7 @@ describe("workspace pulse wiring", () => {
 
   it("starts one inspection when workspace-pulse is enabled in a zone", async () => {
     withEnabledZone({ bottomLeft: ["workspace-pulse"] });
-    execFileMock
-      .mockImplementationOnce(((
-        _file: string,
-        _args: readonly string[],
-        _options: unknown,
-        cb: (err: unknown, stdout: string, stderr: string) => void,
-      ) => {
-        process.nextTick(() => cb(null, "/repo\n", ""));
-      }) as never)
-      .mockImplementationOnce(((
-        _file: string,
-        _args: readonly string[],
-        _options: unknown,
-        cb: (err: unknown, stdout: string, stderr: string) => void,
-      ) => {
-        process.nextTick(() =>
-          cb(null, "# branch.oid abc\n# branch.head main\n# branch.ab +0 -0\n", ""),
-        );
-      }) as never);
+    fourCommandMock((options) => options.cwd);
 
     const { pi, handlers } = buildPiWithHandlers();
     createExtension(pi);
@@ -123,26 +105,14 @@ describe("workspace pulse wiring", () => {
 
     await new Promise((r) => setImmediate(r));
     await new Promise((r) => setImmediate(r));
-    expect(execFileMock).toHaveBeenCalledTimes(2);
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+    expect(execFileMock).toHaveBeenCalledTimes(4);
   });
 
   it("creates a fresh runtime for a replacement session cwd", async () => {
     withEnabledZone({ bottomLeft: ["workspace-pulse"] });
-    execFileMock.mockImplementation(((
-      _file: string,
-      args: readonly string[],
-      options: { cwd: string },
-      cb: (err: unknown, stdout: string, stderr: string) => void,
-    ) => {
-      process.nextTick(() =>
-        cb(
-          null,
-          args[0] === "rev-parse" ? `${options.cwd}\n` : "# branch.oid abc\n# branch.head main\n",
-          "",
-        ),
-      );
-      return fakeChild();
-    }) as never);
+    const nextInspection = fourCommandMock((options) => options.cwd);
 
     const { pi, handlers } = buildPiWithHandlers();
     createExtension(pi);
@@ -152,35 +122,23 @@ describe("workspace pulse wiring", () => {
     for (const h of handlers.get("session_start") ?? []) h({}, first);
     await new Promise((r) => setImmediate(r));
     await new Promise((r) => setImmediate(r));
+    nextInspection();
     for (const h of handlers.get("session_start") ?? []) h({}, second);
     await new Promise((r) => setImmediate(r));
     await new Promise((r) => setImmediate(r));
 
     const rootCwds = execFileMock.mock.calls
-      .filter(([, args]) => (args as readonly string[])[0] === "rev-parse")
+      .filter(([, args]) => {
+        const argv = args as readonly string[];
+        return argv[0] === "rev-parse" && argv[1] === "--show-toplevel";
+      })
       .map(([, , options]) => (options as { cwd: string }).cwd);
     expect(rootCwds).toEqual(["/repo/one", "/repo/two"]);
   });
 
   it("does not restart the inspection when the segment moves between zones", async () => {
     withEnabledZone({ bottomLeft: ["workspace-pulse"] });
-    execFileMock
-      .mockImplementationOnce(((
-        _file: string,
-        _args: readonly string[],
-        _options: unknown,
-        cb: (err: unknown, stdout: string, stderr: string) => void,
-      ) => {
-        process.nextTick(() => cb(null, "/repo\n", ""));
-      }) as never)
-      .mockImplementationOnce(((
-        _file: string,
-        _args: readonly string[],
-        _options: unknown,
-        cb: (err: unknown, stdout: string, stderr: string) => void,
-      ) => {
-        process.nextTick(() => cb(null, "# branch.oid abc\n# branch.head main\n", ""));
-      }) as never);
+    fourCommandMock(() => "/repo");
 
     const { pi, handlers } = buildPiWithHandlers();
     createExtension(pi);
@@ -203,21 +161,7 @@ describe("workspace pulse wiring", () => {
 
   it("stops lifecycle refreshes when workspace-pulse is removed", async () => {
     withEnabledZone({ bottomLeft: ["workspace-pulse"] });
-    execFileMock.mockImplementation(((
-      _file: string,
-      args: readonly string[],
-      options: { cwd: string },
-      cb: (err: unknown, stdout: string, stderr: string) => void,
-    ) => {
-      process.nextTick(() =>
-        cb(
-          null,
-          args[0] === "rev-parse" ? `${options.cwd}\n` : "# branch.oid abc\n# branch.head main\n",
-          "",
-        ),
-      );
-      return fakeChild();
-    }) as never);
+    fourCommandMock((options) => options.cwd);
 
     const { pi, handlers } = buildPiWithHandlers();
     createExtension(pi);
@@ -242,22 +186,7 @@ describe("workspace pulse wiring", () => {
 
   it("schedules a debounced refresh on tool_execution_end", async () => {
     withEnabledZone({ bottomLeft: ["workspace-pulse"] });
-    execFileMock.mockImplementation(((
-      _file: string,
-      _args: readonly string[],
-      _options: unknown,
-      cb: (err: unknown, stdout: string, stderr: string) => void,
-    ) => {
-      process.nextTick(() => cb(null, "/repo\n", ""));
-    }) as never);
-    execFileMock.mockImplementationOnce(((
-      _file: string,
-      _args: readonly string[],
-      _options: unknown,
-      cb: (err: unknown, stdout: string, stderr: string) => void,
-    ) => {
-      process.nextTick(() => cb(null, "# branch.oid abc\n# branch.head main\n", ""));
-    }) as never);
+    const refreshableMock = fourCommandMock(() => "/repo");
 
     const { pi, handlers } = buildPiWithHandlers();
     createExtension(pi);
@@ -266,32 +195,20 @@ describe("workspace pulse wiring", () => {
     await new Promise((r) => setImmediate(r));
     await new Promise((r) => setImmediate(r));
     const callsBeforeTool = execFileMock.mock.calls.length;
+    refreshableMock();
 
     for (const h of handlers.get("tool_execution_end") ?? []) {
       h({ toolCallId: "t1", isError: false }, ctx);
     }
     await new Promise((r) => setTimeout(r, 260));
-    expect(execFileMock.mock.calls.length).toBeGreaterThan(callsBeforeTool);
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+    expect(execFileMock.mock.calls.length).toBe(callsBeforeTool + 4);
   });
 
   it("refreshes immediately on turn_start", async () => {
     withEnabledZone({ bottomLeft: ["workspace-pulse"] });
-    execFileMock.mockImplementation(((
-      _file: string,
-      _args: readonly string[],
-      _options: unknown,
-      cb: (err: unknown, stdout: string, stderr: string) => void,
-    ) => {
-      process.nextTick(() => cb(null, "/repo\n", ""));
-    }) as never);
-    execFileMock.mockImplementationOnce(((
-      _file: string,
-      _args: readonly string[],
-      _options: unknown,
-      cb: (err: unknown, stdout: string, stderr: string) => void,
-    ) => {
-      process.nextTick(() => cb(null, "# branch.oid abc\n# branch.head main\n", ""));
-    }) as never);
+    const nextInspection = fourCommandMock(() => "/repo");
 
     const { pi, handlers } = buildPiWithHandlers();
     createExtension(pi);
@@ -300,33 +217,19 @@ describe("workspace pulse wiring", () => {
     await new Promise((r) => setImmediate(r));
     await new Promise((r) => setImmediate(r));
     const callsBeforeTurn = execFileMock.mock.calls.length;
+    nextInspection();
 
     for (const h of handlers.get("turn_start") ?? []) {
       h({ turnIndex: 0, timestamp: Date.now() }, ctx);
     }
     await new Promise((r) => setImmediate(r));
     await new Promise((r) => setImmediate(r));
-    expect(execFileMock.mock.calls.length).toBeGreaterThan(callsBeforeTurn);
+    expect(execFileMock.mock.calls.length).toBe(callsBeforeTurn + 4);
   });
 
   it("disposes the runtime on session_shutdown", async () => {
     withEnabledZone({ bottomLeft: ["workspace-pulse"] });
-    execFileMock.mockImplementation(((
-      _file: string,
-      _args: readonly string[],
-      _options: unknown,
-      cb: (err: unknown, stdout: string, stderr: string) => void,
-    ) => {
-      process.nextTick(() => cb(null, "/repo\n", ""));
-    }) as never);
-    execFileMock.mockImplementationOnce(((
-      _file: string,
-      _args: readonly string[],
-      _options: unknown,
-      cb: (err: unknown, stdout: string, stderr: string) => void,
-    ) => {
-      process.nextTick(() => cb(null, "# branch.oid abc\n# branch.head main\n", ""));
-    }) as never);
+    fourCommandMock(() => "/repo");
 
     const { pi, handlers } = buildPiWithHandlers();
     createExtension(pi);
@@ -344,3 +247,33 @@ describe("workspace pulse wiring", () => {
     expect(execFileMock.mock.calls.length).toBe(callsAfterShutdown);
   });
 });
+
+function fourCommandMock(resolveRoot: (options: { cwd: string }) => string): () => void {
+  const expand = () => {
+    for (let i = 0; i < 4; i += 1) {
+      execFileMock.mockImplementationOnce(((
+        _file: string,
+        args: readonly string[],
+        options: unknown,
+        cb: (err: unknown, stdout: string, stderr: string) => void,
+      ) => {
+        const argv = args as readonly string[];
+        const opts = options as { cwd: string };
+        let stdout = "";
+        if (argv[0] === "rev-parse" && argv[1] === "--show-toplevel") {
+          stdout = `${resolveRoot(opts)}\n`;
+        } else if (argv[0] === "status") {
+          stdout = ["# branch.oid abc", "# branch.head main", "# branch.ab +0 -0", ""].join("\0");
+        } else if (argv[0] === "diff") {
+          stdout = "";
+        } else {
+          stdout = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n";
+        }
+        cb(null, stdout, "");
+        return fakeChild();
+      }) as never);
+    }
+  };
+  expand();
+  return expand;
+}

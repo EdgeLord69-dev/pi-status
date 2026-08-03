@@ -273,11 +273,14 @@ Expected: all focused tests and typecheck pass.
 
 - Modify: `src/core/workspace-pulse.ts`
 - Modify: `tests/core/workspace-pulse.test.ts`
-- Verify unchanged: `tests/index-workspace-pulse.test.ts`
+- Modify: `tests/index-workspace-pulse.test.ts`
+- Modify: `tests/core/resolve-footer.test.ts`
+- Modify: `tests/tui/formatters.test.ts`
+- Modify: `tests/tui/render.test.ts`
 
-- [ ] **Step 1: Add failing parser/command tests**
+- [ ] **Step 1: Add failing strict NUL-inspection tests**
 
-Adapt the pinned Atelier workspace tests to the existing injected inspector. Assert the exact sequence:
+Drive the existing `execFile` mock through the inspector and assert this exact argv sequence:
 
 ```ts
 expect(calls.map(({ argv }) => argv)).toEqual([
@@ -288,41 +291,23 @@ expect(calls.map(({ argv }) => argv)).toEqual([
 ]);
 ```
 
-Cover clean, changed, conflict, rename, binary, submodule, unborn empty-tree baseline, malformed NUL porcelain, timeout, abort, buffer overflow, stale fallback, not-repository, and unavailable. The rich expectation is:
-
-```ts
-expect(snapshot).toMatchObject({
-  trackedFiles: 4,
-  linesAdded: 12,
-  linesRemoved: 3,
-  binaryFiles: 1,
-  submodules: 1,
-  relativeCwd: "packages/app",
-});
-```
+Assert all four calls retain the existing timeout, buffer, C locale, lock setting, shell setting, and same abort signal. Cover normal tracked records, renames, unmerged records, untracked records, changed submodules, text and binary numstat, branch/upstream/ahead/behind, root-relative cwd, missing NUL termination, malformed records, incomplete renames, malformed numstat, timeout, abort, overflow, stale, not-repository, and unavailable states. Repair integration mocks to answer by exact argv; root assertions must match `--show-toplevel`, not every `rev-parse` call.
 
 - [ ] **Step 2: Verify red**
 
 ```bash
-pnpm vitest run tests/core/workspace-pulse.test.ts tests/index-workspace-pulse.test.ts
+mise exec node@24.15.0 -- pnpm vitest run tests/core/workspace-pulse.test.ts tests/index-workspace-pulse.test.ts
 ```
 
-Expected: FAIL because the inspector does not request NUL porcelain, tree baseline, or numstat data.
+Expected: FAIL because the inspector still uses newline porcelain, only two commands, and no rich metrics.
 
 - [ ] **Step 3: Extend the existing snapshot and parser**
 
-Add these fields to both repository inspection and published snapshots:
+Add required `trackedFiles`, `linesAdded`, `linesRemoved`, `binaryFiles`, and `submodules` fields to repository inspections and snapshots; add `relativeCwd` to repository inspections and an optional field to snapshots. Use zero defaults for unavailable and not-repository states, and preserve all fields during stale publication.
 
-```ts
-readonly trackedFiles: number;
-readonly linesAdded: number;
-readonly linesRemoved: number;
-readonly binaryFiles: number;
-readonly submodules: number;
-readonly relativeCwd?: string;
-```
+Adapt `parseGitStatusV2()` to strict NUL records while preserving branch normalization, upstream, ahead/behind, staged/unstaged/untracked/conflict counts, and status classification. Accept unknown `#` metadata; reject malformed known records, unknown data records, empty paths, missing NUL termination, and incomplete rename pairs. Count changed `1`, `2`, and `u` records in `trackedFiles`, retaining only temporary changed submodule destination paths.
 
-Port Atelier's NUL-record status and numstat parsing into the existing `defaultInspect()` flow, but preserve current ahead/behind, 2-second timeout, 256 KiB `maxBuffer`, shared abort signal, C locale, `GIT_OPTIONAL_LOCKS=0`, stale publication, debounce, and event-only lifecycle. Use:
+Run the four commands with the existing 2-second timeout, 256 KiB cap, shared abort signal, `shell: false`, `GIT_OPTIONAL_LOCKS=0`, and C locale. Preserve numeric Git exit status so failed `HEAD^{tree}` is accepted only for a parsed unborn repository, using:
 
 ```ts
 const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
@@ -330,18 +315,26 @@ const baseline = head.trim() || (parsed.unborn ? EMPTY_TREE : undefined);
 if (!baseline) throw new Error("missing tree baseline");
 ```
 
-Submodule paths must be excluded from numstat totals. Do not read untracked file contents or retain changed paths in the published snapshot.
+Parse NUL numstat using the first two tabs, consume rename source/destination records, use the destination, accept non-negative safe integers, count `-\t-` as binary, reject malformed or incomplete records, exclude submodule paths, and publish aggregates only. Do not read untracked content or publish paths.
 
-- [ ] **Step 4: Verify and commit**
+- [ ] **Step 4: Update typed consumers and verify**
+
+Add zero-valued rich fields to existing fixtures in `tests/core/resolve-footer.test.ts`, `tests/tui/formatters.test.ts`, and `tests/tui/render.test.ts`, leaving footer assertions unchanged. Run:
 
 ```bash
-pnpm vitest run tests/core/workspace-pulse.test.ts tests/index-workspace-pulse.test.ts tests/tui/formatters.test.ts
-pnpm typecheck
-git add src/core/workspace-pulse.ts tests/core/workspace-pulse.test.ts
-git commit -m "feat: enrich workspace pulse for sidebar"
+mise exec node@24.15.0 -- pnpm vitest run tests/core/workspace-pulse.test.ts tests/index-workspace-pulse.test.ts tests/core/resolve-footer.test.ts tests/tui/formatters.test.ts tests/tui/render.test.ts
+mise exec node@24.15.0 -- pnpm typecheck
+git diff --check
 ```
 
-Expected: all focused tests and typecheck pass.
+Expected: focused tests, typecheck, and whitespace checks pass.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/core/workspace-pulse.ts tests/core/workspace-pulse.test.ts tests/index-workspace-pulse.test.ts tests/core/resolve-footer.test.ts tests/tui/formatters.test.ts tests/tui/render.test.ts
+git commit -m "feat: enrich workspace pulse for sidebar"
+```
 
 ## Task 4: Port the palette and pure sidebar renderer
 
