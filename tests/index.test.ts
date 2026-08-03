@@ -59,8 +59,8 @@ describe("extension wiring", () => {
     });
     for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
 
-    expect(renderWithFactory(footerSpy.calls[0])).toContain("Cost: $0.0100");
-    expect(renderWithFactory(footerSpy.calls[0])).toContain("Access: subscription");
+    expect(renderWithFactory(footerSpy.calls[0])).toContain("$0.0100");
+    expect(renderWithFactory(footerSpy.calls[0])).toContain("SUBSCRIPTION");
     expect(getEntries).toHaveBeenCalled();
     expect(getBranch).not.toHaveBeenCalled();
   });
@@ -95,13 +95,13 @@ describe("extension wiring", () => {
         { id: "kimi", name: "Kimi", provider: "kimi-coding", reasoning: false } as never,
         false,
       ),
-    ).toContain("Access: subscription");
+    ).toContain("SUBSCRIPTION");
     expect(
       renderAccess(
         { id: "gpt-5", name: "GPT-5", provider: "openai", reasoning: false } as never,
         false,
       ),
-    ).toContain("Access: metered");
+    ).toContain("METERED");
     expect(renderAccess(undefined, false)).not.toContain("Access:");
   });
 
@@ -152,8 +152,8 @@ describe("extension wiring", () => {
     resolveCustom?.(undefined);
     await commandPromise;
 
-    expect(preview).toContain("Cost: $0.0100");
-    expect(preview).toContain("Access: subscription");
+    expect(preview).toContain("$0.0100");
+    expect(preview).toContain("SUBSCRIPTION");
   });
 
   it("does not call action methods during extension loading", () => {
@@ -1064,14 +1064,6 @@ describe("extension wiring — completion notifications", () => {
 });
 
 describe("/statusline dashboard wiring", () => {
-  function deferred<T>() {
-    let resolve!: (value: T) => void;
-    const promise = new Promise<T>((res) => {
-      resolve = res;
-    });
-    return { promise, resolve };
-  }
-
   interface DeferredCustomHost {
     custom: ReturnType<typeof vi.fn>;
     resolveCustom: (value: unknown) => void;
@@ -1103,14 +1095,6 @@ describe("/statusline dashboard wiring", () => {
         {},
         done,
       ) as StatusLineDashboardComponent;
-      options?.onHandle?.({
-        focus: vi.fn(),
-        hide: vi.fn(),
-        setHidden: vi.fn(),
-        isHidden: vi.fn(() => false),
-        unfocus: vi.fn(),
-        isFocused: vi.fn(() => true),
-      });
       return customPromise;
     });
     return {
@@ -1128,10 +1112,18 @@ describe("/statusline dashboard wiring", () => {
     const footerSpy = buildSetFooterSpy();
     createExtension(pi);
     const host = deferredCustomHost();
+    const select = vi.fn();
+    const input = vi.fn();
+    const confirm = vi.fn();
+    const editor = vi.fn();
     const ctx = createContext({
       ui: {
         ...createContext().ui,
         setFooter: footerSpy.setFooter,
+        select: select as never,
+        input: input as never,
+        confirm: confirm as never,
+        editor: editor as never,
         custom: host.custom as unknown as ExtensionContext["ui"]["custom"],
       },
     });
@@ -1146,13 +1138,16 @@ describe("/statusline dashboard wiring", () => {
     expect(host.capturedOptions()).toEqual({
       overlay: true,
       overlayOptions: { anchor: "center", maxHeight: "85%", width: "92%" },
-      onHandle: expect.any(Function),
     });
     expect(footerSpy.calls).toHaveLength(footerCallsBeforeOpen);
     host.resolveCustom(undefined);
     await commandPromise;
     expect(footerSpy.calls).toHaveLength(footerCallsBeforeOpen);
     expect(renderWithFactory(footerSpy.calls.at(-1))).toContain("GPT-5 [med]");
+    expect(select).not.toHaveBeenCalled();
+    expect(input).not.toHaveBeenCalled();
+    expect(confirm).not.toHaveBeenCalled();
+    expect(editor).not.toHaveBeenCalled();
   });
 
   it("ignores a second plain invocation while the dashboard is pending", async () => {
@@ -1231,16 +1226,12 @@ describe("/statusline dashboard wiring", () => {
     const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
     const footerSpy = buildSetFooterSpy();
     const host = deferredCustomHost();
-    const input = deferred<string | undefined>();
-    const confirm = deferred<boolean>();
     createExtension(pi);
     const ctx = createContext({
       ui: {
         ...createContext().ui,
         setFooter: footerSpy.setFooter,
         custom: host.custom as unknown as ExtensionContext["ui"]["custom"],
-        input: vi.fn(() => input.promise),
-        confirm: vi.fn(() => confirm.promise),
       },
     });
     for (const h of handlers.get("session_start") ?? []) h({}, ctx);
@@ -1253,14 +1244,16 @@ describe("/statusline dashboard wiring", () => {
     component.handleInput("\t");
     if (action === "compact") component.handleInput("\x1b[B");
     component.handleInput("\r");
-    await new Promise((resolve) => setImmediate(resolve));
 
     const eventCtx = event === "session_shutdown" ? ctx : createContext();
     for (const h of handlers.get(event) ?? []) h({}, eventCtx);
-    if (action === "rename") input.resolve("Late");
-    else confirm.resolve(true);
-    await (action === "rename" ? input.promise : confirm.promise);
-    await new Promise((resolve) => setImmediate(resolve));
+    if (action === "rename") {
+      component.handleInput("Late");
+      component.handleInput("\r");
+    } else {
+      component.handleInput("\x1b[B");
+      component.handleInput("\r");
+    }
     await commandPromise;
 
     expect(host.done).toHaveBeenCalledTimes(1);

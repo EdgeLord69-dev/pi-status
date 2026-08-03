@@ -1,4 +1,4 @@
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { truncateToWidth, type Input, visibleWidth } from "@earendil-works/pi-tui";
 import { resolveFooter } from "../core/resolve-footer.ts";
 import type { StatusLineZone } from "../shared/types.ts";
 import {
@@ -30,6 +30,10 @@ export interface DashboardRenderResult {
   lines: string[];
   offset: number;
 }
+
+export type DashboardDialog =
+  | { type: "rename"; input: Input }
+  | { type: "confirm"; kind: "discard" | "compact"; selectedIndex: 0 | 1 };
 
 type LogicalBody = {
   lines: string[];
@@ -188,12 +192,42 @@ function logicalBody(
   };
 }
 
+function dialogBody(dialog: DashboardDialog, width: number, theme: StatusLineTheme): LogicalBody {
+  if (dialog.type === "rename") {
+    return {
+      lines: ["Rename session", dialog.input.render(width)[0] ?? ""],
+      selectedLine: 1,
+    };
+  }
+
+  const compact = dialog.kind === "compact";
+  const action = compact ? "Compact session" : "Discard changes";
+  return {
+    lines: [
+      compact ? "Compact session?" : "Discard unsaved changes?",
+      compact
+        ? "Pi will summarize older context."
+        : "Unsaved Layout, Statuses, or Settings changes will be lost.",
+      selectableLine(dialog.selectedIndex === 0, "", "Cancel", "", width, theme),
+      selectableLine(dialog.selectedIndex === 1, "", action, "", width, theme),
+    ],
+    selectedLine: 2 + dialog.selectedIndex,
+  };
+}
+
+function dialogFooter(dialog: DashboardDialog): string {
+  return dialog.type === "rename"
+    ? "Enter Submit  •  Esc Cancel"
+    : "↑/↓ Select  •  Space/Enter Choose  •  q/Esc Cancel";
+}
+
 export function renderDashboard(
   state: DashboardState,
   previewInput: Omit<FooterRenderInput, "zones" | "extensionSegments">,
   theme: StatusLineTheme,
   width: number,
   terminalRows: number,
+  dialog?: DashboardDialog,
 ): DashboardRenderResult {
   const safeWidth = Math.max(1, Math.floor(width));
   const contentWidth = frameContentWidth(safeWidth);
@@ -208,19 +242,23 @@ export function renderDashboard(
     return { lines: renderTooSmall(safeWidth, target, theme), offset: 0 };
   }
 
-  const active = logicalBody(state, state.activeTab, previewInput, theme, contentWidth, false);
+  const active = dialog
+    ? dialogBody(dialog, contentWidth, theme)
+    : logicalBody(state, state.activeTab, previewInput, theme, contentWidth, false);
   const viewport = fitViewport(
     active.lines,
     active.selectedLine,
     bodyRowBudget(target),
-    state.navigation[state.activeTab].offset,
+    dialog ? 0 : state.navigation[state.activeTab].offset,
   );
   const content = [
     renderTabBar([...DASHBOARD_TABS], state.activeTab, contentWidth, theme),
     "",
     ...viewport.lines,
     "",
-    theme.dim(truncateToWidth(FOOTERS[state.activeTab], contentWidth, "")),
+    theme.dim(
+      truncateToWidth(dialog ? dialogFooter(dialog) : FOOTERS[state.activeTab], contentWidth, ""),
+    ),
   ];
   return { lines: frame(content, safeWidth, theme), offset: viewport.offset };
 }

@@ -42,8 +42,8 @@ Once installed, the footer updates automatically. Run `/statusline` inside Pi to
 
 - **Layout**, **Statuses**, and **Settings** share one draft and Save action.
 - **Tools** applies tool changes immediately and never disables the final active tool.
-- **Session** shows current details and uses Pi dialogs for rename and compaction.
-- `Esc` clears search before closing; closing with unsaved changes confirms discard.
+- **Session** shows current details; Rename and Compact open transient views inside the same dashboard overlay.
+- `Esc` clears search before closing; dirty close opens an in-overlay Cancel/Discard confirmation.
 - The saved footer remains visible behind the centered dashboard overlay.
 
 Use `Tab` and `Shift+Tab` to move between tabs, arrow keys to navigate, `Space` to toggle, and type to search. Pi 0.83.0 or newer is required.

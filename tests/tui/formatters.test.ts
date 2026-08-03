@@ -203,12 +203,12 @@ describe("telemetry segments", () => {
   it("formats cache telemetry", () => {
     expect(
       formatSegment("cache-read-tokens", input({ sessionMetrics: metrics }), identityTheme),
-    ).toEqual(["Cache read: 1.2k", "dim"]);
+    ).toEqual(["CR 1.2k", "dim"]);
     expect(
       formatSegment("cache-write-tokens", input({ sessionMetrics: metrics }), identityTheme),
-    ).toEqual(["Cache write: 45", "dim"]);
+    ).toEqual(["CW 45", "dim"]);
     expect(formatSegment("cache-hit", input({ sessionMetrics: metrics }), identityTheme)).toEqual([
-      "Cache hit: 80%",
+      "Hit 80%",
       "dim",
     ]);
   });
@@ -216,21 +216,21 @@ describe("telemetry segments", () => {
   it("formats observed cost and omits absent telemetry", () => {
     expect(
       formatSegment("session-cost", input({ sessionMetrics: metrics }), identityTheme),
-    ).toEqual(["Cost: $0.1234", "dim"]);
+    ).toEqual(["$0.1234", "dim"]);
     expect(
       formatSegment(
         "session-cost",
         input({ sessionMetrics: { ...metrics, costUsd: 1.2 } }),
         identityTheme,
       ),
-    ).toEqual(["Cost: $1.20", "dim"]);
+    ).toEqual(["$1.20", "dim"]);
     expect(
       formatSegment(
         "session-cost",
         input({ sessionMetrics: { ...metrics, costUsd: 0 } }),
         identityTheme,
       ),
-    ).toEqual(["Cost: $0.0000", "dim"]);
+    ).toEqual(["$0.0000", "dim"]);
     expect(
       formatSegment(
         "session-cost",
@@ -250,9 +250,9 @@ describe("telemetry segments", () => {
   it("formats known access type and omits absent access type", () => {
     expect(
       formatSegment("access-type", input({ accessType: "subscription" }), identityTheme),
-    ).toEqual(["Access: subscription", "dim"]);
+    ).toEqual(["SUBSCRIPTION", "dim"]);
     expect(formatSegment("access-type", input({ accessType: "metered" }), identityTheme)).toEqual([
-      "Access: metered",
+      "METERED",
       "dim",
     ]);
     expect(formatSegment("access-type", input(), identityTheme)).toBeNull();
