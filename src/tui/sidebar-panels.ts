@@ -2,12 +2,7 @@
 // Public protocol constants and the direct-side registry for contributed
 // sidebar panels.
 
-import type {
-  ContributedSidebarPanelId,
-  SidebarPanelId,
-  SidebarPanelLayout,
-  SidebarPanelLayoutEntry,
-} from "../shared/types.js";
+import type { ContributedSidebarPanelId, SidebarPanelId } from "../shared/types.js";
 
 /** The event channel used by the public sidebar contribution protocol. */
 export const SIDEBAR_PANEL_CHANNEL = "pi-status:sidebar-panels";
@@ -206,41 +201,8 @@ export function isSidebarPanelRole(value: unknown): value is SidebarPanelRole {
   return typeof value === "string" && PANEL_ROLES.has(value);
 }
 
-export function cloneSidebarPanelLayout(
-  layout: readonly SidebarPanelLayoutEntry[],
-): SidebarPanelLayout {
-  return layout.map((entry) => ({ id: entry.id, visible: entry.visible }));
-}
-
-/**
- * Normalizes persisted layout while retaining valid namespaced IDs that are not
- * currently available. The order is preserved as written, with strict validation
- * applied to each entry; invalid IDs and duplicate panels are rejected with
- * warnings instead of throwing.
- */
-export function normalizeSidebarPanelLayout(
-  entries: readonly SidebarPanelLayoutEntry[],
-  warnings: string[] = [],
-): SidebarPanelLayout {
-  const normalized: SidebarPanelLayout = [];
-  const seen = new Set<string>();
-  for (const entry of entries) {
-    if (!entry || !isSidebarPanelId(entry.id)) {
-      warnings.push(`Unknown sidebar panel: ${String(entry?.id)}`);
-      continue;
-    }
-    if (seen.has(entry.id)) {
-      warnings.push(`Ignoring duplicate sidebar panel: ${entry.id}`);
-      continue;
-    }
-    seen.add(entry.id);
-    normalized.push({ id: entry.id, visible: entry.visible === true });
-  }
-  if (!normalized.some((entry) => entry.visible)) {
-    warnings.push("sidebarPanelLayout must include at least one visible panel");
-  }
-  return normalized;
-}
+// ponytail: Layout normalization is owned by src/core/config.ts to keep a single
+// authoritative public normalization. Helpers here intentionally omit clones.
 
 // Covers OSC (ESC ] … BEL/ST), CSI (ESC [ … final), and C1 CSI.
 const ANSI_ESCAPE =

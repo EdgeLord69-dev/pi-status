@@ -1169,3 +1169,91 @@ describe("sidebar panel event protocol", () => {
     expect(registry.getAvailable()).toEqual([]);
   });
 });
+
+describe("public sidebar panel seam exports", () => {
+  it("exposes the public panel foundation API from the default extension entry", async () => {
+    const publicApi = await import("../../src/index.ts");
+    const {
+      BUILTIN_SIDEBAR_PANEL_IDS: exportedBuiltins,
+      DEFAULT_SIDEBAR_PANEL_LAYOUT: exportedLayout,
+      SIDEBAR_PANEL_CHANNEL: exportedChannel,
+      SIDEBAR_PANEL_PROTOCOL_VERSION: exportedVersion,
+      SIDEBAR_PANEL_MAX_TITLE_CHARS,
+      SIDEBAR_PANEL_MAX_ROWS,
+      SIDEBAR_PANEL_MAX_ROW_CHARS,
+      SIDEBAR_PANEL_MAX_ID_CHARS,
+      SIDEBAR_PANEL_MAX_SOURCE_CHARS,
+      SIDEBAR_PANEL_MAX_PANELS,
+      SIDEBAR_PANEL_MAX_TRACKED_SOURCES,
+      SIDEBAR_PANEL_MAX_RAW_TITLE_CODE_UNITS,
+      SIDEBAR_PANEL_MAX_RAW_ROW_CODE_UNITS,
+      SIDEBAR_PANEL_MAX_RAW_REQUEST_ID_CODE_UNITS,
+      createSidebarPanelRegistry: exportedCreateRegistry,
+      registerSidebarPanel: exportedRegisterPublisher,
+      normalizeSidebarPanelLayout: exportedNormalizeLayout,
+      isSidebarPanelContributionId,
+      isSidebarPanelId,
+      isSidebarPanelSource,
+      isSidebarPanelRole,
+      isSidebarPanelRequestId,
+      isSidebarPanelTextWithinRawLimit,
+      sanitizeSidebarPanelText,
+    } = publicApi;
+
+    expect(exportedBuiltins).toEqual([
+      "agent",
+      "activity",
+      "alerts",
+      "statuses",
+      "todos",
+      "context",
+      "workspace",
+      "usage",
+      "tools",
+    ]);
+    expect(exportedLayout).toHaveLength(9);
+    expect(exportedLayout.map((entry) => entry.id)).toEqual(exportedBuiltins);
+    expect(exportedLayout.every((entry) => entry.visible === true)).toBe(true);
+
+    expect(exportedChannel).toBe("pi-status:sidebar-panels");
+    expect(exportedVersion).toBe(1);
+
+    expect(SIDEBAR_PANEL_MAX_TITLE_CHARS).toBe(48);
+    expect(SIDEBAR_PANEL_MAX_ROWS).toBe(24);
+    expect(SIDEBAR_PANEL_MAX_ROW_CHARS).toBe(160);
+    expect(SIDEBAR_PANEL_MAX_ID_CHARS).toBe(128);
+    expect(SIDEBAR_PANEL_MAX_SOURCE_CHARS).toBe(128);
+    expect(SIDEBAR_PANEL_MAX_PANELS).toBe(64);
+    expect(SIDEBAR_PANEL_MAX_TRACKED_SOURCES).toBe(64);
+    expect(SIDEBAR_PANEL_MAX_RAW_TITLE_CODE_UNITS).toBe(SIDEBAR_PANEL_MAX_TITLE_CHARS * 8);
+    expect(SIDEBAR_PANEL_MAX_RAW_ROW_CODE_UNITS).toBe(SIDEBAR_PANEL_MAX_ROW_CHARS * 8);
+    expect(SIDEBAR_PANEL_MAX_RAW_REQUEST_ID_CODE_UNITS).toBe(256);
+
+    expect(exportedCreateRegistry).toBeDefined();
+    expect(exportedRegisterPublisher).toBeDefined();
+    expect(exportedNormalizeLayout).toBeDefined();
+    expect(typeof exportedCreateRegistry).toBe("function");
+    expect(typeof exportedRegisterPublisher).toBe("function");
+    expect(typeof exportedNormalizeLayout).toBe("function");
+
+    expect(typeof isSidebarPanelContributionId).toBe("function");
+    expect(typeof isSidebarPanelId).toBe("function");
+    expect(typeof isSidebarPanelSource).toBe("function");
+    expect(typeof isSidebarPanelRole).toBe("function");
+    expect(typeof isSidebarPanelRequestId).toBe("function");
+    expect(typeof isSidebarPanelTextWithinRawLimit).toBe("function");
+    expect(typeof sanitizeSidebarPanelText).toBe("function");
+
+    const defaultExport = publicApi.default;
+    expect(typeof defaultExport).toBe("function");
+  });
+
+  it("does not instantiate a public registry at module import time", () => {
+    // Importing the public seam must remain synchronous and side-effect free
+    // for downstream consumers; the registry is only created on demand.
+    const events = { on: () => () => undefined, emit: () => undefined };
+    const registry = createSidebarPanelRegistry({ events });
+    expect(registry.getAvailable()).toEqual([]);
+    registry.dispose();
+  });
+});
