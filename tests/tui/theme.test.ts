@@ -242,4 +242,39 @@ describe("fromPiTheme", () => {
     expect(adapted.bg("selectedBg", "tab")).toBe("tab");
     expect(adapted.inverse("tab")).toBe("tab");
   });
+
+  it("copies the theme name when present", () => {
+    const named = {
+      name: "dark",
+      fg: (color: string, text: string) => `[${color}:${text}]`,
+      bold: (t: string) => t,
+    };
+    const wrapped = fromPiTheme(named);
+    expect(wrapped.name).toBe("dark");
+  });
+
+  it("leaves name undefined when the source theme has no name", () => {
+    const anon = {
+      fg: (color: string, text: string) => `[${color}:${text}]`,
+      bold: (t: string) => t,
+    };
+    expect(fromPiTheme(anon).name).toBeUndefined();
+  });
+
+  it("passes new tokens through fg without falling back", () => {
+    const called: string[] = [];
+    const theme = {
+      name: "dark",
+      fg: (color: string, text: string) => {
+        called.push(color);
+        return text;
+      },
+      bold: (t: string) => t,
+    };
+    const wrapped = fromPiTheme(theme);
+    for (const token of ["text", "muted", "mdHeading", "syntaxType"] as const) {
+      wrapped.fg(token, "x");
+    }
+    expect(called).toEqual(expect.arrayContaining(["text", "muted", "mdHeading", "syntaxType"]));
+  });
 });

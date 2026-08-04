@@ -1,8 +1,17 @@
 import type { FooterRenderColor } from "./render.ts";
 
-export type StatusLineMenuColor = FooterRenderColor | "borderAccent" | "borderMuted" | "selectedBg";
+export type StatusLineMenuColor =
+  | FooterRenderColor
+  | "borderAccent"
+  | "borderMuted"
+  | "selectedBg"
+  | "text"
+  | "muted"
+  | "mdHeading"
+  | "syntaxType";
 
 export type StatusLineTheme = {
+  name?: string;
   fg: (color: StatusLineMenuColor, text: string) => string;
   bg: (color: StatusLineMenuColor, text: string) => string;
   bold: (text: string) => string;
@@ -12,6 +21,7 @@ export type StatusLineTheme = {
 };
 
 type PiThemeLike = {
+  name?: string;
   fg: (color: string, text: string) => string;
   bg?: (color: string, text: string) => string;
   bold: (text: string) => string;
@@ -70,6 +80,7 @@ function safeFg(theme: PiThemeLike, color: string, text: string): string {
 }
 
 export const noTheme: StatusLineTheme = {
+  name: undefined,
   fg: (_color, text) => text,
   bg: (_color, text) => text,
   bold: (text) => text,
@@ -85,6 +96,7 @@ export function noColorRequested(env: object = process.env): boolean {
 export function fromPiTheme(theme: unknown): StatusLineTheme {
   if (!isPiThemeLike(theme)) return noTheme;
   return {
+    name: theme.name,
     fg: (color, text) => safeFg(theme, color, text),
     bg: (color, text) => {
       try {

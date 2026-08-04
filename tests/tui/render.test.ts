@@ -11,6 +11,7 @@ import {
   formatModelWithReasoning,
   formatSegment,
   type FooterRenderInput,
+  type ModelLike,
   type ResolvedFooterZones,
   type ThemeLike,
 } from "../../src/tui/render.ts";
@@ -1036,5 +1037,17 @@ describe("buildFooterRows", () => {
       throw new Error("expected two footer rows");
     expect(visibleWidth(topRow)).toBeLessThanOrEqual(5);
     expect(visibleWidth(bottomRow)).toBeLessThanOrEqual(5);
+  });
+});
+
+describe("ModelLike.provider", () => {
+  it("does not affect footer rendering when absent", () => {
+    const without = segmentInput({
+      model: { id: "m", name: "M", reasoning: true } as ModelLike,
+    });
+    const withProvider: ModelLike = { id: "m", name: "M", reasoning: true, provider: "anthropic" };
+    const left = buildFooterRows(without, identityTheme, 80);
+    const right = buildFooterRows({ ...without, model: withProvider }, identityTheme, 80);
+    expect(right).toEqual(left);
   });
 });

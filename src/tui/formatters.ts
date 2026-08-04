@@ -34,7 +34,7 @@ function contextRemainingColor(remainingPercent: number): "success" | "warning" 
   return "success";
 }
 
-function getRateWindow(
+export function getRateWindow(
   input: FooterRenderInput,
   key: "fiveHour" | "weekly",
 ): { usedPercent: number } | null {
@@ -278,14 +278,14 @@ export function formatTurnProgress(
     : null;
 }
 
-function formatActivityDuration(ms: number): string {
+export function formatActivityDuration(ms: number): string {
   if (!Number.isFinite(ms) || ms < 1_000) return "<1s";
   const totalSeconds = Math.floor(ms / 1_000);
   if (totalSeconds < 60) return `${totalSeconds}s`;
   return `${Math.floor(totalSeconds / 60)}m ${String(totalSeconds % 60).padStart(2, "0")}s`;
 }
 
-function formatTtft(ms: number): string {
+export function formatTtft(ms: number): string {
   if (!Number.isFinite(ms) || ms < 1_000) return `${Math.max(0, Math.round(ms))}ms`;
   return `${(ms / 1_000).toFixed(1)}s`;
 }
