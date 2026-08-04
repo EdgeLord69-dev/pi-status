@@ -2,7 +2,7 @@
 // Public protocol constants and the direct-side registry for contributed
 // sidebar panels.
 
-import type { ContributedSidebarPanelId, SidebarPanelId } from "../shared/types.js";
+import { SIDEBAR_PANEL_MAX_ID_CHARS, type ContributedSidebarPanelId } from "../shared/types.js";
 
 /** The event channel used by the public sidebar contribution protocol. */
 export const SIDEBAR_PANEL_CHANNEL = "pi-status:sidebar-panels";
@@ -27,7 +27,7 @@ export const SIDEBAR_PANEL_MAX_RAW_ROW_CODE_UNITS = SIDEBAR_PANEL_MAX_ROW_CHARS 
 /** Maximum raw UTF-16 code units accepted for discovery correlation IDs. */
 export const SIDEBAR_PANEL_MAX_RAW_REQUEST_ID_CODE_UNITS = 256;
 /** Maximum characters accepted for a namespaced contributed panel ID. */
-export const SIDEBAR_PANEL_MAX_ID_CHARS = 128;
+export { SIDEBAR_PANEL_MAX_ID_CHARS } from "../shared/types.js";
 /** Maximum characters accepted for a contributed panel source name. */
 export const SIDEBAR_PANEL_MAX_SOURCE_CHARS = 128;
 /** Maximum contributed panels retained by one registry. */
@@ -183,9 +183,7 @@ export function isSidebarPanelContributionId(value: unknown): value is Contribut
   );
 }
 
-export function isSidebarPanelId(value: unknown): value is SidebarPanelId {
-  return typeof value === "string" && isSidebarPanelContributionId(value);
-}
+export { isSidebarPanelId } from "../shared/types.js";
 
 /** Validate the source name retained with a contributed panel and its events. */
 export function isSidebarPanelSource(value: unknown): value is string {
@@ -217,31 +215,13 @@ export function isSidebarPanelTextWithinRawLimit(
   return typeof value === "string" && value.length <= maxCodeUnits;
 }
 
-function rawCodeUnitLimitFor(maxChars: number): number {
-  return maxChars <= SIDEBAR_PANEL_MAX_TITLE_CHARS
-    ? SIDEBAR_PANEL_MAX_RAW_TITLE_CODE_UNITS
-    : SIDEBAR_PANEL_MAX_RAW_ROW_CODE_UNITS;
-}
-
-function boundedRawText(value: string, maxChars: number): string {
-  const limit = rawCodeUnitLimitFor(maxChars);
-  if (value.length <= limit) return value;
-  const bounded = value.slice(0, limit);
-  return /[\ud800-\udbff]$/.test(bounded) ? bounded.slice(0, -1) : bounded;
-}
-
 function cleanSidebarPanelText(value: string): string {
   return value.replace(ANSI_ESCAPE, "").replace(C0_C1_CONTROL, " ").replace(/\s+/g, " ").trim();
 }
 
 /** Defensively sanitize text before any Settings or Sidebar interpolation. */
-export function sanitizeSidebarPanelText(
-  value: string,
-  maxChars = SIDEBAR_PANEL_MAX_ROW_CHARS,
-): string {
-  return Array.from(cleanSidebarPanelText(boundedRawText(value, maxChars)))
-    .slice(0, maxChars)
-    .join("");
+export function sanitizeSidebarPanelText(value: string, maxChars: number): string {
+  return Array.from(cleanSidebarPanelText(value)).slice(0, maxChars).join("");
 }
 
 function fitsSidebarPanelText(value: string, maxChars: number): boolean {
@@ -256,7 +236,6 @@ function sanitizeContribution(value: unknown): SanitizedSidebarPanelContribution
     !isSidebarPanelTextWithinRawLimit(value.title, SIDEBAR_PANEL_MAX_RAW_TITLE_CODE_UNITS) ||
     !Array.isArray(value.rows) ||
     value.rows.length > SIDEBAR_PANEL_MAX_ROWS ||
-    (value.role !== undefined && !isSidebarPanelRole(value.role)) ||
     !fitsSidebarPanelText(value.title, SIDEBAR_PANEL_MAX_TITLE_CHARS)
   )
     return undefined;
@@ -271,7 +250,6 @@ function sanitizeContribution(value: unknown): SanitizedSidebarPanelContribution
     if (
       text === undefined ||
       !isSidebarPanelTextWithinRawLimit(text, SIDEBAR_PANEL_MAX_RAW_ROW_CODE_UNITS) ||
-      (isRecord(row) && row.role !== undefined && !isSidebarPanelRole(row.role)) ||
       !fitsSidebarPanelText(text, SIDEBAR_PANEL_MAX_ROW_CHARS)
     )
       return undefined;
@@ -288,19 +266,17 @@ function sanitizeContribution(value: unknown): SanitizedSidebarPanelContribution
   };
 }
 
-function sourceFor(id: string): string {
-  return id.includes(":") ? id.slice(0, id.indexOf(":")) : "pi-status";
-}
-
-function copyPanelData(data: SidebarPanelData): SidebarPanelData {
-  return {
-    ...data,
-    rows: data.rows.map((row) => (row.role === undefined ? { text: row.text } : { ...row })),
-  };
-}
-
 const REVISION_STATE = new WeakMap<object, Map<string, number>>();
-let discoverySequence = 0;
+const DISCOVERY_SEPARATOR = "-";
+// Reserve room for a `-` separator and a 16-digit safe-integer sequence number.
+const DISCOVERY_PREFIX_MAX_CODE_UNITS = SIDEBAR_PANEL_MAX_RAW_REQUEST_ID_CODE_UNITS - 17;
+const DEFAULT_DISCOVERY_PREFIX = "pi-status";
+
+function discoveryPrefix(instanceId: unknown): string {
+  return isSidebarPanelRequestId(instanceId)
+    ? instanceId.slice(0, DISCOVERY_PREFIX_MAX_CODE_UNITS)
+    : DEFAULT_DISCOVERY_PREFIX;
+}
 
 function nextRevision(bus: object, source: string): number | undefined {
   let revisions = REVISION_STATE.get(bus);
@@ -316,6 +292,10 @@ function nextRevision(bus: object, source: string): number | undefined {
   return revision;
 }
 
+function sourceFor(id: string): string {
+  return id.includes(":") ? id.slice(0, id.indexOf(":")) : "pi-status";
+}
+
 export function registerSidebarPanel(
   pi: { events: SidebarPanelEventTransport },
   panel: SidebarPanelContribution,
@@ -327,13 +307,12 @@ export function registerSidebarPanel(
   const revision = nextRevision(pi.events, source);
   if (revision === undefined) return { update() {}, dispose() {} };
   let current = safe;
-  let next = revision;
   const emit = (event: SidebarPanelEvent): void => pi.events.emit(SIDEBAR_PANEL_CHANNEL, event);
   emit({
     version: SIDEBAR_PANEL_PROTOCOL_VERSION,
     type: "register",
     source,
-    revision: next,
+    revision,
     panel: current,
   });
   const unsubscribe = pi.events.on(SIDEBAR_PANEL_CHANNEL, (data) => {
@@ -346,12 +325,11 @@ export function registerSidebarPanel(
       return;
     const replay = nextRevision(pi.events, source);
     if (replay === undefined) return;
-    next = replay;
     emit({
       version: SIDEBAR_PANEL_PROTOCOL_VERSION,
       type: "register",
       source,
-      revision: next,
+      revision: replay,
       panel: current,
       requestId: data.requestId,
     });
@@ -366,12 +344,11 @@ export function registerSidebarPanel(
       current = updated;
       const rev = nextRevision(pi.events, source);
       if (rev === undefined) return;
-      next = rev;
       emit({
         version: SIDEBAR_PANEL_PROTOCOL_VERSION,
         type: "register",
         source,
-        revision: next,
+        revision: rev,
         panel: current,
       });
     },
@@ -391,12 +368,21 @@ export function registerSidebarPanel(
     },
   };
 }
+function copyPanelData(data: SidebarPanelData): SidebarPanelData {
+  return {
+    ...data,
+    rows: data.rows.map((row) => (row.role === undefined ? { text: row.text } : { ...row })),
+  };
+}
+
 export function createSidebarPanelRegistry(
   options: SidebarPanelRegistryOptions = {},
 ): SidebarPanelRegistry {
   const panels = new Map<string, SidebarPanelData>();
   const owners = new Map<string, string>();
   let disposed = false;
+  let discoverySequence = 0;
+  const requestPrefix = discoveryPrefix(options.instanceId);
   let unsubscribe: (() => void) | undefined;
 
   const changed = (): void => {
@@ -470,7 +456,8 @@ export function createSidebarPanelRegistry(
     if (
       data.type === "register" &&
       isSidebarPanelSource(data.source) &&
-      isSafeRevision(data.revision)
+      isSafeRevision(data.revision) &&
+      (data.requestId === undefined || isSidebarPanelRequestId(data.requestId))
     ) {
       const safe = sanitizeContribution(data.panel);
       if (
@@ -496,11 +483,11 @@ export function createSidebarPanelRegistry(
 
   const requestDiscovery = (): void => {
     if (!options.events || disposed) return;
-    discoverySequence = discoverySequence >= Number.MAX_SAFE_INTEGER ? 1 : discoverySequence + 1;
+    discoverySequence += 1;
     options.events.emit(SIDEBAR_PANEL_CHANNEL, {
       version: SIDEBAR_PANEL_PROTOCOL_VERSION,
       type: "discover",
-      requestId: `pi-status-${discoverySequence}`,
+      requestId: `${requestPrefix}${DISCOVERY_SEPARATOR}${discoverySequence}`,
     });
   };
 

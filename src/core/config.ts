@@ -14,6 +14,7 @@ import {
   DEFAULT_SIDEBAR_PANEL_LAYOUT,
   DEFAULT_ZONES,
   isKnownSegment,
+  isSidebarPanelId,
   type ConfigStore,
   type ExtensionSegments,
   type PiStatusConfig,
@@ -142,17 +143,6 @@ function normalizeFilterValues(input: unknown): string[] {
 export function normalizeExtensionSegments(input: unknown): ExtensionSegments {
   if (!input || typeof input !== "object" || Array.isArray(input)) return { hidden: [] };
   return { hidden: normalizeFilterValues((input as { hidden?: unknown }).hidden) };
-}
-
-const BUILTIN_SIDEBAR_PANEL_ID_SET = new Set<string>(BUILTIN_SIDEBAR_PANEL_IDS);
-const CONTRIBUTED_SIDEBAR_PANEL_ID_PATTERN = /^[a-z][a-z0-9_-]*:[a-z][a-z0-9_-]*$/;
-
-function isSidebarPanelId(input: unknown): input is SidebarPanelId {
-  return (
-    typeof input === "string" &&
-    (BUILTIN_SIDEBAR_PANEL_ID_SET.has(input) ||
-      (input.length <= 128 && CONTRIBUTED_SIDEBAR_PANEL_ID_PATTERN.test(input)))
-  );
 }
 
 export function normalizeSidebarPanelLayout(input: unknown): SidebarPanelLayout {

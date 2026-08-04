@@ -57,6 +57,19 @@ export type SidebarPanelLayout = SidebarPanelLayoutEntry[];
 export const DEFAULT_SIDEBAR_PANEL_LAYOUT: readonly Readonly<SidebarPanelLayoutEntry>[] =
   BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true }));
 
+const BUILTIN_SIDEBAR_PANEL_ID_SET = new Set<string>(BUILTIN_SIDEBAR_PANEL_IDS);
+const CONTRIBUTED_SIDEBAR_PANEL_ID_PATTERN = /^[a-z][a-z0-9_-]*:[a-z][a-z0-9_-]*$/;
+export const SIDEBAR_PANEL_MAX_ID_CHARS = 128;
+
+export function isSidebarPanelId(value: unknown): value is SidebarPanelId {
+  return (
+    typeof value === "string" &&
+    (BUILTIN_SIDEBAR_PANEL_ID_SET.has(value) ||
+      (value.length <= SIDEBAR_PANEL_MAX_ID_CHARS &&
+        CONTRIBUTED_SIDEBAR_PANEL_ID_PATTERN.test(value)))
+  );
+}
+
 export interface NormalizedTodo {
   id: number;
   text: string;
