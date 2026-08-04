@@ -62,8 +62,15 @@ Add tests for:
 
 ```ts
 expect(BUILTIN_SIDEBAR_PANEL_IDS).toEqual([
-  "agent", "activity", "alerts", "statuses", "todos",
-  "context", "workspace", "usage", "tools",
+  "agent",
+  "activity",
+  "alerts",
+  "statuses",
+  "todos",
+  "context",
+  "workspace",
+  "usage",
+  "tools",
 ]);
 
 expect(loadConfig({ agentDir: "/agent", store }).sidebarPanelLayout).toEqual(
@@ -79,8 +86,15 @@ Add the following shape, with `sidebarPanelLayout` required on `PiStatusConfig`:
 
 ```ts
 export const BUILTIN_SIDEBAR_PANEL_IDS = [
-  "agent", "activity", "alerts", "statuses", "todos",
-  "context", "workspace", "usage", "tools",
+  "agent",
+  "activity",
+  "alerts",
+  "statuses",
+  "todos",
+  "context",
+  "workspace",
+  "usage",
+  "tools",
 ] as const;
 
 export type BuiltinSidebarPanelId = (typeof BUILTIN_SIDEBAR_PANEL_IDS)[number];
@@ -164,8 +178,18 @@ Define these event shapes and APIs:
 
 ```ts
 type SidebarPanelRole =
-  | "primary" | "accent" | "muted" | "dim" | "ready" | "working"
-  | "warning" | "error" | "input" | "output" | "cache" | "context";
+  | "primary"
+  | "accent"
+  | "muted"
+  | "dim"
+  | "ready"
+  | "working"
+  | "warning"
+  | "error"
+  | "input"
+  | "output"
+  | "cache"
+  | "context";
 type SidebarPanelRow = { text: string; role?: SidebarPanelRole };
 type SidebarPanelContribution = {
   id: ContributedSidebarPanelId;
@@ -180,14 +204,25 @@ type SidebarPanelData = Omit<SidebarPanelContribution, "rows"> & {
 };
 
 type SidebarPanelRegisterEvent = {
-  version: 1; type: "register"; source: string; revision: number;
-  panel: SidebarPanelContribution; requestId?: string;
+  version: 1;
+  type: "register";
+  source: string;
+  revision: number;
+  panel: SidebarPanelContribution;
+  requestId?: string;
 };
 type SidebarPanelUnregisterEvent = {
-  version: 1; type: "unregister"; source: string;
-  revision: number; id: ContributedSidebarPanelId;
+  version: 1;
+  type: "unregister";
+  source: string;
+  revision: number;
+  id: ContributedSidebarPanelId;
 };
-type SidebarPanelDiscoveryEvent = { version: 1; type: "discover"; requestId: string };
+type SidebarPanelDiscoveryEvent = {
+  version: 1;
+  type: "discover";
+  requestId: string;
+};
 type SidebarPanelEventTransport = {
   on(channel: string, handler: (data: unknown) => void): () => void;
   emit(channel: string, data: unknown): void;
@@ -222,7 +257,7 @@ Use channel `pi-status:sidebar-panels` and protocol version `1`. `SidebarPanelDa
 
 - [ ] **Step 3: Implement sanitization and direct registry operations**
 
-Port Atelier’s bounded sanitizer and validation with the limits above. `register()` accepts a contributed ID only, derives the source from the namespace when omitted, rejects invalid input without throwing, and preserves first-source ownership. `unregister()` requires the owning source. Existing IDs can update while full; new IDs cannot. Equal updates do not call `onChange`; material changes do. Returned rows and panels are fresh copies. Registry callbacks are best effort, disposal is idempotent, and disposal clears panels/owners while leaving no active event subscription.
+Port Atelier’s bounded sanitizer and validation with the limits above. Unknown optional panel or row roles are omitted while the otherwise valid contribution is retained. `register()` accepts a contributed ID only, derives the source from the namespace when omitted, rejects invalid structural input without throwing, and preserves first-source ownership. `unregister()` requires the owning source. Existing IDs can update while full; new IDs cannot. Equal updates do not call `onChange`; material changes do. Returned rows and panels are fresh copies. Registry callbacks are best effort, disposal is idempotent, and disposal clears panels/owners while leaving no active event subscription.
 
 - [ ] **Step 4: Verify direct registry behavior**
 
@@ -258,7 +293,7 @@ Invalid, stale, wrong-owner, or capacity-rejected events must not consume a revi
 
 Subscribe before the registry’s first discovery emit. Track the highest accepted revision per source and accept only positive safe integers greater than the previous value. Validate the entire payload, ownership, and capacity before recording the revision. Ignore discovery events in the registry itself.
 
-Allocate publisher revisions in a `WeakMap<EventBus, Map<string, number>>`, retain up to 64 source tombstones, and make a publisher inert when a new source cannot be allocated. Use `pi-status-<sequence>` for discovery IDs, wrapping safe sequences to `1`.
+Allocate publisher revisions in a `WeakMap<EventBus, Map<string, number>>`, retain up to 64 source tombstones, and make a publisher inert when a new source cannot be allocated. Discovery sequences are scoped to each registry and wrap to `1`; use a validated, bounded `instanceId` as the prefix when supplied and `pi-status` otherwise.
 
 - [ ] **Step 3: Implement publisher behavior**
 
