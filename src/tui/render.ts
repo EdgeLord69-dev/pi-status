@@ -50,6 +50,7 @@ export type ModelLike = {
   id?: string;
   name?: string;
   reasoning?: boolean;
+  provider?: string;
 };
 
 export type RunState = "busy" | "queued" | "idle";

@@ -6,6 +6,7 @@ import {
   RATE_WARNING_THRESHOLD,
   REMAINING_ERROR_THRESHOLD,
   REMAINING_WARNING_THRESHOLD,
+  formatActivityDuration,
   formatContextRemaining,
   formatContextUsed,
   formatCurrentDir,
@@ -19,9 +20,11 @@ import {
   formatSessionId,
   formatTotalInputTokens,
   formatTotalOutputTokens,
+  formatTtft,
   formatTurnProgress,
   formatUsedTokens,
   formatWeeklyLimit,
+  getRateWindow,
   segmentFormatters,
   type SegmentFormatter,
 } from "../../src/tui/formatters.ts";
@@ -791,5 +794,53 @@ describe("formatResponsePerformance", () => {
       "TTFT 100ms",
       "dim",
     ]);
+  });
+});
+
+describe("formatActivityDuration", () => {
+  it("renders sub-second durations as '<1s'", () => {
+    expect(formatActivityDuration(0)).toBe("<1s");
+    expect(formatActivityDuration(999)).toBe("<1s");
+  });
+  it("renders minute-second durations", () => {
+    expect(formatActivityDuration(75_000)).toBe("1m 15s");
+  });
+});
+
+describe("formatTtft", () => {
+  it("renders sub-second times in milliseconds", () => {
+    expect(formatTtft(120)).toBe("120ms");
+  });
+  it("renders times over one second in seconds", () => {
+    expect(formatTtft(1_500)).toBe("1.5s");
+  });
+});
+
+describe("getRateWindow", () => {
+  it("returns undefined for windows with an unavailableReason", () => {
+    const sample = input({
+      usageState: {
+        compatibility: {
+          currentLiveProviderSnapshot: {
+            providerId: "p",
+            windows: [{ key: "fiveHour", usedPercent: 30, unavailableReason: "rate_limited" }],
+          },
+        },
+      },
+    });
+    expect(getRateWindow(sample, "fiveHour")).toBeNull();
+  });
+  it("returns used percent for available windows", () => {
+    const sample = input({
+      usageState: {
+        compatibility: {
+          currentLiveProviderSnapshot: {
+            providerId: "p",
+            windows: [{ key: "weekly", usedPercent: 42, unavailableReason: null }],
+          },
+        },
+      },
+    });
+    expect(getRateWindow(sample, "weekly")).toEqual({ usedPercent: 42 });
   });
 });
