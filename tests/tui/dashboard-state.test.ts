@@ -89,7 +89,9 @@ describe("dashboard draft initialization", () => {
     const state = initDashboardState(source, ["beta", "alpha"], true);
     source.zones.topLeft.push("model");
     source.extensionSegments.hidden.push("later");
-    source.sidebarPanelLayout[0]!.visible = false;
+    const sourcePanel = source.sidebarPanelLayout[0];
+    expect(sourcePanel).toBeDefined();
+    if (sourcePanel) sourcePanel.visible = false;
 
     expect(state.baseline).toEqual(
       config({ extensionSegments: { hidden: ["missing-extension"] } }),
@@ -102,6 +104,9 @@ describe("dashboard draft initialization", () => {
 
   it("compares every persisted field including ordered arrays", () => {
     const first = config();
+    const firstPanel = first.sidebarPanelLayout[0];
+    expect(firstPanel).toBeDefined();
+    if (!firstPanel) throw new Error("expected default sidebar panel");
     expect(configsEqual(first, structuredClone(first))).toBe(true);
     expect(configsEqual(first, config({ completionNotifications: true }))).toBe(false);
     expect(configsEqual(first, config({ showSidebarToolNames: true }))).toBe(false);
@@ -110,7 +115,7 @@ describe("dashboard draft initialization", () => {
       configsEqual(
         first,
         config({
-          sidebarPanelLayout: [...first.sidebarPanelLayout.slice(1), first.sidebarPanelLayout[0]!],
+          sidebarPanelLayout: [...first.sidebarPanelLayout.slice(1), firstPanel],
         }),
       ),
     ).toBe(false);

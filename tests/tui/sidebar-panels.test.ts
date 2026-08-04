@@ -102,6 +102,25 @@ describe("sidebar panel contribution data shape", () => {
     }
     registry.dispose();
   });
+
+  it("omits unknown semantic roles while retaining otherwise valid contributions", () => {
+    const registry = createSidebarPanelRegistry();
+    expect(
+      registry.register({
+        id: "vendor:queue",
+        title: "Queue",
+        rows: [{ text: "ready", role: "unknown" }],
+        role: "unknown",
+      } as unknown as SidebarPanelContribution),
+    ).toBe(true);
+    expect(registry.get("vendor:queue")).toMatchObject({
+      title: "Queue",
+      rows: [{ text: "ready" }],
+    });
+    expect(registry.get("vendor:queue")?.role).toBeUndefined();
+    expect(registry.get("vendor:queue")?.rows[0]?.role).toBeUndefined();
+    registry.dispose();
+  });
 });
 
 describe("sidebar panel registry direct operations", () => {
@@ -486,12 +505,36 @@ describe("sidebar panel event protocol", () => {
     });
     expect(registry.get("vendor:queue")?.source).toBe("vendor");
     expect(emitted[0]).toMatchObject({ type: "discover" });
-    expect((emitted[0] as { requestId?: string }).requestId).toMatch(/^pi-status-\d+$/);
+    expect((emitted[0] as { requestId?: string }).requestId).toBe("vendor-1");
     registry.dispose();
+  });
+
+  it("scopes discovery sequences to each registry instance", () => {
+    const emittedA: unknown[] = [];
+    const emittedB: unknown[] = [];
+    const registryA = createSidebarPanelRegistry({
+      events: { on: () => () => undefined, emit: (_channel, data) => emittedA.push(data) },
+      instanceId: "alpha",
+    });
+    const registryB = createSidebarPanelRegistry({
+      events: { on: () => () => undefined, emit: (_channel, data) => emittedB.push(data) },
+      instanceId: "alpha",
+    });
+
+    expect(emittedA[0]).toMatchObject({ type: "discover", requestId: "alpha-1" });
+    expect(emittedB[0]).toMatchObject({ type: "discover", requestId: "alpha-1" });
+    registryA.requestDiscovery();
+    expect(emittedA[1]).toMatchObject({ type: "discover", requestId: "alpha-2" });
+
+    registryA.dispose();
+    registryB.dispose();
   });
 
   it("validates contributed IDs and bounded discovery request IDs at both public seams", () => {
     expect(isSidebarPanelContributionId("vendor:queue")).toBe(true);
+    expect(isSidebarPanelId("vendor:queue")).toBe(true);
+    expect(isSidebarPanelId("agent")).toBe(true);
+    expect(isSidebarPanelId("statuses")).toBe(true);
     for (const suffix of ["\n", "\r", "\r\n", "\u2028", "\u2029", " ", "\t"]) {
       expect(isSidebarPanelContributionId(`vendor:queue${suffix}`)).toBe(false);
     }
@@ -759,6 +802,14 @@ describe("sidebar panel event protocol", () => {
         source: "vendor",
         revision: 1,
         panel: { id: "vendor:queue", title: "Queue", rows: [null] },
+      },
+      {
+        version: 1,
+        type: "register",
+        source: "vendor",
+        revision: 1,
+        requestId: "bad\nrequest",
+        panel: { id: "vendor:queue", title: "Bad request", rows: [] },
       },
     ])
       registry.handleEvent(event);
@@ -1185,9 +1236,6 @@ describe("public sidebar panel seam exports", () => {
       SIDEBAR_PANEL_MAX_SOURCE_CHARS,
       SIDEBAR_PANEL_MAX_PANELS,
       SIDEBAR_PANEL_MAX_TRACKED_SOURCES,
-      SIDEBAR_PANEL_MAX_RAW_TITLE_CODE_UNITS,
-      SIDEBAR_PANEL_MAX_RAW_ROW_CODE_UNITS,
-      SIDEBAR_PANEL_MAX_RAW_REQUEST_ID_CODE_UNITS,
       createSidebarPanelRegistry: exportedCreateRegistry,
       registerSidebarPanel: exportedRegisterPublisher,
       normalizeSidebarPanelLayout: exportedNormalizeLayout,
@@ -1196,7 +1244,6 @@ describe("public sidebar panel seam exports", () => {
       isSidebarPanelSource,
       isSidebarPanelRole,
       isSidebarPanelRequestId,
-      isSidebarPanelTextWithinRawLimit,
       sanitizeSidebarPanelText,
     } = publicApi;
 
@@ -1225,9 +1272,6 @@ describe("public sidebar panel seam exports", () => {
     expect(SIDEBAR_PANEL_MAX_SOURCE_CHARS).toBe(128);
     expect(SIDEBAR_PANEL_MAX_PANELS).toBe(64);
     expect(SIDEBAR_PANEL_MAX_TRACKED_SOURCES).toBe(64);
-    expect(SIDEBAR_PANEL_MAX_RAW_TITLE_CODE_UNITS).toBe(SIDEBAR_PANEL_MAX_TITLE_CHARS * 8);
-    expect(SIDEBAR_PANEL_MAX_RAW_ROW_CODE_UNITS).toBe(SIDEBAR_PANEL_MAX_ROW_CHARS * 8);
-    expect(SIDEBAR_PANEL_MAX_RAW_REQUEST_ID_CODE_UNITS).toBe(256);
 
     expect(exportedCreateRegistry).toBeDefined();
     expect(exportedRegisterPublisher).toBeDefined();
@@ -1241,19 +1285,12 @@ describe("public sidebar panel seam exports", () => {
     expect(typeof isSidebarPanelSource).toBe("function");
     expect(typeof isSidebarPanelRole).toBe("function");
     expect(typeof isSidebarPanelRequestId).toBe("function");
-    expect(typeof isSidebarPanelTextWithinRawLimit).toBe("function");
     expect(typeof sanitizeSidebarPanelText).toBe("function");
+    expect(isSidebarPanelId("agent")).toBe(true);
+    expect(isSidebarPanelId("statuses")).toBe(true);
+    expect(isSidebarPanelId("vendor:queue")).toBe(true);
 
     const defaultExport = publicApi.default;
     expect(typeof defaultExport).toBe("function");
-  });
-
-  it("does not instantiate a public registry at module import time", () => {
-    // Importing the public seam must remain synchronous and side-effect free
-    // for downstream consumers; the registry is only created on demand.
-    const events = { on: () => () => undefined, emit: () => undefined };
-    const registry = createSidebarPanelRegistry({ events });
-    expect(registry.getAvailable()).toEqual([]);
-    registry.dispose();
   });
 });

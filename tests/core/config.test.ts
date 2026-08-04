@@ -107,7 +107,9 @@ describe("config — sidebar panel layout", () => {
     const first = normalizeSidebarPanelLayout(undefined);
     const second = normalizeSidebarPanelLayout({});
 
-    first[0]!.visible = false;
+    const firstEntry = first[0];
+    expect(firstEntry).toBeDefined();
+    if (firstEntry) firstEntry.visible = false;
     expect(second).toEqual(expectedDefault());
     expect(normalizeSidebarPanelLayout("agent")).toEqual(expectedDefault());
 
@@ -131,6 +133,11 @@ describe("config — sidebar panel layout", () => {
         { id: "vendor.panel:name", visible: true },
         { id: "vendor:panel.name", visible: true },
         { id: "vendor::panel", visible: true },
+        { id: "vendor:panel\n", visible: true },
+        { id: "vendor:panel\r", visible: true },
+        { id: "vendor:panel\r\n", visible: true },
+        { id: "vendor:panel\u2028", visible: true },
+        { id: "vendor:panel\u2029", visible: true },
         { id: `a:${"b".repeat(127)}`, visible: true },
       ]),
     ).toEqual(expectedDefault());
@@ -192,7 +199,9 @@ describe("config — sidebar panel layout", () => {
       { id: "tools", visible: false },
     ];
     const sidebarPanelLayout = normalizeSidebarPanelLayout(input);
-    input[0]!.visible = false;
+    const inputEntry = input[0];
+    expect(inputEntry).toBeDefined();
+    if (inputEntry) inputEntry.visible = false;
     expect(sidebarPanelLayout[0]).toEqual({ id: "vendor:panel", visible: true });
 
     const store = new MemoryConfigStore();
@@ -207,7 +216,9 @@ describe("config — sidebar panel layout", () => {
 
     const emptyStore = new MemoryConfigStore();
     const first = loadConfig({ agentDir: "/agent", store: emptyStore });
-    first.sidebarPanelLayout[0]!.visible = false;
+    const loadedEntry = first.sidebarPanelLayout[0];
+    expect(loadedEntry).toBeDefined();
+    if (loadedEntry) loadedEntry.visible = false;
     expect(loadConfig({ agentDir: "/agent", store: emptyStore }).sidebarPanelLayout).toEqual(
       expectedDefault(),
     );
