@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildSnapshot, resolveFooter, type SnapshotInput } from "../../src/core/resolve-footer.ts";
+import { BUILTIN_SIDEBAR_PANEL_IDS } from "../../src/shared/types.ts";
 import type { ThemeLike } from "../../src/tui/render.ts";
 
 function makeInput(overrides?: Partial<SnapshotInput>): SnapshotInput {
@@ -274,6 +275,7 @@ describe("resolveFooter", () => {
       extensionSegments: { hidden: [] },
       completionNotifications: false,
       showSidebarToolNames: false,
+      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
     };
     const result = resolveFooter(snapshot, config, identityTheme);
     expect(result.topLeft).toEqual([{ key: "run-state", text: "idle", color: "dim" }]);
@@ -294,6 +296,7 @@ describe("resolveFooter", () => {
       extensionSegments: { hidden: [] },
       completionNotifications: false,
       showSidebarToolNames: false,
+      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
     };
     const result = resolveFooter(snapshot, config, identityTheme);
     expect(result.topLeft).toEqual([{ key: "run-state", text: "idle", color: "dim" }]);
@@ -311,6 +314,7 @@ describe("resolveFooter", () => {
       extensionSegments: { hidden: [] },
       completionNotifications: false,
       showSidebarToolNames: false,
+      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
     };
     const result = resolveFooter(snapshot, config, identityTheme);
     expect(result.topLeft).toEqual([
@@ -332,6 +336,7 @@ describe("resolveFooter", () => {
       extensionSegments: { hidden: [] },
       completionNotifications: false,
       showSidebarToolNames: false,
+      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
     };
     const result = resolveFooter(snapshot, config, identityTheme);
     expect(result.topLeft).toEqual([]);
@@ -344,6 +349,7 @@ describe("resolveFooter", () => {
       extensionSegments: { hidden: [] },
       completionNotifications: false,
       showSidebarToolNames: false,
+      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
     };
     const result = resolveFooter(snapshot, config, identityTheme);
     expect(result).toEqual({ topLeft: [], topRight: [], bottomLeft: [], bottomRight: [] });
@@ -358,6 +364,7 @@ describe("resolveFooter", () => {
       extensionSegments: { hidden: [] },
       completionNotifications: false,
       showSidebarToolNames: false,
+      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
     };
     const result = resolveFooter(snapshot, config, identityTheme);
     expect(result.bottomRight).toEqual([{ key: "extension-status", text: "5h: 60%", color: null }]);
@@ -377,6 +384,7 @@ describe("resolveFooter", () => {
       extensionSegments: { hidden: ["pi-usage"] },
       completionNotifications: false,
       showSidebarToolNames: false,
+      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
     };
     const result = resolveFooter(snapshot, config, identityTheme);
     expect(result.bottomRight).toEqual([{ key: "extension-status", text: "ok", color: null }]);
@@ -389,6 +397,7 @@ describe("resolveFooter", () => {
       extensionSegments: { hidden: [] },
       completionNotifications: false,
       showSidebarToolNames: false,
+      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
     };
     const result = resolveFooter(snapshot, config, identityTheme);
     expect(result.bottomRight).toEqual([]);
@@ -424,6 +433,7 @@ describe("resolveFooter", () => {
       extensionSegments: { hidden: [] },
       completionNotifications: false,
       showSidebarToolNames: false,
+      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
     };
     const result = resolveFooter(snapshot, config, identityTheme);
     expect(result.topLeft).toEqual([

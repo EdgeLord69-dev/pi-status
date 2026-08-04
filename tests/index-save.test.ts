@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { TUI } from "@earendil-works/pi-tui";
-import type { PiStatusConfig } from "../src/shared/types.ts";
+import { BUILTIN_SIDEBAR_PANEL_IDS, type PiStatusConfig } from "../src/shared/types.ts";
 import type { StatusLineDashboardComponent } from "../src/tui/dashboard.ts";
 import { isDashboardDirty } from "../src/tui/dashboard-state.ts";
 import {
@@ -28,6 +28,7 @@ function config(): PiStatusConfig {
     extensionSegments: { hidden: [] },
     completionNotifications: false,
     showSidebarToolNames: false,
+    sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
   };
 }
 
@@ -65,6 +66,7 @@ describe("/statusline persistence", () => {
       extensionSegments: { hidden: [] },
       completionNotifications: false,
       showSidebarToolNames: false,
+      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
     };
     const loadConfig = vi.fn(() => initial);
     const saveConfig = vi.fn();

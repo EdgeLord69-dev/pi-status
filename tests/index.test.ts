@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import createExtension from "../src/index.ts";
+import { BUILTIN_SIDEBAR_PANEL_IDS } from "../src/shared/types.ts";
 import type { StatusLineDashboardComponent } from "../src/tui/dashboard.ts";
 
 let agentDir: string;
@@ -634,6 +635,7 @@ describe("extension wiring", () => {
       extensionSegments: { hidden: [] },
       completionNotifications: true,
       showSidebarToolNames: false,
+      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
     });
   });
 
@@ -938,6 +940,7 @@ describe("extension wiring — completion notifications", () => {
         extensionSegments: { hidden: [] },
         completionNotifications: true,
         showSidebarToolNames: false,
+        sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
       }),
       "utf8",
     );

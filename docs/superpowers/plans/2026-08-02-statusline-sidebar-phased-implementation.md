@@ -1,110 +1,29 @@
-# Statusline Sidebar Phased Implementation Plan
+# Statusline Sidebar Phased Implementation Roadmap
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this roadmap task-by-task. Each phase has its own focused gate and commit boundary.
 
-**Goal:** Deliver the approved statusline sidebar through six atomic phases ordered from low-risk runtime data changes to host lifecycle integration and release verification.
+**Goal:** Deliver current Atelier sidebar parity in dependency-ordered, independently verifiable phases while preserving pi-status footer/dashboard compatibility.
 
-**Architecture:** The unchanged source plan remains the detailed technical authority. This roadmap groups its tasks into dependency-ordered phase plans; each phase has its own tests, commit boundary, and usable result, and later phases consume only public types or functions completed by earlier phases.
+**Architecture:** Phases 1–2 provide safe runtime data and rich Workspace Pulse. Phases 3–8 add panel/config foundations, pure rendering, the split/controller, dashboard editing, lifecycle/TODO integration, and release verification. Each phase consumes only committed public types and functions from the preceding phase.
 
-**Tech Stack:** TypeScript 6, Pi/Pi TUI public 0.83 APIs, Vitest 4, Biome, pnpm, Node 24.
-
----
-
-## Source authority
-
-- Design: `docs/superpowers/specs/2026-08-02-statusline-sidebar-design.md`
-- Detailed parent: `docs/superpowers/plans/2026-08-02-statusline-sidebar-implementation.md`
-- Frozen parent SHA-256: `2f48d3c3d273bf8d8782f7e4c17b89b5b570575e2a37ade85de5881d290e7dfb`
-- Pi Atelier reference: `/Users/lanh/Developer/pi-packages/michaelmjhhhh-pi-atelier` at `36e5640`
-- Pi host reference: `/Users/lanh/Developer/pi-packages/pi` at `583f153d502aa8e958eefdb9af0fbd3344e68f95`
-
-If this roadmap and the detailed parent disagree, follow the approved design first and the detailed parent second. Phase plans repeat parent content so each can be executed in isolation; they do not replace the parent.
+**Authority:** [current Atelier parity plan](2026-08-03-statusline-sidebar-current-atelier-parity.md), [updated design](../specs/2026-08-02-statusline-sidebar-design.md), Atelier `d78f1d113814af4eee6deb9f4418f96cf50c66fa`, Pi `583f153d502aa8e958eefdb9af0fbd3344e68f95`.
 
 ## Phase order
 
-| Phase | Plan | Parent tasks | Atomic usable result |
-| --- | --- | --- | --- |
-| 1 | `2026-08-02-statusline-sidebar-phase-01-safe-runtime-data.md` | 0–2 | Backward-compatible sidebar configuration and safe, bounded activity telemetry are available without changing footer behavior. |
-| 2 | `2026-08-02-statusline-sidebar-phase-02-workspace-pulse.md` | 3 | The existing Workspace Pulse runtime exposes bounded rich Git metrics while retaining current footer and stale-state behavior. |
-| 3 | `2026-08-02-statusline-sidebar-phase-03-pure-renderer.md` | 4 | A host-independent renderer can produce the complete, responsive sidebar from a snapshot. |
-| 4 | `2026-08-02-statusline-sidebar-phase-04-split-pane-controller.md` | 5–6 | A directly invoked controller can show, hide, resize, auto-hide, and safely dispose one sidebar overlay. |
-| 5 | `2026-08-02-statusline-sidebar-phase-05-dashboard-lifecycle.md` | 7–8 | Regular TUI users receive the complete default-on sidebar, dashboard controls, side-by-side geometry, shortcut, and safe session lifecycle. |
-| 6 | `2026-08-02-statusline-sidebar-phase-06-release-verification.md` | 9 | Attribution, documentation, packaging, full checks, and manual regular/fullscreen verification make the feature release-ready. |
+| Phase | Plan | Result |
+| --- | --- | --- |
+| 1 | `2026-08-02-statusline-sidebar-phase-01-safe-runtime-data.md` | Safe config/activity data is available. |
+| 2 | `2026-08-02-statusline-sidebar-phase-02-workspace-pulse.md` | Rich bounded Workspace Pulse is available. |
+| 3 | `2026-08-03-statusline-sidebar-phase-03-panel-foundation.md` | Ordered panel config and public contribution registry work without rendering changes. |
+| 4 | `2026-08-03-statusline-sidebar-phase-04-pure-renderer.md` | A host-independent snapshot renders all ordered built-in/contributed panels. |
+| 5 | `2026-08-03-statusline-sidebar-phase-05-split-pane-controller.md` | One safe overlay can show, hide, resize, auto-hide, and dispose. |
+| 6 | `2026-08-03-statusline-sidebar-phase-06-dashboard-sidebar-tab.md` | Users can edit and save ordered panel layout in the dashboard. |
+| 7 | `2026-08-03-statusline-sidebar-phase-07-lifecycle-todos.md` | Session lifecycle, contributions, TODOs, dashboard geometry, and cleanup are wired. |
+| 8 | `2026-08-03-statusline-sidebar-phase-08-release-verification.md` | Documentation, packaging, automated gates, and manual verification are complete. |
 
-Implementation complexity increases from Phase 1 through the host-integrated Phase 5. Phase 6 is the mandatory release gate after the most complex implementation is complete. The dependency chain is strictly `1 → 2 → 3 → 4 → 5 → 6`; do not start a phase until the preceding phase is committed and its final gate passes.
+## Execution rules
 
-## Task 1: Record the execution base
-
-No tracked files change in this task.
-
-- [ ] **Step 1: Verify the planning commits and clean worktree**
-
-```bash
-set -e
-test -z "$(git status --short)"
-git merge-base --is-ancestor 5b4ea4615d8dcc934ee55ebe4003516ebd1c427e HEAD
-git merge-base --is-ancestor dae5612 HEAD
-shasum -a 256 docs/superpowers/plans/2026-08-02-statusline-sidebar-implementation.md
-```
-
-Expected: exit 0 and parent checksum `2f48d3c3d273bf8d8782f7e4c17b89b5b570575e2a37ade85de5881d290e7dfb`.
-
-- [ ] **Step 2: Create an ignored execution marker**
-
-```bash
-set -e
-mkdir -p .superpowers
-git rev-parse HEAD > .superpowers/statusline-sidebar-phased-base
-git check-ignore -q .superpowers/statusline-sidebar-phased-base
-```
-
-Expected: the ignored marker contains the clean starting commit and does not dirty the worktree.
-
-## Task 2: Execute phases in order
-
-- [ ] **Step 1: Complete Phase 1**
-
-Follow `docs/superpowers/plans/2026-08-02-statusline-sidebar-phase-01-safe-runtime-data.md` through its final gate and commit.
-
-- [ ] **Step 2: Complete Phase 2**
-
-Follow `docs/superpowers/plans/2026-08-02-statusline-sidebar-phase-02-workspace-pulse.md` through its final gate and commit.
-
-- [ ] **Step 3: Complete Phase 3**
-
-Follow `docs/superpowers/plans/2026-08-02-statusline-sidebar-phase-03-pure-renderer.md` through its final gate and commit.
-
-- [ ] **Step 4: Complete Phase 4**
-
-Follow `docs/superpowers/plans/2026-08-02-statusline-sidebar-phase-04-split-pane-controller.md` through its final gate and commit.
-
-- [ ] **Step 5: Complete Phase 5**
-
-Follow `docs/superpowers/plans/2026-08-02-statusline-sidebar-phase-05-dashboard-lifecycle.md` through its final gate and commit.
-
-- [ ] **Step 6: Complete Phase 6**
-
-Follow `docs/superpowers/plans/2026-08-02-statusline-sidebar-phase-06-release-verification.md` through its final gate and commit.
-
-## Task 3: Confirm the phased result
-
-- [ ] **Step 1: Run the repository gate**
-
-```bash
-mise exec node@24.15.0 -- pnpm check
-mise exec node@24.15.0 -- pnpm pack:dry-run
-git diff --check
-```
-
-Expected: every command exits 0.
-
-- [ ] **Step 2: Confirm scope and parent preservation**
-
-```bash
-set -e
-shasum -a 256 docs/superpowers/plans/2026-08-02-statusline-sidebar-implementation.md | grep -F '2f48d3c3d273bf8d8782f7e4c17b89b5b570575e2a37ade85de5881d290e7dfb'
-test "$(git diff --name-only "$(cat .superpowers/statusline-sidebar-phased-base)"...HEAD -- package.json pnpm-lock.yaml | wc -l | tr -d ' ')" = "0"
-git log --oneline "$(cat .superpowers/statusline-sidebar-phased-base)"..HEAD
-```
-
-Expected: the detailed parent checksum matches the updated roadmap, dependency files are untouched, and the phase commits appear in order.
+- Do not execute the old 2026-08-02 phase 3–6 plans; they are retained only as historical context and explicitly marked superseded.
+- Run each phase’s focused tests, `mise exec node@24.15.0 -- pnpm typecheck`, and `git diff --check` before its commit.
+- Do not begin the next phase until the current phase gate passes.
+- Run the full repository and package gates only after phase 8.

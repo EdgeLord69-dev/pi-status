@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { PiStatusConfig, StatusLineZones } from "../../src/shared/types.ts";
+import {
+  BUILTIN_SIDEBAR_PANEL_IDS,
+  type PiStatusConfig,
+  type StatusLineZones,
+} from "../../src/shared/types.ts";
 import type { DashboardTool } from "../../src/tui/tool-controls.ts";
 import type { SessionDetails } from "../../src/tui/session-actions.ts";
 import {
@@ -26,6 +30,7 @@ function config(overrides: Partial<PiStatusConfig> = {}): PiStatusConfig {
     extensionSegments: { hidden: [] },
     completionNotifications: false,
     showSidebarToolNames: false,
+    sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
     ...overrides,
   };
 }
@@ -84,6 +89,9 @@ describe("dashboard draft initialization", () => {
     const state = initDashboardState(source, ["beta", "alpha"], true);
     source.zones.topLeft.push("model");
     source.extensionSegments.hidden.push("later");
+    const sourcePanel = source.sidebarPanelLayout[0];
+    expect(sourcePanel).toBeDefined();
+    if (sourcePanel) sourcePanel.visible = false;
 
     expect(state.baseline).toEqual(
       config({ extensionSegments: { hidden: ["missing-extension"] } }),
@@ -96,10 +104,32 @@ describe("dashboard draft initialization", () => {
 
   it("compares every persisted field including ordered arrays", () => {
     const first = config();
+    const firstPanel = first.sidebarPanelLayout[0];
+    expect(firstPanel).toBeDefined();
+    if (!firstPanel) throw new Error("expected default sidebar panel");
     expect(configsEqual(first, structuredClone(first))).toBe(true);
     expect(configsEqual(first, config({ completionNotifications: true }))).toBe(false);
     expect(configsEqual(first, config({ showSidebarToolNames: true }))).toBe(false);
     expect(configsEqual(first, config({ extensionSegments: { hidden: ["alpha"] } }))).toBe(false);
+    expect(
+      configsEqual(
+        first,
+        config({
+          sidebarPanelLayout: [...first.sidebarPanelLayout.slice(1), firstPanel],
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      configsEqual(
+        first,
+        config({
+          sidebarPanelLayout: first.sidebarPanelLayout.map((entry, index) => ({
+            ...entry,
+            visible: index === 0 ? false : entry.visible,
+          })),
+        }),
+      ),
+    ).toBe(false);
     expect(
       configsEqual(
         first,

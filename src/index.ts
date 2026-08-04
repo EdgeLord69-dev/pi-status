@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { estimateTokens } from "@earendil-works/pi-coding-agent";
-import { loadConfig, saveConfig } from "./core/config.ts";
+import { loadConfig, normalizeSidebarPanelLayout, saveConfig } from "./core/config.ts";
 import { createActivityRuntime } from "./core/activity-runtime.ts";
 import type { SpawnNotificationProcess } from "./core/completion-notifier.ts";
 import { buildSnapshot, resolveFooter } from "./core/resolve-footer.ts";
@@ -8,10 +8,79 @@ import { createNotificationsWiring } from "./core/notifications-wiring.ts";
 import { createRuntimeStateMachine } from "./core/runtime-state.ts";
 import { createUsageRuntime } from "./core/usage-runtime.ts";
 import { createWorkspacePulseRuntime, type WorkspacePulseRuntime } from "./core/workspace-pulse.ts";
-import type { AccessType, PiStatusConfig, StatusLineZones } from "./shared/types.ts";
+import {
+  BUILTIN_SIDEBAR_PANEL_IDS,
+  DEFAULT_SIDEBAR_PANEL_LAYOUT,
+  type AccessType,
+  type PiStatusConfig,
+  type StatusLineZones,
+} from "./shared/types.ts";
 import { buildFooterRowsFromResolved } from "./tui/render.ts";
 import { fromPiTheme, noColorRequested, noTheme } from "./tui/theme.ts";
 import { openStatusLineDashboard, type StatusLineDashboardComponent } from "./tui/dashboard.ts";
+import {
+  createSidebarPanelRegistry,
+  isSidebarPanelContributionId,
+  isSidebarPanelId,
+  isSidebarPanelRequestId,
+  isSidebarPanelRole,
+  isSidebarPanelSource,
+  registerSidebarPanel,
+  sanitizeSidebarPanelText,
+  SIDEBAR_PANEL_CHANNEL,
+  SIDEBAR_PANEL_MAX_ID_CHARS,
+  SIDEBAR_PANEL_MAX_PANELS,
+  SIDEBAR_PANEL_MAX_ROW_CHARS,
+  SIDEBAR_PANEL_MAX_ROWS,
+  SIDEBAR_PANEL_MAX_SOURCE_CHARS,
+  SIDEBAR_PANEL_MAX_TITLE_CHARS,
+  SIDEBAR_PANEL_MAX_TRACKED_SOURCES,
+  SIDEBAR_PANEL_PROTOCOL_VERSION,
+} from "./tui/sidebar-panels.ts";
+
+export type {
+  SidebarPanelContribution,
+  SidebarPanelData,
+  SidebarPanelDiscoveryEvent,
+  SidebarPanelEvent,
+  SidebarPanelEventTransport,
+  SidebarPanelRegisterEvent,
+  SidebarPanelRegistry,
+  SidebarPanelRegistryOptions,
+  SidebarPanelRole,
+  SidebarPanelRow,
+  SidebarPanelUnregisterEvent,
+} from "./tui/sidebar-panels.ts";
+export type {
+  BuiltinSidebarPanelId,
+  ContributedSidebarPanelId,
+  SidebarPanelId,
+  SidebarPanelLayout,
+  SidebarPanelLayoutEntry,
+} from "./shared/types.ts";
+
+export {
+  BUILTIN_SIDEBAR_PANEL_IDS,
+  DEFAULT_SIDEBAR_PANEL_LAYOUT,
+  createSidebarPanelRegistry,
+  isSidebarPanelContributionId,
+  isSidebarPanelId,
+  isSidebarPanelRequestId,
+  isSidebarPanelRole,
+  isSidebarPanelSource,
+  normalizeSidebarPanelLayout,
+  registerSidebarPanel,
+  sanitizeSidebarPanelText,
+  SIDEBAR_PANEL_CHANNEL,
+  SIDEBAR_PANEL_MAX_ID_CHARS,
+  SIDEBAR_PANEL_MAX_PANELS,
+  SIDEBAR_PANEL_MAX_ROW_CHARS,
+  SIDEBAR_PANEL_MAX_ROWS,
+  SIDEBAR_PANEL_MAX_SOURCE_CHARS,
+  SIDEBAR_PANEL_MAX_TITLE_CHARS,
+  SIDEBAR_PANEL_MAX_TRACKED_SOURCES,
+  SIDEBAR_PANEL_PROTOCOL_VERSION,
+};
 
 type FooterComponent = {
   render: (width: number) => string[];

@@ -12,11 +12,14 @@ import {
   loadConfig,
   normalizeExtensionSegments,
   normalizeSegments,
+  normalizeSidebarPanelLayout,
   normalizeZones,
   saveConfig,
 } from "../../src/core/config.ts";
 import {
+  BUILTIN_SIDEBAR_PANEL_IDS,
   type ConfigStore,
+  DEFAULT_SIDEBAR_PANEL_LAYOUT,
   DEFAULT_ZONES,
   STATUS_LINE_ZONE_ORDER,
   type PiStatusConfig,
@@ -28,6 +31,7 @@ const config: PiStatusConfig = {
   extensionSegments: { hidden: ["alpha"] },
   completionNotifications: false,
   showSidebarToolNames: false,
+  sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
 };
 
 describe("config — normalization", () => {
@@ -78,6 +82,146 @@ describe("config — normalization", () => {
   it("normalizes extension segments: dedupes, rejects empty and non-strings", () => {
     expect(normalizeExtensionSegments(undefined)).toEqual({ hidden: [] });
     expect(normalizeExtensionSegments({ hidden: ["a", "a", "", 1] })).toEqual({ hidden: ["a"] });
+  });
+});
+
+describe("config — sidebar panel layout", () => {
+  const expectedDefault = () => BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true }));
+
+  it("defines the exact built-in order and all-visible default", () => {
+    expect(BUILTIN_SIDEBAR_PANEL_IDS).toEqual([
+      "agent",
+      "activity",
+      "alerts",
+      "statuses",
+      "todos",
+      "context",
+      "workspace",
+      "usage",
+      "tools",
+    ]);
+    expect(DEFAULT_SIDEBAR_PANEL_LAYOUT).toEqual(expectedDefault());
+  });
+
+  it("returns fresh defaults for missing and non-array layouts", () => {
+    const first = normalizeSidebarPanelLayout(undefined);
+    const second = normalizeSidebarPanelLayout({});
+
+    const firstEntry = first[0];
+    expect(firstEntry).toBeDefined();
+    if (firstEntry) firstEntry.visible = false;
+    expect(second).toEqual(expectedDefault());
+    expect(normalizeSidebarPanelLayout("agent")).toEqual(expectedDefault());
+
+    const store = new MemoryConfigStore();
+    expect(loadConfig({ agentDir: "/agent", store }).sidebarPanelLayout).toEqual(expectedDefault());
+  });
+
+  it("rejects malformed entries, unknown built-ins, and invalid contributed IDs", () => {
+    expect(
+      normalizeSidebarPanelLayout([
+        null,
+        [],
+        "agent",
+        {},
+        { id: 1, visible: true },
+        { id: "unknown", visible: true },
+        { id: "Vendor:panel", visible: true },
+        { id: "vendor:Panel", visible: true },
+        { id: "1vendor:panel", visible: true },
+        { id: "vendor:1panel", visible: true },
+        { id: "vendor.panel:name", visible: true },
+        { id: "vendor:panel.name", visible: true },
+        { id: "vendor::panel", visible: true },
+        { id: "vendor:panel\n", visible: true },
+        { id: "vendor:panel\r", visible: true },
+        { id: "vendor:panel\r\n", visible: true },
+        { id: "vendor:panel\u2028", visible: true },
+        { id: "vendor:panel\u2029", visible: true },
+        { id: `a:${"b".repeat(127)}`, visible: true },
+      ]),
+    ).toEqual(expectedDefault());
+  });
+
+  it("accepts strict lowercase contributed IDs through the 128-character limit", () => {
+    const maxLengthId = `${`a${"1".repeat(62)}`}:b${"2".repeat(63)}`;
+
+    expect(maxLengthId).toHaveLength(128);
+    expect(
+      normalizeSidebarPanelLayout([
+        { id: "vendor_1:panel-2", visible: true },
+        { id: maxLengthId, visible: true },
+      ]),
+    ).toEqual([
+      { id: "vendor_1:panel-2", visible: true },
+      { id: maxLengthId, visible: true },
+      ...expectedDefault(),
+    ]);
+  });
+
+  it("retains first duplicates and unavailable contributions, hides non-true values, and appends built-ins", () => {
+    expect(
+      normalizeSidebarPanelLayout([
+        { id: "vendor:missing", visible: "true" },
+        { id: "todos", visible: false },
+        { id: "vendor:missing", visible: true },
+        { id: "activity", visible: true },
+      ]),
+    ).toEqual([
+      { id: "vendor:missing", visible: false },
+      { id: "todos", visible: false },
+      { id: "activity", visible: true },
+      { id: "agent", visible: true },
+      { id: "alerts", visible: true },
+      { id: "statuses", visible: true },
+      { id: "context", visible: true },
+      { id: "workspace", visible: true },
+      { id: "usage", visible: true },
+      { id: "tools", visible: true },
+    ]);
+  });
+
+  it("repairs Agent visibility when every retained entry is hidden", () => {
+    const normalized = normalizeSidebarPanelLayout([
+      { id: "vendor:missing", visible: false },
+      ...BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: false })),
+    ]);
+
+    expect(normalized).toEqual([
+      { id: "vendor:missing", visible: false },
+      ...BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: id === "agent" })),
+    ]);
+  });
+
+  it("persists ordered layouts and does not alias normalized input or loaded defaults", () => {
+    const input = [
+      { id: "vendor:panel", visible: true },
+      { id: "tools", visible: false },
+    ];
+    const sidebarPanelLayout = normalizeSidebarPanelLayout(input);
+    const inputEntry = input[0];
+    expect(inputEntry).toBeDefined();
+    if (inputEntry) inputEntry.visible = false;
+    expect(sidebarPanelLayout[0]).toEqual({ id: "vendor:panel", visible: true });
+
+    const store = new MemoryConfigStore();
+    const withLayout = { ...config, sidebarPanelLayout };
+    saveConfig(withLayout, { agentDir: "/agent", store });
+    expect(JSON.parse(store.read(getConfigPath("/agent")) as string).sidebarPanelLayout).toEqual(
+      sidebarPanelLayout,
+    );
+    expect(loadConfig({ agentDir: "/agent", store }).sidebarPanelLayout).toEqual(
+      sidebarPanelLayout,
+    );
+
+    const emptyStore = new MemoryConfigStore();
+    const first = loadConfig({ agentDir: "/agent", store: emptyStore });
+    const loadedEntry = first.sidebarPanelLayout[0];
+    expect(loadedEntry).toBeDefined();
+    if (loadedEntry) loadedEntry.visible = false;
+    expect(loadConfig({ agentDir: "/agent", store: emptyStore }).sidebarPanelLayout).toEqual(
+      expectedDefault(),
+    );
   });
 });
 
@@ -158,6 +302,7 @@ describe("config — direct extension file", () => {
       extensionSegments: { hidden: [] },
       completionNotifications: false,
       showSidebarToolNames: false,
+      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
     });
     expect(store.accessPaths).toEqual([path]);
     expect(store.accessPaths.some((accessed) => accessed.includes("settings.json"))).toBe(false);
@@ -190,6 +335,7 @@ describe("config — direct extension file", () => {
         extensionSegments: { hidden: [] },
         completionNotifications: false,
         showSidebarToolNames: false,
+        sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
       });
     },
   );
@@ -306,6 +452,7 @@ describe("config — filesystem", () => {
       extensionSegments: { hidden: [] },
       completionNotifications: false,
       showSidebarToolNames: false,
+      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
     });
     vi.mocked(mkdtempSync).mockClear();
     expect(saveConfig(config)).toEqual({ path });
@@ -342,6 +489,7 @@ describe("config — completion notifications", () => {
         extensionSegments: { hidden: [] },
         completionNotifications: false,
         showSidebarToolNames: false,
+        sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
       }),
     );
     expect(loadConfig({ agentDir: "/agent", store }).completionNotifications).toBe(false);
@@ -372,6 +520,7 @@ describe("config — completion notifications", () => {
         extensionSegments: { hidden: [] },
         completionNotifications: true,
         showSidebarToolNames: false,
+        sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
       }),
     );
     expect(loadConfig({ agentDir: "/agent", store }).completionNotifications).toBe(true);
@@ -405,7 +554,13 @@ describe("config — completion notifications", () => {
     const written = JSON.parse(store.read(path) as string);
     expect(written).toEqual({ ...config, completionNotifications: true });
     expect(Object.keys(written).sort()).toEqual(
-      ["completionNotifications", "extensionSegments", "showSidebarToolNames", "zones"].sort(),
+      [
+        "completionNotifications",
+        "extensionSegments",
+        "showSidebarToolNames",
+        "sidebarPanelLayout",
+        "zones",
+      ].sort(),
     );
   });
 
