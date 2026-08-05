@@ -614,3 +614,89 @@ describe("openStatusLineDashboard", () => {
     });
   });
 });
+
+describe("openStatusLineDashboard sidebar-aware overlay geometry", () => {
+  function captureOverlayOptions(effectiveWidth?: number) {
+    let options: unknown;
+    let component!: StatusLineDashboardComponent;
+    let resolveCustom!: () => void;
+    const customPromise = new Promise<void>((resolve) => {
+      resolveCustom = resolve;
+    });
+    const ctx = {
+      mode: "tui",
+      cwd: "/work/pi-status",
+      model: { provider: "anthropic", id: "gpt-5" } as never,
+      sessionManager: {
+        getSessionId: () => "session-1",
+        getSessionFile: () => "/sessions/session-1.jsonl",
+      } as never,
+      ui: {
+        custom: vi.fn((factory, customOptions) => {
+          options = customOptions;
+          component = factory(
+            { terminal: { columns: 80, rows: 30 }, requestRender: vi.fn() },
+            null,
+            {},
+            () => {
+              component.dispose();
+              resolveCustom();
+            },
+          );
+          return customPromise;
+        }),
+        notify: vi.fn(),
+      },
+    } as unknown as ExtensionCommandContext;
+    const pi = {
+      getAllTools: () => [],
+      getActiveTools: () => [],
+      setActiveTools: vi.fn(),
+      getSessionName: () => "Untitled",
+      setSessionName: vi.fn(),
+    } as unknown as ExtensionAPI;
+    const promise = openStatusLineDashboard({
+      pi,
+      ctx,
+      config: config(),
+      discoveredStatuses: ["build"],
+      usageAvailable: true,
+      getPreviewInput: () =>
+        preview as Omit<FooterRenderInput, "zones" | "extensionSegments">,
+      getAvailableSidebarPanels: () =>
+        BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, title: id })),
+      save: vi.fn(),
+      ...(effectiveWidth === undefined
+        ? {}
+        : { getEffectiveSidebarWidth: () => effectiveWidth }),
+    });
+    return { promise, options: () => options, close: () => component.close() };
+  }
+
+  it("shifts the overlay left by half the reserved sidebar width", async () => {
+    const { promise, options, close } = captureOverlayOptions(44);
+    await new Promise((resolve) => setImmediate(resolve));
+    close();
+    await promise;
+    expect(options()).toEqual({
+      overlay: true,
+      overlayOptions: {
+        anchor: "center",
+        maxHeight: "85%",
+        width: "92%",
+        offsetX: -22,
+      },
+    });
+  });
+
+  it("keeps the default geometry when no sidebar width is provided", async () => {
+    const { promise, options, close } = captureOverlayOptions();
+    await new Promise((resolve) => setImmediate(resolve));
+    close();
+    await promise;
+    expect(options()).toEqual({
+      overlay: true,
+      overlayOptions: { anchor: "center", maxHeight: "85%", width: "92%" },
+    });
+  });
+});

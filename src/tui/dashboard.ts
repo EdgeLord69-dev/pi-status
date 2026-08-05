@@ -6,6 +6,7 @@ import {
   matchesKey,
   type Component,
   type Focusable,
+  type OverlayOptions,
   type TUI,
 } from "@earendil-works/pi-tui";
 import type { PiStatusConfig, SidebarPanelId } from "../shared/types.ts";
@@ -39,6 +40,7 @@ export interface StatusLineDashboardOptions {
   getPreviewInput(): Omit<FooterRenderInput, "zones" | "extensionSegments">;
   getAvailableSidebarPanels(): readonly { id: SidebarPanelId; title: string }[];
   save(config: PiStatusConfig): void;
+  getEffectiveSidebarWidth?(): number | undefined;
   done(): void;
 }
 
@@ -304,6 +306,11 @@ export async function openStatusLineDashboard(
     onComponent?(component: StatusLineDashboardComponent): void;
   },
 ): Promise<void> {
+  const effective = Math.max(0, Math.floor(options.getEffectiveSidebarWidth?.() ?? 0));
+  const overlayOptions: OverlayOptions =
+    effective > 0
+      ? { anchor: "center", maxHeight: "85%", width: "92%", offsetX: -Math.floor(effective / 2) }
+      : { anchor: "center", maxHeight: "85%", width: "92%" };
   await options.ctx.ui.custom<void>(
     (tui, piTheme, _keys, done) => {
       const component = new StatusLineDashboardComponent({
@@ -315,9 +322,6 @@ export async function openStatusLineDashboard(
       options.onComponent?.(component);
       return component;
     },
-    {
-      overlay: true,
-      overlayOptions: { anchor: "center", maxHeight: "85%", width: "92%" },
-    },
+    { overlay: true, overlayOptions },
   );
 }
