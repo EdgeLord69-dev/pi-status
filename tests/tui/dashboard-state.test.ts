@@ -76,7 +76,7 @@ describe("dashboard draft initialization", () => {
       [],
       true,
     );
-    const ids = selectableRows(state)
+    const ids = selectableRows(state, "layout")
       .filter((row) => row.type === "segment")
       .map((row) => row.id);
 
@@ -165,8 +165,45 @@ describe("dashboard draft initialization", () => {
   });
 });
 
+describe("dashboard Sidebar tab initialization", () => {
+  it("exposes six tabs with Sidebar between Tools and Settings", () => {
+    expect(DASHBOARD_TABS.map(({ id }) => id)).toEqual([
+      "layout",
+      "statuses",
+      "session",
+      "tools",
+      "sidebar",
+      "settings",
+    ]);
+  });
+
+  it("selects the Sidebar tab by default", () => {
+    const state = initDashboardState(config(), [], true);
+    expect(state.activeTab).toBe("sidebar");
+  });
+
+  it("builds Sidebar rows in layout order then control rows", () => {
+    const layout = config().sidebarPanelLayout.map((entry, index) =>
+      index % 2 === 0 ? entry : { ...entry, visible: false },
+    );
+    const state = initDashboardState(config({ sidebarPanelLayout: layout }), [], true);
+    expect(selectableRows(state, "sidebar")).toEqual([
+      ...layout.map((entry) => ({ type: "sidebar_panel" as const, id: entry.id })),
+      { type: "sidebar_tool_names" },
+      { type: "sidebar_default" },
+      { type: "save" },
+    ]);
+  });
+
+  it("initializes Sidebar navigation with selectedIndex 0 and empty query", () => {
+    const state = initDashboardState(config(), [], true);
+    expect(state.navigation.sidebar).toEqual({ selectedIndex: 0, query: "", offset: 0 });
+  });
+});
+
 import { displayPreset } from "../../src/tui/preset-actions.ts";
 import {
+  DASHBOARD_TABS,
   reduceDashboardState,
   type DashboardAction,
   type DashboardState,
@@ -180,6 +217,9 @@ describe("dashboard transitions", () => {
   it("cycles tabs while preserving independent navigation", () => {
     let state = initDashboardState(config(), ["alpha"], true);
     state.navigation.layout.selectedIndex = 3;
+    // New default tab is sidebar; three next_tab presses reach statuses.
+    state = dispatch(state, { type: "next_tab" });
+    state = dispatch(state, { type: "next_tab" });
     state = dispatch(state, { type: "next_tab" });
     expect(state.activeTab).toBe("statuses");
     state = dispatch(state, { type: "type_char", char: "q" });
@@ -191,6 +231,7 @@ describe("dashboard transitions", () => {
 
   it("applies presets to draft only and marks manual edits custom", () => {
     let state = initDashboardState(config(), [], true);
+    state.activeTab = "layout";
     expect(state.preset).toBe("minimal");
     state = dispatch(state, { type: "adjust", delta: 1 });
     expect(state.preset).toBe("balanced");
@@ -204,11 +245,13 @@ describe("dashboard transitions", () => {
 
   it("moves and reorders segments while protecting the final segment", () => {
     let state = initDashboardState(config({ zones: zones({ bottomLeft: [] }) }), [], true);
+    state.activeTab = "layout";
     state.navigation.layout.selectedIndex = 2;
     state = dispatch(state, { type: "activate" });
     expect(state.draft.zones.topLeft).toEqual(["model-with-reasoning"]);
 
     state = initDashboardState(config(), [], true);
+    state.activeTab = "layout";
     state.navigation.layout.selectedIndex = 3;
     state = dispatch(state, { type: "activate" });
     expect(state.draft.zones.topLeft).toContain("current-dir");
@@ -221,15 +264,16 @@ describe("dashboard transitions", () => {
       [],
       true,
     );
+    state.activeTab = "layout";
     const original = structuredClone(state.draft.zones);
 
-    state.navigation.layout.selectedIndex = selectableRows(state).findIndex(
+    state.navigation.layout.selectedIndex = selectableRows(state, "layout").findIndex(
       (row) => row.type === "segment" && row.id === "model",
     );
     state = dispatch(state, { type: "adjust", delta: -1 });
     expect(state.draft.zones).toEqual(original);
 
-    state.navigation.layout.selectedIndex = selectableRows(state).findIndex(
+    state.navigation.layout.selectedIndex = selectableRows(state, "layout").findIndex(
       (row) => row.type === "segment" && row.id === "git-branch",
     );
     state = dispatch(state, { type: "adjust", delta: 1 });
@@ -246,7 +290,8 @@ describe("dashboard transitions", () => {
       [],
       false,
     );
-    state.navigation.layout.selectedIndex = selectableRows(state).findIndex(
+    state.activeTab = "layout";
+    state.navigation.layout.selectedIndex = selectableRows(state, "layout").findIndex(
       (row) => row.type === "segment" && row.id === "model",
     );
 
@@ -275,6 +320,7 @@ describe("dashboard transitions", () => {
 
   it("filters unavailable usage segments out of applied presets", () => {
     let state = initDashboardState(config(), [], false);
+    state.activeTab = "layout";
     state = dispatch(state, { type: "adjust", delta: 1 });
     expect(state.preset).toBe("balanced");
     expect(state.draft.zones).toEqual({
@@ -317,22 +363,23 @@ describe("dashboard transitions", () => {
       [],
       true,
     );
-    state.navigation.layout.selectedIndex = selectableRows(state).findIndex(
+    state.activeTab = "layout";
+    state.navigation.layout.selectedIndex = selectableRows(state, "layout").findIndex(
       (row) => row.type === "segment" && row.id === "model",
     );
 
     state = dispatch(state, { type: "adjust", delta: 1 });
     expect(state.draft.zones.topLeft).toEqual(["git-branch", "model"]);
-    expect(selectableRows(state)[state.navigation.layout.selectedIndex]).toEqual({
+    expect(selectableRows(state, "layout")[state.navigation.layout.selectedIndex]).toEqual({
       type: "segment",
       id: "model",
     });
 
-    state.navigation.layout.selectedIndex = selectableRows(state).findIndex(
+    state.navigation.layout.selectedIndex = selectableRows(state, "layout").findIndex(
       (row) => row.type === "segment" && row.id === "session-cost",
     );
     state = dispatch(state, { type: "activate" });
-    expect(selectableRows(state)[state.navigation.layout.selectedIndex]).toEqual({
+    expect(selectableRows(state, "layout")[state.navigation.layout.selectedIndex]).toEqual({
       type: "segment",
       id: "session-cost",
     });
@@ -387,6 +434,133 @@ describe("dashboard transitions", () => {
       expect(isDashboardDirty(saved)).toBe(false);
     },
   );
+});
+
+describe("dashboard Sidebar tab transitions", () => {
+  const layout = [
+    { id: "agent" as const, visible: true },
+    { id: "activity" as const, visible: false },
+    { id: "todos" as const, visible: true },
+  ];
+
+  it("toggle_sidebar_panel flips visibility and dirties", () => {
+    let state = initDashboardState(config({ sidebarPanelLayout: layout }), [], true);
+    expect(state.draft.sidebarPanelLayout[1]?.visible).toBe(false);
+    state = dispatch(state, { type: "toggle_sidebar_panel", id: "activity" });
+    expect(state.draft.sidebarPanelLayout[1]?.visible).toBe(true);
+    expect(isDashboardDirty(state)).toBe(true);
+  });
+
+  it("move_sidebar_panel swaps neighbors and clamps at edges", () => {
+    let state = initDashboardState(config({ sidebarPanelLayout: layout }), [], true);
+    state.navigation.sidebar.selectedIndex = 0;
+    state = dispatch(state, { type: "move_sidebar_panel", id: "agent", direction: -1 });
+    expect(state.draft.sidebarPanelLayout.map((e) => e.id)).toEqual([
+      "agent",
+      "activity",
+      "todos",
+    ]);
+
+    state.navigation.sidebar.selectedIndex = 2;
+    state = dispatch(state, { type: "move_sidebar_panel", id: "todos", direction: 1 });
+    expect(state.draft.sidebarPanelLayout.map((e) => e.id)).toEqual([
+      "agent",
+      "activity",
+      "todos",
+    ]);
+
+    state.navigation.sidebar.selectedIndex = 0;
+    state = dispatch(state, { type: "move_sidebar_panel", id: "agent", direction: 1 });
+    expect(state.draft.sidebarPanelLayout.map((e) => e.id)).toEqual([
+      "activity",
+      "agent",
+      "todos",
+    ]);
+  });
+
+  it("restore_sidebar_default rebuilds to all built-ins visible", () => {
+    const state = initDashboardState(
+      config({ sidebarPanelLayout: [{ id: "agent", visible: false }] }),
+      [],
+      true,
+    );
+    const next = dispatch(state, { type: "restore_sidebar_default" });
+    expect(next.draft.sidebarPanelLayout).toEqual(
+      BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
+    );
+    expect(isDashboardDirty(next)).toBe(true);
+  });
+
+  it("toggle_sidebar_tool_names flips and dirties", () => {
+    const state = initDashboardState(config(), [], true);
+    const next = dispatch(state, { type: "toggle_sidebar_tool_names" });
+    expect(next.draft.showSidebarToolNames).toBe(true);
+    expect(isDashboardDirty(next)).toBe(true);
+  });
+
+  it("save emits notify and skips save effect when no panel is visible", () => {
+    let state = initDashboardState(config(), [], true);
+    state.activeTab = "sidebar";
+    // Toggle every built-in panel off so the draft has zero visible panels.
+    state.draft.sidebarPanelLayout = BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
+      id,
+      visible: false,
+    }));
+    state.navigation.sidebar.selectedIndex = selectableRows(state, "sidebar").length - 1;
+    const result = reduceDashboardState(state, { type: "activate" });
+    expect(result.effect).toEqual({
+      type: "notify",
+      message: "At least one Sidebar panel must remain visible",
+      kind: "warning",
+    });
+    expect(isDashboardDirty(result.state)).toBe(true);
+  });
+
+  it("save emits the save effect when at least one panel is visible", () => {
+    let state = initDashboardState(config(), [], true);
+    state.activeTab = "sidebar";
+    state.navigation.sidebar.selectedIndex = selectableRows(state, "sidebar").length - 1;
+    const result = reduceDashboardState(state, { type: "activate" });
+    expect(result.effect?.type).toBe("save");
+    if (result.effect?.type !== "save") throw new Error("expected save effect");
+    expect(result.effect.config.sidebarPanelLayout).toEqual(state.draft.sidebarPanelLayout);
+    expect(result.effect.config.showSidebarToolNames).toEqual(state.draft.showSidebarToolNames);
+  });
+
+  it("activate on a sidebar_panel emits toggle_sidebar_panel and stays on the row", () => {
+    const state = initDashboardState(config(), [], true);
+    state.activeTab = "sidebar";
+    state.navigation.sidebar.selectedIndex = 0;
+    const next = dispatch(state, { type: "activate" });
+    expect(next.draft.sidebarPanelLayout[0]?.visible).toBe(false);
+    expect(selectableRows(next)[next.navigation.sidebar.selectedIndex]).toEqual({
+      type: "sidebar_panel",
+      id: BUILTIN_SIDEBAR_PANEL_IDS[0],
+    });
+  });
+
+  it("activate on sidebar_default emits restore_sidebar_default", () => {
+    const state = initDashboardState(config(), [], true);
+    state.activeTab = "sidebar";
+    const defaultIndex = selectableRows(state, "sidebar").findIndex(
+      (row) => row.type === "sidebar_default",
+    );
+    state.navigation.sidebar.selectedIndex = defaultIndex;
+    const next = dispatch(state, { type: "activate" });
+    expect(next.draft.sidebarPanelLayout).toEqual(
+      BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
+    );
+  });
+
+  it("adjust on a sidebar_panel routes to move_sidebar_panel with clamped edges", () => {
+    let state = initDashboardState(config(), [], true);
+    state.activeTab = "sidebar";
+    state.navigation.sidebar.selectedIndex = 0;
+    state = dispatch(state, { type: "adjust", delta: -1 });
+    expect(state.draft.sidebarPanelLayout.map((e) => e.id)).toEqual(
+      BUILTIN_SIDEBAR_PANEL_IDS,
+    );
+  });
 });
 
 describe("dashboard live snapshots", () => {

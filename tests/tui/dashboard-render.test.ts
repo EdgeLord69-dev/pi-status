@@ -59,6 +59,7 @@ const preview = buildSnapshot(snapshotInput);
 describe("dashboard render", () => {
   it("renders the pi-usage shell and draft preview", () => {
     const state = initDashboardState(config(), ["alpha"], true);
+    state.activeTab = "layout";
     const result = renderDashboard(state, preview, noTheme, 100, 60);
     const output = result.lines.join("\n");
     expect(output).toContain("┏");
@@ -159,6 +160,7 @@ describe("dashboard render", () => {
 
   it("keeps the selected Layout row visible when capped", () => {
     const state = initDashboardState(config(), [], true);
+    state.activeTab = "layout";
     const result = renderDashboard(state, preview, noTheme, 100, 24);
 
     expect(result.lines.find((line) => line.includes("Preset"))).toContain("▸");
@@ -351,6 +353,112 @@ describe("dashboard render", () => {
     const output = stripAnsi(result.lines.join("\n"));
     expect(output).toContain("Release 🚀");
     expect(output).toContain("Enter Submit");
+    expect(result.lines.at(-1)).toContain("┗");
+  });
+});
+
+describe("dashboard Sidebar render", () => {
+  it("renders Sidebar rows with numbers, visibility markers, and availability suffix", () => {
+    const layout = [
+      { id: "agent" as const, visible: true },
+      { id: "activity" as const, visible: false },
+      { id: "todos" as const, visible: true },
+    ];
+    const state = initDashboardState(config({ sidebarPanelLayout: layout }), [], true);
+    state.activeTab = "sidebar";
+    const output = renderDashboard(
+      state,
+      preview,
+      noTheme,
+      100,
+      60,
+      undefined,
+      [
+        { id: "agent", title: "Agent" },
+        { id: "activity", title: "Activity" },
+        { id: "todos", title: "TODOS" },
+      ],
+    ).lines.join("\n");
+    expect(output).toContain("1");
+    expect(output).toContain("[•]");
+    expect(output).toContain("[ ]");
+    expect(output).toContain("Agent");
+    expect(output).toContain("Activity");
+    expect(output).toContain("TODOS");
+    expect(output).toContain("Restore default");
+    expect(output).toContain("Show tool names");
+  });
+
+  it("marks unavailable configured panels with unavailable suffix", () => {
+    const layout = [
+      { id: "agent" as const, visible: true },
+      { id: "missing:contrib" as const, visible: false },
+    ];
+    const state = initDashboardState(config({ sidebarPanelLayout: layout }), [], true);
+    state.activeTab = "sidebar";
+    const output = renderDashboard(state, preview, noTheme, 100, 60, undefined, [
+      { id: "agent", title: "Agent" },
+    ]).lines.join("\n");
+    expect(output).toContain("missing:contrib");
+    expect(output).toContain("unavailable");
+  });
+
+  it("renders the one-line Sidebar preview above the footer preview when panels are visible", () => {
+    const state = initDashboardState(config(), [], true);
+    state.activeTab = "sidebar";
+    const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
+    const previewIndex = output.indexOf("Sidebar:");
+    const footerIndex = output.indexOf("GPT-5");
+    expect(previewIndex).toBeGreaterThan(-1);
+    expect(footerIndex).toBeGreaterThan(-1);
+    expect(previewIndex).toBeLessThan(footerIndex);
+  });
+
+  it("omits the Sidebar preview when no panels are visible", () => {
+    const allHidden = BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: false }));
+    const state = initDashboardState(config({ sidebarPanelLayout: allHidden }), [], true);
+    state.activeTab = "sidebar";
+    const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
+    expect(output).not.toContain("Sidebar:");
+  });
+
+  it("renders Restore default row above Save", () => {
+    const state = initDashboardState(config(), [], true);
+    state.activeTab = "sidebar";
+    const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
+    const defaultIndex = output.indexOf("Restore default");
+    const saveIndex = output.indexOf("Save changes");
+    expect(defaultIndex).toBeGreaterThan(-1);
+    expect(saveIndex).toBeGreaterThan(defaultIndex);
+  });
+
+  it("shows sidebar_tool_names checked state from draft", () => {
+    const state = initDashboardState(
+      config({ showSidebarToolNames: true }),
+      [],
+      true,
+    );
+    state.activeTab = "sidebar";
+    state.navigation.sidebar.selectedIndex = BUILTIN_SIDEBAR_PANEL_IDS.length;
+    const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
+    expect(output).toContain("[•] Show tool names");
+  });
+
+  it("extends the bounded-tab parametrization to the Sidebar tab", () => {
+    const tools = Array.from({ length: 40 }, (_, index) => ({
+      name: `tool-${index}`,
+      description: `Tool ${index}`,
+      enabled: index === 0,
+    }));
+    const state = initDashboardState(
+      config(),
+      Array.from({ length: 30 }, (_, index) => `status-${index}`),
+      true,
+      { tools },
+    );
+    const width = Math.max(1, Math.floor(100 * 0.92));
+    const result = renderDashboard(state, preview, noTheme, width, 30);
+    expect(result.lines.every((line) => visibleWidth(line) <= width)).toBe(true);
     expect(result.lines.at(-1)).toContain("┗");
   });
 });
