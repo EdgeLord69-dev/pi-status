@@ -391,47 +391,64 @@ export default function createExtension(pi: ExtensionAPI): void {
         events: pi.events as unknown as SidebarPanelEventTransport,
         onChange: () => activeSidebarController?.requestRender(),
       });
-      activeSidebarController = createSidebarController({
-        ctx,
-        getConfig: () => runtimeState.snapshot().config,
-        getSnapshot: () => {
-          const config = runtimeState.snapshot().config;
-          const activeCtx = runtimeState.snapshot().ctx ?? ctx;
-          const safeSessionName = safeRead(() => pi.getSessionName());
-          const safeActiveTools = safeRead(() => pi.getActiveTools());
-          const safeAvailableToolCount = safeRead(() => pi.getAllTools().length);
-          const sessionFile = safeRead(() => activeCtx.sessionManager.getSessionFile());
-          const branchEntries = safeRead(
-            () => activeCtx.sessionManager.getBranch().length,
+      try {
+        activeSidebarController = createSidebarController({
+          ctx,
+          getConfig: () => runtimeState.snapshot().config,
+          getSnapshot: () => {
+            const config = runtimeState.snapshot().config;
+            const activeCtx = runtimeState.snapshot().ctx ?? ctx;
+            const safeSessionName = safeRead(() => pi.getSessionName());
+            const safeActiveTools = safeRead(() => pi.getActiveTools());
+            const safeAvailableToolCount = safeRead(() => pi.getAllTools().length);
+            const sessionFile = safeRead(() => activeCtx.sessionManager.getSessionFile());
+            const branchEntries = safeRead(
+              () => activeCtx.sessionManager.getBranch().length,
+            );
+            return buildSidebarSnapshot({
+              footer: currentFooterInput(ctx),
+              config,
+              ...(safeSessionName !== undefined ? { sessionName: safeSessionName } : {}),
+              persisted: sessionFile !== undefined,
+              branchEntryCount: branchEntries ?? 0,
+              activeToolNames: safeActiveTools ?? [],
+              availableToolCount: safeAvailableToolCount ?? 0,
+              sidebarPanels: activeSidebarRegistry?.getAvailable() ?? [],
+            });
+          },
+          onWarning: (message) => {
+            try {
+              ctx.ui.notify(message, "warning");
+            } catch {
+              // Best effort.
+            }
+          },
+          onError: (error) => {
+            try {
+              ctx.ui.notify(error instanceof Error ? error.message : String(error), "warning");
+            } catch {
+              // Best effort.
+            }
+          },
+        });
+        activeSidebarController.setShown(true);
+        syncWorkspacePulse(runtimeState.snapshot().config);
+      } catch (error) {
+        // Spec: partway-through setup disposes the resources already created and reports one warning.
+        safelyDisposeSidebarRegistry();
+        activeSidebarRegistry = undefined;
+        activeSidebarController = undefined;
+        try {
+          ctx.ui.notify(
+            `pi-status sidebar setup failed: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+            "warning",
           );
-          return buildSidebarSnapshot({
-            footer: currentFooterInput(ctx),
-            config,
-            ...(safeSessionName !== undefined ? { sessionName: safeSessionName } : {}),
-            persisted: sessionFile !== undefined,
-            branchEntryCount: branchEntries ?? 0,
-            activeToolNames: safeActiveTools ?? [],
-            availableToolCount: safeAvailableToolCount ?? 0,
-            sidebarPanels: activeSidebarRegistry?.getAvailable() ?? [],
-          });
-        },
-        onWarning: (message) => {
-          try {
-            ctx.ui.notify(message, "warning");
-          } catch {
-            // Best effort.
-          }
-        },
-        onError: (error) => {
-          try {
-            ctx.ui.notify(error instanceof Error ? error.message : String(error), "warning");
-          } catch {
-            // Best effort.
-          }
-        },
-      });
-      activeSidebarController.setShown(true);
-      syncWorkspacePulse(runtimeState.snapshot().config);
+        } catch {
+          // Best effort.
+        }
+      }
     }
   });
 
