@@ -56,6 +56,7 @@ export interface SplitPaneController {
   getSidebarWidth(): number;
   isEnabled(): boolean;
   isVisibleAtWidth(terminalWidth: number): boolean;
+  getEffectiveWidth(): number;
   beginResize(): boolean;
   finishResize(): void;
   cancelResize(): void;
@@ -258,6 +259,10 @@ export function createSplitPaneController(
       requestRender();
     },
     getSidebarWidth: () => sidebarWidth,
+    getEffectiveWidth: () => {
+      const cols = tui?.terminal.columns ?? 0;
+      return visibleAt(cols) ? effectiveSidebarWidth(cols) : 0;
+    },
     beginResize() {
       if (resizing) return true;
       if (!tui || !enabled) {
