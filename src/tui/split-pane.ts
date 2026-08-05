@@ -251,11 +251,11 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 		beginResize() {
 			if (resizing) return true;
 			if (!tui || !enabled) {
-				options.onWarning?.("Atelier sidebar is not ready to resize");
+				options.onWarning?.("pi-status sidebar is not ready to resize");
 				return false;
 			}
 			if (!visibleAt(tui.terminal.columns)) {
-				options.onWarning?.("Terminal is too narrow to resize the Atelier sidebar");
+				options.onWarning?.("Terminal is too narrow to resize the pi-status sidebar");
 				return false;
 			}
 			if (!options.subscribeInput) {

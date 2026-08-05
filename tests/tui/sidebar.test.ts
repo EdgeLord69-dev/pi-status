@@ -1,32 +1,55 @@
 import type { Component, OverlayHandle, OverlayOptions, TUI } from "@earendil-works/pi-tui";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { SidebarSnapshot } from "../../src/tui/sidebar-render.ts";
+import { buildSidebarSnapshot, type SidebarSnapshot } from "../../src/tui/sidebar-render.ts";
 import type { PiStatusConfig } from "../../src/shared/types.ts";
+import { DEFAULT_SIDEBAR_PANEL_LAYOUT, DEFAULT_ZONES } from "../../src/shared/types.ts";
 import { createSidebarController } from "../../src/tui/sidebar.ts";
+import { noTheme, type StatusLineTheme } from "../../src/tui/theme.ts";
+import { withDefaults } from "../helpers.ts";
 
-const FIXED_SNAPSHOT: SidebarSnapshot = {
-	agentActivity: "ready",
-	modelLabel: "gpt-5.6",
-	thinkingLevel: "medium",
-	projectName: "pi-status",
-	persisted: false,
-	branchEntryCount: 0,
-	activeToolCount: 0,
-	activeToolNames: [],
-	availableToolCount: 0,
-	runPhase: "idle",
-	turnNumber: 0,
-	runDurationMs: 0,
-	completedToolCount: 0,
-	failedToolCount: 0,
-	alerts: [],
-	statuses: [],
+const FIXED_SNAPSHOT: SidebarSnapshot = buildSidebarSnapshot({
+	footer: withDefaults({
+		cwd: "/home/user/repo",
+		thinkingLevel: "off",
+		gitBranch: "main",
+		runState: "idle",
+		contextUsage: { tokens: 12000, contextWindow: 200000, percent: 6 },
+		sessionId: "abc12345",
+		extensionStatuses: new Map(),
+		sessionMetrics: {
+			inputTokens: 100,
+			outputTokens: 50,
+			totalTokens: 150,
+			cacheReadTokens: 0,
+			cacheWriteTokens: 0,
+			latestCacheHitPercent: undefined,
+			costUsd: 0.0042,
+		},
+		model: { name: "gpt-5.6" },
+	}),
+	config: {
+		zones: DEFAULT_ZONES,
+		extensionSegments: { hidden: [] },
+		completionNotifications: false,
+		showSidebarToolNames: false,
+		sidebarPanelLayout: [...DEFAULT_SIDEBAR_PANEL_LAYOUT],
+	},
+	persisted: true,
+	branchEntryCount: 3,
+	availableToolCount: 5,
+	activeToolNames: ["read", "read", "bash"],
 	todos: [],
 	sidebarPanels: [],
-};
+});
 
-const FIXED_CONFIG = {} as PiStatusConfig;
+const FIXED_CONFIG = {
+	zones: DEFAULT_ZONES,
+	extensionSegments: { hidden: [] },
+	completionNotifications: false,
+	showSidebarToolNames: false,
+	sidebarPanelLayout: [...DEFAULT_SIDEBAR_PANEL_LAYOUT],
+} as unknown as PiStatusConfig;
 
 class FakeOverlayHandle implements OverlayHandle {
 	hidden = false;
@@ -73,7 +96,7 @@ function makeFakeHost(columns = 120): { host: FakeHost; tui: TUI } {
 	return { host, tui };
 }
 
-function makeCtx(host: FakeHost, tui: TUI): ExtensionContext {
+function makeCtx(host: FakeHost, tui: TUI, factoryTheme: unknown = noTheme): ExtensionContext {
 	const overlay = (handle: FakeOverlayHandle) => handle;
 	return {
 		mode: "tui",
@@ -102,7 +125,7 @@ function makeCtx(host: FakeHost, tui: TUI): ExtensionContext {
 								: options.overlayOptions,
 						);
 					}
-					const component = factory(tui, {}, {}, () => undefined);
+					const component = factory(tui, factoryTheme, {}, () => undefined);
 					host.factories.push(() => component);
 					options?.onHandle?.(overlay(handle));
 					return Promise.resolve(undefined) as Promise<T>;
@@ -253,7 +276,7 @@ describe("sidebar controller", () => {
 		expect(controller.isEffectivelyVisible()).toBe(false);
 	});
 
-	it("renders the snapshot through the overlay component", async () => {
+	it("renders the snapshot through the overlay component using the host's theme", async () => {
 		const { host, tui } = makeFakeHost();
 		const controller = createSidebarController({
 			ctx: makeCtx(host, tui),
@@ -262,8 +285,27 @@ describe("sidebar controller", () => {
 		});
 		controller.show();
 		await Promise.resolve();
-		const component = host.factories[host.factories.length - 1]!(tui, {});
+		const theme: StatusLineTheme = noTheme;
+		const component = host.factories[host.factories.length - 1]!(tui, theme);
 		const lines = component.render(44);
 		expect(lines.length).toBe(36);
+		// Theme-dependent render: must not collapse to the "Sidebar unavailable" dock.
+		expect(lines.some((l) => l.includes("gpt-5.6"))).toBe(true);
+		expect(lines.some((l) => l.includes("Sidebar unavailable"))).toBe(false);
+	});
+
+	it("beginResize() returns true and wires ctx.ui.onTerminalInput", async () => {
+		const { host, tui } = makeFakeHost();
+		const ctx = makeCtx(host, tui);
+		const controller = createSidebarController({
+			ctx,
+			getSnapshot: () => FIXED_SNAPSHOT,
+			getConfig: () => FIXED_CONFIG,
+		});
+		controller.show();
+		await Promise.resolve();
+		controller.setShown(true);
+		expect(controller.beginResize()).toBe(true);
+		expect(ctx.ui.onTerminalInput).toHaveBeenCalled();
 	});
 });

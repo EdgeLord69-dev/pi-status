@@ -2,6 +2,7 @@ import type { OverlayHandle, TUI } from "@earendil-works/pi-tui";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createSplitPaneController, type SplitPaneController } from "./split-pane.ts";
 import { renderSidebarLines, type SidebarSnapshot } from "./sidebar-render.ts";
+import type { StatusLineTheme } from "./theme.ts";
 import type { PiStatusConfig } from "../shared/types.ts";
 
 export interface SidebarControllerOptions {
@@ -32,6 +33,11 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 	const split: SplitPaneController = createSplitPaneController({
 		...(options.onWarning ? { onWarning: options.onWarning } : {}),
 		...(options.onError ? { onError: options.onError } : {}),
+		subscribeInput: (handler) => options.ctx.ui.onTerminalInput(handler),
+		onResizeChange: () => {
+			safely(() => requestOverlayRender?.());
+			safely(() => split.requestRender());
+		},
 	});
 	let mounted = false;
 	let shown = false;
@@ -42,6 +48,7 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 	let animationTimer: ReturnType<typeof setInterval> | undefined;
 	let capturedTui: TUI | undefined;
 	let currentColumns = 0;
+	let factoryDone: ((result: void) => void) | undefined;
 
 	const safely = (action: () => unknown) => {
 		try {
@@ -60,7 +67,7 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 	};
 
 	const syncAnimation = () => {
-		if (!shown || options.shouldAnimate?.() !== true) {
+		if (!shown || options.shouldAnimate?.() !== true || !requestOverlayRender) {
 			stopAnimation();
 			return;
 		}
@@ -81,19 +88,22 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 		const currentGeneration = ++generation;
 		try {
 			const pending = options.ctx.ui.custom<void>(
-				(tui) => {
+				(tui, theme, _keys, done) => {
 					split.attach(tui);
 					capturedTui = tui;
 					currentColumns = tui.terminal.columns;
 					requestOverlayRender = () => tui.requestRender?.();
+					factoryDone = done;
+					let statusTheme: StatusLineTheme | undefined = theme as unknown as StatusLineTheme | undefined;
 					return {
 						render(width: number) {
 							currentColumns = tui.terminal.columns;
+							if (!statusTheme) statusTheme = theme as unknown as StatusLineTheme | undefined;
 							try {
 								return renderSidebarLines(
 									options.getSnapshot(),
 									options.getConfig(),
-									{} as never,
+									statusTheme ?? ({} as StatusLineTheme),
 									width,
 									tui.terminal.rows,
 									{
@@ -153,9 +163,10 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 		isShown: () => shown,
 		isSupported: () => {
 			if (!capturedTui) return false;
-			return (capturedTui as unknown as Record<symbol, unknown>)[
+			const viewportFlag = (capturedTui as unknown as { [key: symbol]: unknown })[
 				Symbol.for("@earendil-works/pi-tui/viewport")
-			] !== true;
+			];
+			return viewportFlag !== true;
 		},
 		isEffectivelyVisible: () => {
 			refreshColumns();
@@ -179,10 +190,13 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 			safely(() => split.hide());
 			safely(() => split.dispose());
 			const handle = overlayHandle;
+			const done = factoryDone;
 			overlayHandle = undefined;
 			requestOverlayRender = undefined;
 			capturedTui = undefined;
+			factoryDone = undefined;
 			if (handle) safely(() => handle.hide());
+			if (done) safely(() => done(undefined));
 		},
 	};
 }
