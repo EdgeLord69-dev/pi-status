@@ -341,9 +341,13 @@ export default function createExtension(pi: ExtensionAPI): void {
           discoveredStatuses: discovered,
           usageAvailable: usageRuntime.getAvailable(),
           getPreviewInput: () => currentFooterInput(ctx),
-          getAvailableSidebarPanels: () =>
-            BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, title: id })),
+          getAvailableSidebarPanels: () => {
+            const panels = activeSidebarRegistry?.getAvailable();
+            if (panels && panels.length > 0) return panels;
+            return BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, title: id }));
+          },
           save: saveAndApplyConfig,
+          getEffectiveSidebarWidth: () => activeSidebarController?.getEffectiveWidth(),
           onComponent(component) {
             activeDashboard = component;
           },

@@ -1424,4 +1424,50 @@ describe("sidebar lifecycle", () => {
     expect(registeredShortcuts).toHaveLength(1);
     expect(registeredShortcuts[0]?.key).toBe("ctrl+shift+r");
   });
+
+  it("threads the sidebar effective width into the dashboard overlay options when /statusline runs", async () => {
+    const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
+    let dashboardOptions: unknown;
+    let callIndex = 0;
+    const custom = vi.fn().mockImplementation(
+      (factory: (...args: unknown[]) => unknown, customOptions: unknown) => {
+        const current = callIndex;
+        callIndex += 1;
+        if (current === 0) {
+          // First overlay call: sidebar mount. Invoke the factory so the controller
+          // captures a wide terminal and is effectively visible.
+          const component = (
+            factory as (...args: unknown[]) => { render: (width: number) => string[] }
+          )({ terminal: { columns: 120, rows: 30 }, requestRender: vi.fn() }, null, {}, () => {});
+          if (typeof component === "object" && component !== null && "render" in component) {
+            (component as { render: (w: number) => string[] }).render(44);
+          }
+          return Promise.resolve(null);
+        }
+        // Second overlay call: dashboard open. Capture options and resolve immediately.
+        dashboardOptions = customOptions;
+        const component = (
+          factory as (...args: unknown[]) => {
+            render: (width: number) => string[];
+            close: () => void;
+          }
+        )({ terminal: { columns: 80, rows: 30 }, requestRender: vi.fn() }, null, {}, () => {});
+        if (typeof component === "object" && component !== null && "close" in component) {
+          (component as { close: () => void }).close();
+        }
+        return Promise.resolve(null);
+      },
+    );
+    createExtension(pi);
+    const ctx = createContext({
+      ui: { ...createContext().ui, custom: custom as never },
+    });
+    for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
+    await new Promise((resolve) => setImmediate(resolve));
+    await getRegisteredCommand(registerCommandCalls, "statusline").handler("", ctx);
+    expect(dashboardOptions).toMatchObject({
+      overlay: true,
+      overlayOptions: expect.objectContaining({ offsetX: -22 }),
+    });
+  });
 });
