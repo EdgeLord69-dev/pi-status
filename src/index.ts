@@ -18,6 +18,12 @@ import {
 import { buildFooterRowsFromResolved } from "./tui/render.ts";
 import { fromPiTheme, noColorRequested, noTheme } from "./tui/theme.ts";
 import { openStatusLineDashboard, type StatusLineDashboardComponent } from "./tui/dashboard.ts";
+import { createSidebarController, type SidebarController } from "./tui/sidebar.ts";
+import { buildSidebarSnapshot } from "./tui/sidebar-render.ts";
+import {
+  type SidebarPanelEventTransport,
+  type SidebarPanelRegistry,
+} from "./tui/sidebar-panels.ts";
 import {
   createSidebarPanelRegistry,
   isSidebarPanelContributionId,
@@ -117,6 +123,9 @@ function isActiveTuiSession(
 export default function createExtension(pi: ExtensionAPI): void {
   const runtimeState = createRuntimeStateMachine(loadConfig(), "off");
   let activeTuiSessionManager: ExtensionContext["sessionManager"] | undefined;
+  let activeSidebarController: SidebarController | undefined;
+  let activeSidebarRegistry: SidebarPanelRegistry | undefined;
+  let activeTuiSessionGeneration = 0;
 
   function saveAndApplyConfig(next: PiStatusConfig): void {
     saveConfig(next);
@@ -165,9 +174,17 @@ export default function createExtension(pi: ExtensionAPI): void {
     return Object.values(zones).some((zone) => zone.includes("workspace-pulse"));
   }
 
+  function sidebarWorkspaceVisible(): boolean {
+    if (!activeSidebarController) return false;
+    if (!activeSidebarController.isShown()) return false;
+    if (!activeSidebarController.isSupported()) return false;
+    const layout = runtimeState.snapshot().config.sidebarPanelLayout;
+    return layout.some((entry) => entry.id === "workspace" && entry.visible);
+  }
+
   function syncWorkspacePulse(config: PiStatusConfig): void {
     if (!workspacePulseRuntime) return;
-    if (isWorkspacePulseEnabled(config.zones)) {
+    if (isWorkspacePulseEnabled(config.zones) || sidebarWorkspaceVisible()) {
       workspacePulseRuntime.start();
     } else {
       workspacePulseRuntime.stop();

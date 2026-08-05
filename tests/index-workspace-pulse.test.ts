@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import createExtension from "../src/index.ts";
+import { BUILTIN_SIDEBAR_PANEL_IDS } from "../src/shared/types.ts";
 import { buildSetFooterSpy, createContext, buildPiWithHandlers } from "./helpers.ts";
 
 vi.mock("node:child_process", async (importOriginal) => {
@@ -245,6 +246,46 @@ describe("workspace pulse wiring", () => {
     }
     await new Promise((r) => setTimeout(r, 260));
     expect(execFileMock.mock.calls.length).toBe(callsAfterShutdown);
+  });
+});
+
+describe("workspace pulse sidebar demand", () => {
+  function writeSidebarLayout(workspaceVisible: boolean): void {
+    const { writeFileSync, mkdirSync } = require("node:fs") as typeof import("node:fs");
+    mkdirSync(join(agentDir, "extensions"), { recursive: true });
+    writeFileSync(
+      join(agentDir, "extensions", "statusline.json"),
+      JSON.stringify({
+        zones: { topLeft: [], topRight: [], bottomLeft: [], bottomRight: [] },
+        extensionSegments: { hidden: [] },
+        sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
+          id,
+          visible: id === "workspace" ? workspaceVisible : true,
+        })),
+      }),
+      "utf8",
+    );
+  }
+
+  it("starts Workspace Pulse when the sidebar workspace panel is visible without any footer zone", async () => {
+    writeSidebarLayout(true);
+    fourCommandMock(() => "/repo");
+    const { pi, handlers } = buildPiWithHandlers();
+    createExtension(pi);
+    const ctx = createContext();
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+    expect(execFileMock).toHaveBeenCalled();
+  });
+
+  it("does not start Workspace Pulse when the sidebar workspace panel is hidden", () => {
+    writeSidebarLayout(false);
+    const { pi, handlers } = buildPiWithHandlers();
+    createExtension(pi);
+    const ctx = createContext();
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+    expect(execFileMock).not.toHaveBeenCalled();
   });
 });
 
