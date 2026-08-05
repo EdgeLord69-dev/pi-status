@@ -25,6 +25,7 @@ export interface SidebarController {
   beginResize(): boolean;
   isResizing(): boolean;
   getWidth(): number;
+  getEffectiveWidth(): number;
   requestRender(): void;
   dispose(): void;
 }
@@ -172,6 +173,10 @@ export function createSidebarController(options: SidebarControllerOptions): Side
     beginResize: () => split.beginResize(),
     isResizing: () => split.isResizing(),
     getWidth: () => split.getSidebarWidth(),
+    getEffectiveWidth: () => {
+      refreshColumns();
+      return shown && split.isVisibleAtWidth(currentColumns) ? split.getEffectiveWidth() : 0;
+    },
     requestRender: () => {
       safely(() => requestOverlayRender?.());
       safely(() => split.requestRender());
