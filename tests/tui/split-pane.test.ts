@@ -244,6 +244,50 @@ describe("split pane render lifecycle", () => {
   });
 });
 
+describe("split pane getEffectiveWidth", () => {
+  it("returns 0 when the split has not been shown", () => {
+    const h = harness(120);
+    const split = createSplitPaneController();
+    split.attach(h.tui);
+    expect(split.getEffectiveWidth()).toBe(0);
+  });
+
+  it("returns 0 when the terminal is below the visible threshold", () => {
+    const h = harness(MIN_MAIN_WIDTH + MIN_SIDEBAR_WIDTH - 1);
+    const split = createSplitPaneController();
+    split.attach(h.tui);
+    split.show();
+    expect(split.isVisibleAtWidth(h.tui.terminal.columns)).toBe(false);
+    expect(split.getEffectiveWidth()).toBe(0);
+  });
+
+  it("returns the default sidebar width when shown at a wide terminal", () => {
+    const h = harness(120);
+    const split = createSplitPaneController();
+    split.attach(h.tui);
+    split.show();
+    expect(split.getEffectiveWidth()).toBe(DEFAULT_SIDEBAR_WIDTH);
+  });
+
+  it("clamps to (terminalWidth - MIN_MAIN_WIDTH) when setSidebarWidth requests more than fits", () => {
+    const h = harness(100);
+    const split = createSplitPaneController();
+    split.attach(h.tui);
+    split.show();
+    split.setSidebarWidth(999);
+    expect(split.getEffectiveWidth()).toBe(100 - MIN_MAIN_WIDTH);
+  });
+
+  it("returns 0 after dispose", () => {
+    const h = harness(120);
+    const split = createSplitPaneController();
+    split.attach(h.tui);
+    split.show();
+    split.dispose();
+    expect(split.getEffectiveWidth()).toBe(0);
+  });
+});
+
 describe("temporary Resize mode", () => {
   it("enables mouse reporting only during Resize mode", () => {
     const h = resizeHarness();

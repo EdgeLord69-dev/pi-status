@@ -18,6 +18,12 @@ import {
 import { buildFooterRowsFromResolved } from "./tui/render.ts";
 import { fromPiTheme, noColorRequested, noTheme } from "./tui/theme.ts";
 import { openStatusLineDashboard, type StatusLineDashboardComponent } from "./tui/dashboard.ts";
+import { createSidebarController, type SidebarController } from "./tui/sidebar.ts";
+import { buildSidebarSnapshot } from "./tui/sidebar-render.ts";
+import {
+  type SidebarPanelEventTransport,
+  type SidebarPanelRegistry,
+} from "./tui/sidebar-panels.ts";
 import {
   createSidebarPanelRegistry,
   isSidebarPanelContributionId,
@@ -117,6 +123,23 @@ function isActiveTuiSession(
 export default function createExtension(pi: ExtensionAPI): void {
   const runtimeState = createRuntimeStateMachine(loadConfig(), "off");
   let activeTuiSessionManager: ExtensionContext["sessionManager"] | undefined;
+  let activeSidebarController: SidebarController | undefined;
+  let activeSidebarRegistry: SidebarPanelRegistry | undefined;
+
+  pi.registerShortcut("ctrl+shift+r", {
+    description: "Resize the pi-status sidebar",
+    handler: (ctx) => {
+      if (ctx.mode !== "tui") return;
+      if (ctx.sessionManager !== activeTuiSessionManager) return;
+      const controller = activeSidebarController;
+      if (!controller || !controller.isEffectivelyVisible()) {
+        ctx.ui.notify("pi-status sidebar is not visible", "warning");
+        return;
+      }
+      closeActiveDashboard();
+      controller.beginResize();
+    },
+  });
 
   function saveAndApplyConfig(next: PiStatusConfig): void {
     saveConfig(next);
@@ -130,6 +153,34 @@ export default function createExtension(pi: ExtensionAPI): void {
   function closeActiveDashboard(): void {
     activeDashboard?.close();
     activeDashboard = undefined;
+  }
+
+  function safelyDisposeSidebarController(): void {
+    const controller = activeSidebarController;
+    if (!controller) return;
+    try {
+      controller.dispose();
+    } catch {
+      // Disposal is best effort; never block subsequent cleanup.
+    }
+  }
+
+  function safelyDisposeSidebarRegistry(): void {
+    const registry = activeSidebarRegistry;
+    if (!registry) return;
+    try {
+      registry.dispose();
+    } catch {
+      // Disposal is best effort; never block subsequent cleanup.
+    }
+  }
+
+  function safeRead<T>(action: () => T): T | undefined {
+    try {
+      return action();
+    } catch {
+      return undefined;
+    }
   }
 
   function currentFooterInput(ctx: ExtensionContext) {
@@ -165,9 +216,17 @@ export default function createExtension(pi: ExtensionAPI): void {
     return Object.values(zones).some((zone) => zone.includes("workspace-pulse"));
   }
 
+  function sidebarWorkspaceVisible(): boolean {
+    if (!activeSidebarController) return false;
+    if (!activeSidebarController.isShown()) return false;
+    if (!activeSidebarController.isSupported()) return false;
+    const layout = runtimeState.snapshot().config.sidebarPanelLayout;
+    return layout.some((entry) => entry.id === "workspace" && entry.visible);
+  }
+
   function syncWorkspacePulse(config: PiStatusConfig): void {
     if (!workspacePulseRuntime) return;
-    if (isWorkspacePulseEnabled(config.zones)) {
+    if (isWorkspacePulseEnabled(config.zones) || sidebarWorkspaceVisible()) {
       workspacePulseRuntime.start();
     } else {
       workspacePulseRuntime.stop();
@@ -277,9 +336,13 @@ export default function createExtension(pi: ExtensionAPI): void {
           discoveredStatuses: discovered,
           usageAvailable: usageRuntime.getAvailable(),
           getPreviewInput: () => currentFooterInput(ctx),
-          getAvailableSidebarPanels: () =>
-            BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, title: id })),
+          getAvailableSidebarPanels: () => {
+            const panels = activeSidebarRegistry?.getAvailable();
+            if (panels && panels.length > 0) return panels;
+            return BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, title: id }));
+          },
           save: saveAndApplyConfig,
+          getEffectiveSidebarWidth: () => activeSidebarController?.getEffectiveWidth(),
           onComponent(component) {
             activeDashboard = component;
           },
@@ -296,6 +359,10 @@ export default function createExtension(pi: ExtensionAPI): void {
 
   pi.on("session_start", (_event, ctx) => {
     closeActiveDashboard();
+    safelyDisposeSidebarController();
+    safelyDisposeSidebarRegistry();
+    activeSidebarController = undefined;
+    activeSidebarRegistry = undefined;
     workspacePulseRuntime?.setOnChange(undefined);
     workspacePulseRuntime?.dispose();
     workspacePulseRuntime = undefined;
@@ -313,6 +380,53 @@ export default function createExtension(pi: ExtensionAPI): void {
     runtimeState.update({ type: "config_reload", config: loadConfig() });
     attachNotificationsForCurrentSession();
     installFooter(ctx);
+    if (ctx.mode === "tui") {
+      activeSidebarRegistry = createSidebarPanelRegistry({
+        events: pi.events as unknown as SidebarPanelEventTransport,
+        onChange: () => activeSidebarController?.requestRender(),
+      });
+      try {
+        activeSidebarController = createSidebarController({
+          ctx,
+          getConfig: () => runtimeState.snapshot().config,
+          getSnapshot: () => {
+            const config = runtimeState.snapshot().config;
+            const activeCtx = runtimeState.snapshot().ctx ?? ctx;
+            const safeSessionName = safeRead(() => pi.getSessionName());
+            const safeActiveTools = safeRead(() => pi.getActiveTools());
+            const safeAvailableToolCount = safeRead(() => pi.getAllTools().length);
+            const sessionFile = safeRead(() => activeCtx.sessionManager.getSessionFile());
+            const branchEntries = safeRead(() => activeCtx.sessionManager.getBranch().length);
+            return buildSidebarSnapshot({
+              footer: currentFooterInput(ctx),
+              config,
+              ...(safeSessionName !== undefined ? { sessionName: safeSessionName } : {}),
+              persisted: sessionFile !== undefined,
+              branchEntryCount: branchEntries ?? 0,
+              activeToolNames: safeActiveTools ?? [],
+              availableToolCount: safeAvailableToolCount ?? 0,
+              sidebarPanels: activeSidebarRegistry?.getAvailable() ?? [],
+            });
+          },
+          onWarning: (message) => ctx.ui.notify(message, "warning"),
+          onError: (error) =>
+            ctx.ui.notify(error instanceof Error ? error.message : String(error), "warning"),
+        });
+        activeSidebarController.setShown(true);
+        syncWorkspacePulse(runtimeState.snapshot().config);
+      } catch (error) {
+        // Spec: partway-through setup disposes the resources already created and reports one warning.
+        safelyDisposeSidebarRegistry();
+        activeSidebarRegistry = undefined;
+        activeSidebarController = undefined;
+        ctx.ui.notify(
+          `pi-status sidebar setup failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+          "warning",
+        );
+      }
+    }
   });
 
   pi.on("session_tree", (_event, ctx) => {
@@ -330,6 +444,9 @@ export default function createExtension(pi: ExtensionAPI): void {
     runtimeState.update({ type: "config_reload", config: loadConfig() });
     attachNotificationsForCurrentSession();
     installFooter(ctx);
+    if (ctx.mode === "tui" && activeSidebarController) {
+      activeSidebarController.requestRender();
+    }
   });
 
   pi.on("model_select", (_event, ctx) => {
@@ -414,6 +531,10 @@ export default function createExtension(pi: ExtensionAPI): void {
     const activeCtx = runtimeState.snapshot().ctx;
     if (activeCtx && activeCtx.sessionManager !== ctx.sessionManager) return;
     closeActiveDashboard();
+    safelyDisposeSidebarController();
+    safelyDisposeSidebarRegistry();
+    activeSidebarController = undefined;
+    activeSidebarRegistry = undefined;
     resetFooterProviderState();
     if (
       activeTuiSessionManager === undefined ||

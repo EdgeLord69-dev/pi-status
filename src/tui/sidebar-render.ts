@@ -77,7 +77,7 @@ export interface SidebarSnapshot {
 }
 
 export interface SidebarSnapshotInput {
-  footer: FooterRenderInput;
+  footer: Omit<FooterRenderInput, "zones" | "extensionSegments">;
   config: PiStatusConfig;
   sessionName?: string;
   persisted: boolean;
@@ -131,7 +131,7 @@ function basenameOf(path: string): string {
   return idx === -1 ? path : path.slice(idx + 1) || path;
 }
 
-function deriveProjectName(footer: FooterRenderInput): {
+function deriveProjectName(footer: Omit<FooterRenderInput, "zones" | "extensionSegments">): {
   projectName: string;
   pulse?: WorkspacePulseAggregates;
 } {

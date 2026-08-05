@@ -5,6 +5,11 @@ import { buildSidebarSnapshot, type SidebarSnapshot } from "../../src/tui/sideba
 import type { PiStatusConfig } from "../../src/shared/types.ts";
 import { DEFAULT_SIDEBAR_PANEL_LAYOUT, DEFAULT_ZONES } from "../../src/shared/types.ts";
 import { createSidebarController } from "../../src/tui/sidebar.ts";
+import {
+  DEFAULT_SIDEBAR_WIDTH,
+  MIN_MAIN_WIDTH,
+  MIN_SIDEBAR_WIDTH,
+} from "../../src/tui/split-pane.ts";
 import { noTheme, type StatusLineTheme } from "../../src/tui/theme.ts";
 import { withDefaults } from "../helpers.ts";
 
@@ -307,5 +312,59 @@ describe("sidebar controller", () => {
     controller.setShown(true);
     expect(controller.beginResize()).toBe(true);
     expect(ctx.ui.onTerminalInput).toHaveBeenCalled();
+  });
+});
+
+describe("sidebar controller effective width forwarding", () => {
+  it("returns 0 before the controller is mounted", () => {
+    const { host, tui } = makeFakeHost(120);
+    const controller = createSidebarController({
+      ctx: makeCtx(host, tui),
+      getSnapshot: () => FIXED_SNAPSHOT,
+      getConfig: () => FIXED_CONFIG,
+    });
+    expect(controller.getEffectiveWidth()).toBe(0);
+  });
+
+  it("returns 0 when the controller is shown but the host is below the visible threshold", async () => {
+    const { host, tui } = makeFakeHost(MIN_MAIN_WIDTH + MIN_SIDEBAR_WIDTH - 1);
+    const controller = createSidebarController({
+      ctx: makeCtx(host, tui),
+      getSnapshot: () => FIXED_SNAPSHOT,
+      getConfig: () => FIXED_CONFIG,
+    });
+    controller.show();
+    await Promise.resolve();
+    controller.setShown(true);
+    expect(controller.getEffectiveWidth()).toBe(0);
+  });
+
+  it("returns the split reservation when the controller is effectively visible", async () => {
+    const { host, tui } = makeFakeHost(120);
+    const controller = createSidebarController({
+      ctx: makeCtx(host, tui),
+      getSnapshot: () => FIXED_SNAPSHOT,
+      getConfig: () => FIXED_CONFIG,
+    });
+    controller.show();
+    await Promise.resolve();
+    controller.setShown(true);
+    const last = host.factories.at(-1);
+    if (!last) throw new Error("expected overlay factory");
+    last(tui, noTheme).render(DEFAULT_SIDEBAR_WIDTH);
+    expect(controller.getEffectiveWidth()).toBe(DEFAULT_SIDEBAR_WIDTH);
+  });
+
+  it("returns 0 after dispose", async () => {
+    const { host, tui } = makeFakeHost(120);
+    const controller = createSidebarController({
+      ctx: makeCtx(host, tui),
+      getSnapshot: () => FIXED_SNAPSHOT,
+      getConfig: () => FIXED_CONFIG,
+    });
+    controller.show();
+    await Promise.resolve();
+    controller.dispose();
+    expect(controller.getEffectiveWidth()).toBe(0);
   });
 });
