@@ -8,8 +8,6 @@
 
 **Tech Stack:** TypeScript 6, existing dashboard reducer/render system, Vitest 4, Pi 0.83 `ctx.ui.notify`.
 
-**Spec:** `docs/superpowers/specs/2026-08-06-statusline-sidebar-phase-06-replan-design.md`.
-
 ---
 
 ## Task 0: Record the clean Phase 6 base
@@ -31,8 +29,6 @@ printf 'PHASE_BASE=%s\n' "$PHASE_BASE"
 ```
 
 Expected: working tree clean; `$PHASE_BASE` prints a commit hash; the file path is gitignored (so it does not dirty the worktree).
-
----
 
 ## Task 1: Add Sidebar tab state and rows
 
@@ -64,16 +60,9 @@ describe("dashboard Sidebar tab initialization", () => {
     const layout = config().sidebarPanelLayout.map((entry, index) =>
       index % 2 === 0 ? entry : { ...entry, visible: false },
     );
-    const state = initDashboardState(
-      config({ sidebarPanelLayout: layout }),
-      [],
-      true,
-    );
+    const state = initDashboardState(config({ sidebarPanelLayout: layout }), [], true);
     expect(selectableRows(state, "sidebar")).toEqual([
-      ...layout.map((entry) => ({
-        type: "sidebar_panel" as const,
-        id: entry.id,
-      })),
+      ...layout.map((entry) => ({ type: "sidebar_panel" as const, id: entry.id })),
       { type: "sidebar_tool_names" },
       { type: "sidebar_default" },
       { type: "save" },
@@ -82,11 +71,7 @@ describe("dashboard Sidebar tab initialization", () => {
 
   it("initializes Sidebar navigation with selectedIndex 0 and empty query", () => {
     const state = initDashboardState(config(), [], true);
-    expect(state.navigation.sidebar).toEqual({
-      selectedIndex: 0,
-      query: "",
-      offset: 0,
-    });
+    expect(state.navigation.sidebar).toEqual({ selectedIndex: 0, query: "", offset: 0 });
   });
 });
 ```
@@ -102,11 +87,7 @@ describe("dashboard Sidebar tab transitions", () => {
   ];
 
   it("toggle_sidebar_panel flips visibility and dirties", () => {
-    let state = initDashboardState(
-      config({ sidebarPanelLayout: layout }),
-      [],
-      true,
-    );
+    let state = initDashboardState(config({ sidebarPanelLayout: layout }), [], true);
     expect(state.draft.sidebarPanelLayout[1]?.visible).toBe(false);
     state = dispatch(state, { type: "toggle_sidebar_panel", id: "activity" });
     expect(state.draft.sidebarPanelLayout[1]?.visible).toBe(true);
@@ -114,17 +95,9 @@ describe("dashboard Sidebar tab transitions", () => {
   });
 
   it("move_sidebar_panel swaps neighbors and clamps at edges", () => {
-    let state = initDashboardState(
-      config({ sidebarPanelLayout: layout }),
-      [],
-      true,
-    );
+    let state = initDashboardState(config({ sidebarPanelLayout: layout }), [], true);
     state.navigation.sidebar.selectedIndex = 0;
-    state = dispatch(state, {
-      type: "move_sidebar_panel",
-      id: "agent",
-      direction: -1,
-    });
+    state = dispatch(state, { type: "move_sidebar_panel", id: "agent", direction: -1 });
     expect(state.draft.sidebarPanelLayout.map((e) => e.id)).toEqual([
       "agent",
       "activity",
@@ -132,11 +105,7 @@ describe("dashboard Sidebar tab transitions", () => {
     ]);
 
     state.navigation.sidebar.selectedIndex = 2;
-    state = dispatch(state, {
-      type: "move_sidebar_panel",
-      id: "todos",
-      direction: 1,
-    });
+    state = dispatch(state, { type: "move_sidebar_panel", id: "todos", direction: 1 });
     expect(state.draft.sidebarPanelLayout.map((e) => e.id)).toEqual([
       "agent",
       "activity",
@@ -144,11 +113,7 @@ describe("dashboard Sidebar tab transitions", () => {
     ]);
 
     state.navigation.sidebar.selectedIndex = 0;
-    state = dispatch(state, {
-      type: "move_sidebar_panel",
-      id: "agent",
-      direction: 1,
-    });
+    state = dispatch(state, { type: "move_sidebar_panel", id: "agent", direction: 1 });
     expect(state.draft.sidebarPanelLayout.map((e) => e.id)).toEqual([
       "activity",
       "agent",
@@ -177,18 +142,10 @@ describe("dashboard Sidebar tab transitions", () => {
   });
 
   it("save emits notify and skips save effect when no panel is visible", () => {
-    const allHidden = BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
-      id,
-      visible: false,
-    }));
-    let state = initDashboardState(
-      config({ sidebarPanelLayout: allHidden }),
-      [],
-      true,
-    );
+    const allHidden = BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: false }));
+    let state = initDashboardState(config({ sidebarPanelLayout: allHidden }), [], true);
     state.activeTab = "sidebar";
-    state.navigation.sidebar.selectedIndex =
-      selectableRows(state, "sidebar").length - 1;
+    state.navigation.sidebar.selectedIndex = selectableRows(state, "sidebar").length - 1;
     const result = reduceDashboardState(state, { type: "activate" });
     expect(result.effect).toEqual({
       type: "notify",
@@ -201,17 +158,12 @@ describe("dashboard Sidebar tab transitions", () => {
   it("save emits the save effect when at least one panel is visible", () => {
     let state = initDashboardState(config(), [], true);
     state.activeTab = "sidebar";
-    state.navigation.sidebar.selectedIndex =
-      selectableRows(state, "sidebar").length - 1;
+    state.navigation.sidebar.selectedIndex = selectableRows(state, "sidebar").length - 1;
     const result = reduceDashboardState(state, { type: "activate" });
     expect(result.effect?.type).toBe("save");
     if (result.effect?.type !== "save") throw new Error("expected save effect");
-    expect(result.effect.config.sidebarPanelLayout).toEqual(
-      state.draft.sidebarPanelLayout,
-    );
-    expect(result.effect.config.showSidebarToolNames).toEqual(
-      state.draft.showSidebarToolNames,
-    );
+    expect(result.effect.config.sidebarPanelLayout).toEqual(state.draft.sidebarPanelLayout);
+    expect(result.effect.config.showSidebarToolNames).toEqual(state.draft.showSidebarToolNames);
   });
 
   it("activate on a sidebar_panel emits toggle_sidebar_panel and stays on the row", () => {
@@ -220,12 +172,10 @@ describe("dashboard Sidebar tab transitions", () => {
     state.navigation.sidebar.selectedIndex = 0;
     const next = dispatch(state, { type: "activate" });
     expect(next.draft.sidebarPanelLayout[0]?.visible).toBe(false);
-    expect(selectableRows(next)[next.navigation.sidebar.selectedIndex]).toEqual(
-      {
-        type: "sidebar_panel",
-        id: BUILTIN_SIDEBAR_PANEL_IDS[0],
-      },
-    );
+    expect(selectableRows(next)[next.navigation.sidebar.selectedIndex]).toEqual({
+      type: "sidebar_panel",
+      id: BUILTIN_SIDEBAR_PANEL_IDS[0],
+    });
   });
 
   it("activate on sidebar_default emits restore_sidebar_default", () => {
@@ -310,10 +260,9 @@ Add to `selectableRows`:
 ```ts
 if (tab === "sidebar") {
   return [
-    ...state.draft.sidebarPanelLayout.map((entry) => ({
-      type: "sidebar_panel" as const,
-      id: entry.id,
-    })),
+    ...state.draft.sidebarPanelLayout.map(
+      (entry) => ({ type: "sidebar_panel" as const, id: entry.id }),
+    ),
     { type: "sidebar_tool_names" },
     { type: "sidebar_default" },
     { type: "save" },
@@ -321,16 +270,15 @@ if (tab === "sidebar") {
 }
 ```
 
-Add helpers near `configsEqual`:
+Add a `getSidebarDraft(state)` helper (no clone — the reducer is the only writer):
 
 ```ts
-function toggleSidebarPanel(
-  layout: SidebarPanelLayout,
-  id: SidebarPanelId,
-): SidebarPanelLayout {
-  return layout.map((entry) =>
-    entry.id === id ? { ...entry, visible: !entry.visible } : entry,
-  );
+function sidebarLayout(state: DashboardState): SidebarPanelLayout {
+  return state.draft.sidebarPanelLayout;
+}
+
+function toggleSidebarPanel(layout: SidebarPanelLayout, id: SidebarPanelId): SidebarPanelLayout {
+  return layout.map((entry) => (entry.id === id ? { ...entry, visible: !entry.visible } : entry));
 }
 
 function moveSidebarPanel(
@@ -350,14 +298,11 @@ function moveSidebarPanel(
 }
 ```
 
-In the reducer `activate` branch, prepend the new row handlers before the existing `save` branch:
+In the reducer `activate` branch, prepend:
 
 ```ts
 if (row.type === "sidebar_panel") {
-  state.draft.sidebarPanelLayout = toggleSidebarPanel(
-    state.draft.sidebarPanelLayout,
-    row.id,
-  );
+  state.draft.sidebarPanelLayout = toggleSidebarPanel(state.draft.sidebarPanelLayout, row.id);
   return { state: clampSelection(state) };
 }
 if (row.type === "sidebar_tool_names") {
@@ -390,10 +335,7 @@ if (row.type === "save") {
       },
     };
   }
-  return {
-    state,
-    effect: { type: "save", config: structuredClone(state.draft) },
-  };
+  return { state, effect: { type: "save", config: structuredClone(state.draft) } };
 }
 ```
 
@@ -425,8 +367,6 @@ mise exec node@24.15.0 -- pnpm vitest run tests/tui/dashboard-state.test.ts
 
 Expected: all new tests pass.
 
----
-
 ## Task 2: Render the Sidebar tab
 
 **Files:** `src/tui/dashboard-render.ts`; `tests/tui/dashboard-render.test.ts`.
@@ -443,11 +383,7 @@ describe("dashboard Sidebar render", () => {
       { id: "activity" as const, visible: false },
       { id: "todos" as const, visible: true },
     ];
-    const state = initDashboardState(
-      config({ sidebarPanelLayout: layout }),
-      [],
-      true,
-    );
+    const state = initDashboardState(config({ sidebarPanelLayout: layout }), [], true);
     state.activeTab = "sidebar";
     const output = renderDashboard(
       state,
@@ -477,21 +413,11 @@ describe("dashboard Sidebar render", () => {
       { id: "agent" as const, visible: true },
       { id: "missing:contrib" as const, visible: false },
     ];
-    const state = initDashboardState(
-      config({ sidebarPanelLayout: layout }),
-      [],
-      true,
-    );
+    const state = initDashboardState(config({ sidebarPanelLayout: layout }), [], true);
     state.activeTab = "sidebar";
-    const output = renderDashboard(
-      state,
-      preview,
-      noTheme,
-      100,
-      60,
-      undefined,
-      [{ id: "agent", title: "Agent" }],
-    ).lines.join("\n");
+    const output = renderDashboard(state, preview, noTheme, 100, 60, undefined, [
+      { id: "agent", title: "Agent" },
+    ]).lines.join("\n");
     expect(output).toContain("missing:contrib");
     expect(output).toContain("unavailable");
   });
@@ -499,9 +425,7 @@ describe("dashboard Sidebar render", () => {
   it("renders the one-line Sidebar preview above the footer preview when panels are visible", () => {
     const state = initDashboardState(config(), [], true);
     state.activeTab = "sidebar";
-    const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join(
-      "\n",
-    );
+    const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
     const previewIndex = output.indexOf("Sidebar:");
     const footerIndex = output.indexOf("GPT-5");
     expect(previewIndex).toBeGreaterThan(-1);
@@ -510,28 +434,17 @@ describe("dashboard Sidebar render", () => {
   });
 
   it("omits the Sidebar preview when no panels are visible", () => {
-    const allHidden = BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
-      id,
-      visible: false,
-    }));
-    const state = initDashboardState(
-      config({ sidebarPanelLayout: allHidden }),
-      [],
-      true,
-    );
+    const allHidden = BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: false }));
+    const state = initDashboardState(config({ sidebarPanelLayout: allHidden }), [], true);
     state.activeTab = "sidebar";
-    const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join(
-      "\n",
-    );
+    const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
     expect(output).not.toContain("Sidebar:");
   });
 
   it("renders Restore default row above Save", () => {
     const state = initDashboardState(config(), [], true);
     state.activeTab = "sidebar";
-    const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join(
-      "\n",
-    );
+    const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
     const defaultIndex = output.indexOf("Restore default");
     const saveIndex = output.indexOf("Save changes");
     expect(defaultIndex).toBeGreaterThan(-1);
@@ -546,9 +459,7 @@ describe("dashboard Sidebar render", () => {
     );
     state.activeTab = "sidebar";
     state.navigation.sidebar.selectedIndex = BUILTIN_SIDEBAR_PANEL_IDS.length;
-    const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join(
-      "\n",
-    );
+    const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
     expect(output).toContain("[•] Show tool names");
   });
 
@@ -566,9 +477,7 @@ describe("dashboard Sidebar render", () => {
     );
     const width = Math.max(1, Math.floor(100 * 0.92));
     const result = renderDashboard(state, preview, noTheme, width, 30);
-    expect(result.lines.every((line) => visibleWidth(line) <= width)).toBe(
-      true,
-    );
+    expect(result.lines.every((line) => visibleWidth(line) <= width)).toBe(true);
     expect(result.lines.at(-1)).toContain("┗");
   });
 });
@@ -594,11 +503,10 @@ export function renderDashboard(
   width: number,
   terminalRows: number,
   dialog?: DashboardDialog,
-  availablePanels: readonly {
-    id: SidebarPanelId;
-    title: string;
-  }[] = BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, title: id })),
-): DashboardRenderResult;
+  availablePanels: readonly { id: SidebarPanelId; title: string }[] = BUILTIN_SIDEBAR_PANEL_IDS.map(
+    (id) => ({ id, title: id }),
+  ),
+): DashboardRenderResult
 ```
 
 Import `BUILTIN_SIDEBAR_PANEL_IDS, SidebarPanelId` from `"../shared/types.ts"`.
@@ -654,11 +562,9 @@ mise exec node@24.15.0 -- pnpm vitest run tests/tui/dashboard-render.test.ts
 
 Expected: all new tests pass.
 
----
-
 ## Task 3: Wire the component and harness
 
-**Files:** `src/tui/dashboard.ts`; `tests/tui/dashboard.test.ts`.
+**Files:** `src/tui/dashboard.ts`; `tests/tui/dashboard.test.ts`; `tests/tui/dashboard-render.test.ts` (signature update).
 
 - [ ] **Step 1: Add failing component tests**
 
@@ -672,29 +578,21 @@ describe("StatusLineDashboardComponent Sidebar tab", () => {
     expect(initial[0]?.visible).toBe(true);
     // Default tab is now sidebar; first row is the first panel.
     component.handleInput("\r");
-    expect(component.getState().draft.sidebarPanelLayout[0]?.visible).toBe(
-      false,
-    );
+    expect(component.getState().draft.sidebarPanelLayout[0]?.visible).toBe(false);
   });
 
   it("moves a sidebar_panel left/right through ←/→", () => {
     const { component } = makeDashboard();
-    const before = component
-      .getState()
-      .draft.sidebarPanelLayout.map((e) => e.id);
+    const before = component.getState().draft.sidebarPanelLayout.map((e) => e.id);
     component.handleInput("\x1b[C"); // → right
-    const after = component
-      .getState()
-      .draft.sidebarPanelLayout.map((e) => e.id);
+    const after = component.getState().draft.sidebarPanelLayout.map((e) => e.id);
     expect(after).toEqual([before[1], before[0], ...before.slice(2)]);
   });
 
   it("reorders clamped at edges", () => {
     const { component } = makeDashboard();
     component.handleInput("\x1b[D"); // ← at top row, no-op
-    const before = component
-      .getState()
-      .draft.sidebarPanelLayout.map((e) => e.id);
+    const before = component.getState().draft.sidebarPanelLayout.map((e) => e.id);
     expect(before).toEqual(BUILTIN_SIDEBAR_PANEL_IDS);
   });
 
@@ -741,25 +639,28 @@ describe("StatusLineDashboardComponent Sidebar tab", () => {
     component.handleInput("\r");
     expect(save).toHaveBeenCalledOnce();
     const savedArg = save.mock.calls[0]?.[0];
-    expect(savedArg?.sidebarPanelLayout[0]).toEqual({
-      id: BUILTIN_SIDEBAR_PANEL_IDS[0],
-      visible: false,
-    });
+    expect(savedArg?.sidebarPanelLayout[0]).toEqual({ id: BUILTIN_SIDEBAR_PANEL_IDS[0], visible: false });
     expect(savedArg?.showSidebarToolNames).toBe(true);
     expect(isDashboardDirty(component.getState())).toBe(false);
   });
 });
 ```
 
-Run:
+- [ ] **Step 2: Update the render signature in test harness calls**
+
+`tests/tui/dashboard-render.test.ts` already calls `renderDashboard` with five arguments plus a dialog. The new signature makes `availablePanels` the seventh argument with a default. No change required at the call sites that don't pass it.
+
+If the test harness in `tests/tui/dashboard.test.ts` calls `renderDashboard` directly (it does not — it calls `component.render`), no change.
+
+- [ ] **Step 3: Run failing component tests**
 
 ```bash
 mise exec node@24.15.0 -- pnpm vitest run tests/tui/dashboard.test.ts
 ```
 
-Expected: FAIL because `runEffect` does not handle `notify` and `getAvailableSidebarPanels` is not on `StatusLineDashboardOptions`.
+Expected: FAIL because `runEffect` does not handle `notify`.
 
-- [ ] **Step 2: Add `notify` effect and `getAvailableSidebarPanels` option**
+- [ ] **Step 4: Add `notify` effect and `getAvailableSidebarPanels` option**
 
 In `src/tui/dashboard.ts`:
 
@@ -812,7 +713,7 @@ return renderDashboard(
 
 Import `SidebarPanelId` from `"../shared/types.ts"`.
 
-- [ ] **Step 3: Run all new tests and existing dashboard tests**
+- [ ] **Step 5: Run all new tests and existing dashboard tests**
 
 ```bash
 mise exec node@24.15.0 -- pnpm vitest run tests/tui/dashboard.test.ts tests/tui/dashboard-state.test.ts tests/tui/dashboard-render.test.ts
@@ -820,11 +721,9 @@ mise exec node@24.15.0 -- pnpm vitest run tests/tui/dashboard.test.ts tests/tui/
 
 Expected: all pass.
 
----
-
 ## Task 4: Fix up existing tests for the new default tab
 
-**Files:** `tests/tui/dashboard-state.test.ts`; `tests/tui/dashboard.test.ts`; `tests/index-save.test.ts`.
+**Files:** `tests/tui/dashboard-state.test.ts`; `tests/tui/dashboard.test.ts`; `tests/index-save.test.ts`; `tests/tui/dashboard-render.test.ts`.
 
 The default tab moves from `layout` to `sidebar`. Tests that tab-cycle by counting keystrokes need to be re-anchored.
 
@@ -832,17 +731,18 @@ The default tab moves from `layout` to `sidebar`. Tests that tab-cycle by counti
 
 In `"cycles tabs while preserving independent navigation"`:
 
-- The test starts from the new default `sidebar`. Three `next_tab` actions now reach `settings`, `layout`, `statuses`. Three calls give `statuses`; update either the call count or the assertion to match. Keep the test focused on independent navigation, not the cycle count.
+- Replace `state = dispatch(state, { type: "next_tab" })` followed by `expect(state.activeTab).toBe("statuses")` with the new tab order: `sidebar → settings → layout → statuses`. Three `next_tab` actions reach `statuses`. Either call `next_tab` three times or set `state.activeTab = "statuses"` directly. Keep the test focused on independent navigation, not the cycle count.
 
 - [ ] **Step 2: Update `tests/tui/dashboard.test.ts`**
 
-- `"stores a viewport offset from the current terminal height"` (line ~104): replace the 3 `component.handleInput("\t")` presses with 5 presses (`sidebar → settings → layout → statuses → session → tools`). Simplest: keep the existing structure but bump the loop count.
-- `"preserves a nonzero underlying viewport while a dialog renders"` (line ~273): the test navigates from Settings to Statuses. From default `sidebar`, `\t` × 3 reaches `layout`, `\t` × 2 more reaches `statuses`. Adjust input counts accordingly.
+- `"stores a viewport offset from the current terminal height"` (line ~104): replace the 3 `component.handleInput("\t")` presses with a direct jump to tools — set the active tab by calling `component.dispatch({ type: "next_tab" })` five times (`sidebar → settings → layout → statuses → session → tools`) or expose a test seam. Simplest: keep the same five-press loop.
+- `"preserves a nonzero underlying viewport while a dialog renders"` (line ~273): the test navigates `dirtySettings` (Shift+Tab twice from Settings back to Layout, then forward to Statuses). Replace `dirtySettings(component)` with a helper that reaches Statuses from the new default. From default `sidebar`: `\t` × 3 reaches `layout`, `\t` × 2 more reaches `statuses`. Adjust the input count.
 - `"ignores tab switching while a dialog is visible"` (uses `sessionTab(component)`): `sessionTab` does `handleInput("\t")` twice, expecting `session`. From default `sidebar`: `\t` × 4 reaches `session`. Update `sessionTab` accordingly.
 - `"replaces confirmed tool rows after an applied toggle"` and `"warns when toggling the final active tool"`: do `handleInput("\t")` three times to reach tools. From default `sidebar`: `\t` × 4 reaches `tools`. Add one more `\t` per test.
 - `"preserves confirmed tool rows when the live snapshot read fails"` and `"preserves confirmed tool rows when the live write fails"`: same — add one `\t` each.
+- `"replaces a tool row after an applied toggle"` in the second `makeDashboard` test: same — add one `\t`.
 - `"clears a Tools query before Esc closes"`: `handleInput("\t")` three times. From default `sidebar`: add one more `\t`.
-- `"renames through the focused embedded input"`, `"propagates focus changes to an open rename input"`, `"inserts q as rename text and cancels rename with Escape"`, `"closes a blank rename without changing the session"`, `"warns and leaves session state unchanged when rename fails"`, `"keeps the dashboard open when compaction is cancelled"`, `"confirms compaction only after moving to the second row"`, `"warns when compaction throws after closing the overlay"`: all use `sessionTab(component)` — updating `sessionTab` once covers them all.
+- `"keeps the dashboard open when compaction is cancelled"`, `"confirms compaction only after moving to the second row"`, `"warns when compaction throws after closing the overlay"`, `"renames through the focused embedded input"`, `"propagates focus changes to an open rename input"`, `"inserts q as rename text and cancels rename with Escape"`, `"closes a blank rename without changing the session"`, `"warns and leaves session state unchanged when rename fails"`: all use `sessionTab(component)` — updating `sessionTab` covers them.
 
 - [ ] **Step 3: Update `tests/index-save.test.ts`**
 
@@ -855,7 +755,7 @@ component.handleInput("\x1b[B"); // Save
 component.handleInput("\r");
 ```
 
-From default `sidebar`, `Shift+Tab` reaches `tools`, not `settings`. Replace with:
+From default `sidebar`, `Shift+Tab` reaches `tools`, not `settings`. Replace `\x1b[Z` (one backward step) with `\t` repeated until settings: from default `sidebar`, `\t` once reaches `settings`. Use:
 
 ```ts
 component.handleInput("\t"); // sidebar → settings
@@ -864,7 +764,13 @@ component.handleInput("\x1b[B"); // Save
 component.handleInput("\r");
 ```
 
-- [ ] **Step 4: Run all affected suites**
+- [ ] **Step 4: Update `tests/tui/dashboard-render.test.ts``
+
+The render tests do not switch tabs explicitly in most cases — `initDashboardState` now defaults to `sidebar`, but the test bodies assert content (e.g. "GPT-5" in the footer preview). The footer preview is rendered for every tab. No changes required.
+
+If any test asserts a tab-specific row (e.g. `Preset`), set `state.activeTab = "layout"` before render.
+
+- [ ] **Step 5: Run all affected suites**
 
 ```bash
 mise exec node@24.15.0 -- pnpm vitest run \
@@ -876,18 +782,7 @@ mise exec node@24.15.0 -- pnpm vitest run \
 
 Expected: all pass. Iterate on test inputs until green.
 
-- [ ] **Step 5: Typecheck and whitespace check**
-
-```bash
-mise exec node@24.15.0 -- pnpm typecheck
-git diff --check
-```
-
-Expected: both exit 0.
-
----
-
-## Phase gate
+## Task 5: Phase gate
 
 - [ ] **Step 1: Run focused dashboard suites**
 
@@ -917,7 +812,3 @@ git add \
   tests/index-save.test.ts
 git commit -m "feat: add sidebar panel dashboard editor"
 ```
-
-## Phase gate
-
-The six-tab dashboard suite, typecheck, and whitespace checks pass; the existing five dashboard surfaces retain their behavior; live contributions and TODO state remain Phase 7's responsibility; `getAvailableSidebarPanels()` is wired to the registry in `src/index.ts` by Phase 7.

@@ -1,6 +1,10 @@
 import { truncateToWidth, type Input, visibleWidth } from "@earendil-works/pi-tui";
 import { resolveFooter } from "../core/resolve-footer.ts";
-import type { StatusLineZone } from "../shared/types.ts";
+import {
+  BUILTIN_SIDEBAR_PANEL_IDS,
+  type SidebarPanelId,
+  type StatusLineZone,
+} from "../shared/types.ts";
 import {
   bodyRowBudget,
   fitViewport,
@@ -59,8 +63,17 @@ const FOOTERS: Record<DashboardTabId, string> = {
   statuses: "Type Search  •  ↑/↓ Select  •  Space/Enter Toggle  •  Esc Clear/Close",
   session: "↑/↓ Select  •  Space/Enter Open  •  Tab Switch  •  q/Esc Close",
   tools: "Type Search  •  ↑/↓ Select  •  Space/Enter Toggle  •  Esc Clear/Close",
+  sidebar:
+    "↑/↓ Select  •  ←/→ Reorder  •  Space/Enter Toggle/Restore/Save  •  Tab Switch  •  q/Esc Close",
   settings: "↑/↓ Select  •  Space/Enter Toggle/Save  •  Tab Switch  •  q/Esc Close",
 };
+
+/**
+ * Default available-panels snapshot used when the caller does not supply one.
+ * Phase 7 replaces this seam with a registry-backed snapshot in `src/index.ts`.
+ */
+const DEFAULT_BUILTIN_SIDEBAR_PANELS: readonly { id: SidebarPanelId; title: string }[] =
+  BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, title: id }));
 
 function selectableLine(
   selected: boolean,
@@ -99,6 +112,10 @@ function logicalBody(
   theme: StatusLineTheme,
   width: number,
   ignoreQuery: boolean,
+  availablePanels: readonly {
+    id: SidebarPanelId;
+    title: string;
+  }[] = DEFAULT_BUILTIN_SIDEBAR_PANELS,
 ): LogicalBody {
   const renderState = stateForNaturalHeight(state, tab, ignoreQuery);
   const rows = selectableRows(renderState, tab);
@@ -174,6 +191,34 @@ function logicalBody(
         `${tool.enabled ? "enabled" : "disabled"} - ${tool.description}`,
       );
     }
+  } else if (tab === "sidebar") {
+    const available = new Map(availablePanels.map((entry) => [entry.id, entry.title]));
+    state.draft.sidebarPanelLayout.forEach((entry, index) => {
+      const title = available.get(entry.id) ?? entry.id;
+      const unavailable = !available.has(entry.id);
+      const suffix = unavailable ? "  unavailable" : "";
+      pushSelectable(
+        entry.visible ? "[•]" : "[ ]",
+        `${String(index + 1).padStart(2)}  ${title}${suffix}`,
+      );
+    });
+    pushSelectable(
+      state.draft.showSidebarToolNames ? "[•]" : "[ ]",
+      "Show tool names",
+      "Reveal active tool names in the Sidebar (when not compact)",
+    );
+    pushSelectable(" ", "Restore default", "Reset Sidebar to the built-in visible layout");
+    const visibleIds = state.draft.sidebarPanelLayout
+      .filter((entry) => entry.visible)
+      .map((entry) => entry.id);
+    if (visibleIds.length > 0 && width >= 24) {
+      lines.push("");
+      lines.push(theme.dim(truncateToWidth(`Sidebar: ${visibleIds.join(", ")}`, width, "…")));
+    }
+    lines.push(
+      "",
+      ...buildFooterRowsFromResolved(resolveFooter(previewInput, state.draft, theme), theme, width),
+    );
   } else {
     const notifications = rows[0];
     if (notifications?.type === "notifications") {
@@ -228,11 +273,15 @@ export function renderDashboard(
   width: number,
   terminalRows: number,
   dialog?: DashboardDialog,
+  availablePanels: readonly {
+    id: SidebarPanelId;
+    title: string;
+  }[] = DEFAULT_BUILTIN_SIDEBAR_PANELS,
 ): DashboardRenderResult {
   const safeWidth = Math.max(1, Math.floor(width));
   const contentWidth = frameContentWidth(safeWidth);
   const natural = DASHBOARD_TABS.map(({ id }) =>
-    logicalBody(state, id, previewInput, theme, contentWidth, true),
+    logicalBody(state, id, previewInput, theme, contentWidth, true, availablePanels),
   );
   const target = targetOverlayRows(
     natural.map(({ lines }) => lines.length),
@@ -244,7 +293,15 @@ export function renderDashboard(
 
   const active = dialog
     ? dialogBody(dialog, contentWidth, theme)
-    : logicalBody(state, state.activeTab, previewInput, theme, contentWidth, false);
+    : logicalBody(
+        state,
+        state.activeTab,
+        previewInput,
+        theme,
+        contentWidth,
+        false,
+        availablePanels,
+      );
   const viewport = fitViewport(
     active.lines,
     active.selectedLine,

@@ -8,7 +8,7 @@ import {
   type Focusable,
   type TUI,
 } from "@earendil-works/pi-tui";
-import type { PiStatusConfig } from "../shared/types.ts";
+import type { PiStatusConfig, SidebarPanelId } from "../shared/types.ts";
 import { renderDashboard, type DashboardDialog } from "./dashboard-render.ts";
 import {
   initDashboardState,
@@ -37,6 +37,7 @@ export interface StatusLineDashboardOptions {
   discoveredStatuses: string[];
   usageAvailable: boolean;
   getPreviewInput(): Omit<FooterRenderInput, "zones" | "extensionSegments">;
+  getAvailableSidebarPanels(): readonly { id: SidebarPanelId; title: string }[];
   save(config: PiStatusConfig): void;
   done(): void;
 }
@@ -102,6 +103,7 @@ export class StatusLineDashboardComponent implements Component, Focusable {
       width,
       this.options.tui.terminal.rows,
       this.dialog,
+      this.options.getAvailableSidebarPanels(),
     );
     if (!this.dialog && result.offset !== this.state.navigation[this.state.activeTab].offset) {
       this.state = reduceDashboardState(this.state, {
@@ -170,6 +172,15 @@ export class StatusLineDashboardComponent implements Component, Focusable {
   }
 
   private runEffect(effect: DashboardEffect): void {
+    if (effect.type === "notify") {
+      try {
+        this.options.ctx.ui.notify(effect.message, effect.kind);
+      } catch {
+        // Best-effort: ui.notify is unavailable in some test hosts and broken
+        // notify implementations should never bring down the dashboard.
+      }
+      return;
+    }
     if (effect.type === "save") {
       try {
         this.options.save(effect.config);

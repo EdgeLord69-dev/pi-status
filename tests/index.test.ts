@@ -308,7 +308,10 @@ describe("extension wiring", () => {
           handleInput: (data: string) => void;
         }
       )({ terminal: { columns: 80, rows: 30 }, requestRender: () => {} }, null, {}, () => {});
-      component.handleInput("\t"); // Statuses tab
+      // New default tab is sidebar; three forward cycles reach the statuses tab.
+      component.handleInput("\t");
+      component.handleInput("\t");
+      component.handleInput("\t");
       preview = component.render(200).join("\n");
       return customPromise;
     });
@@ -608,8 +611,8 @@ describe("extension wiring", () => {
       const component = (
         factory as (...args: unknown[]) => { handleInput: (data: string) => void }
       )({ terminal: { columns: 80, rows: 30 }, requestRender: () => {} }, null, {}, () => {});
-      // Move to Settings tab (Shift+Tab from Layout)
-      component.handleInput("\x1b[Z");
+      // New default tab is sidebar; one forward tab reaches the settings tab.
+      component.handleInput("\t");
       component.handleInput("\r"); // toggle notifications
       component.handleInput("\x1b[B"); // move to Save
       component.handleInput("\r"); // activate Save
@@ -705,7 +708,8 @@ describe("extension wiring", () => {
       const component = (
         factory as (...args: unknown[]) => { handleInput: (data: string) => void }
       )({ terminal: { columns: 80, rows: 30 }, requestRender: () => {} }, null, {}, () => {});
-      component.handleInput("\x1b[Z");
+      // New default tab is sidebar; one forward tab reaches the settings tab.
+      component.handleInput("\t");
       component.handleInput("\r");
       component.handleInput("\x1b[B");
       component.handleInput("\r");

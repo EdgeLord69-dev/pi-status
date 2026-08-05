@@ -103,6 +103,7 @@ function makeDashboard(overrides: DashboardOverrides = {}) {
     discoveredStatuses: overrides.discoveredStatuses ?? ["build", "review"],
     usageAvailable: true,
     getPreviewInput: () => preview as Omit<FooterRenderInput, "zones" | "extensionSegments">,
+    getAvailableSidebarPanels: () => BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, title: id })),
     save,
     done,
   });
@@ -120,12 +121,18 @@ function makeDashboard(overrides: DashboardOverrides = {}) {
 }
 
 function sessionTab(component: StatusLineDashboardComponent): void {
+  // New default tab is sidebar; four forward cycles reach the session tab.
+  // Order: sidebar → settings → layout → statuses → session.
+  component.handleInput("\t");
+  component.handleInput("\t");
   component.handleInput("\t");
   component.handleInput("\t");
 }
 
 function dirtySettings(component: StatusLineDashboardComponent): void {
-  component.handleInput("\x1b[Z");
+  // New default tab is sidebar; one forward cycle reaches the settings tab.
+  // Order: sidebar → settings.
+  component.handleInput("\t");
   component.handleInput("\r");
 }
 
@@ -172,7 +179,7 @@ describe("StatusLineDashboardComponent", () => {
 
   it("stores a viewport offset from the current terminal height", () => {
     const { component, setTerminalRows } = makeDashboard({ toolCount: 40 });
-    for (let index = 0; index < 3; index += 1) component.handleInput("\t");
+    for (let index = 0; index < 5; index += 1) component.handleInput("\t");
     for (let index = 0; index < 30; index += 1) component.handleInput("\x1b[B");
     setTerminalRows(18);
     const short = component.render(80);
@@ -184,6 +191,9 @@ describe("StatusLineDashboardComponent", () => {
 
   it.each(["q", "\x1b[113u"])("treats %j as query text on searchable tabs", (input) => {
     const { component, done } = makeDashboard();
+    // New default tab is sidebar; three forward cycles reach the statuses tab.
+    component.handleInput("\t");
+    component.handleInput("\t");
     component.handleInput("\t");
     component.handleInput(input);
     expect(component.getState().navigation.statuses.query).toBe("q");
@@ -198,7 +208,7 @@ describe("StatusLineDashboardComponent", () => {
 
   it("clears a Tools query before Esc closes", () => {
     const { component, done } = makeDashboard();
-    for (let index = 0; index < 3; index += 1) component.handleInput("\t");
+    for (let index = 0; index < 5; index += 1) component.handleInput("\t");
     component.handleInput("r");
     component.handleInput("\x1b");
     expect(component.getState().navigation.tools.query).toBe("");
@@ -228,7 +238,7 @@ describe("StatusLineDashboardComponent", () => {
 
   it("replaces a tool row after an applied toggle", () => {
     const { component, pi } = makeDashboard();
-    for (let index = 0; index < 3; index += 1) component.handleInput("\t");
+    for (let index = 0; index < 5; index += 1) component.handleInput("\t");
     component.handleInput("\r");
     expect(pi.setActiveTools).toHaveBeenCalledWith(["bash"]);
     expect(component.getState().tools.find(({ name }) => name === "read")?.enabled).toBe(false);
@@ -236,7 +246,7 @@ describe("StatusLineDashboardComponent", () => {
 
   it("warns when toggling the final active tool", () => {
     const { component, ctx, pi } = makeDashboard({ activeTools: ["read"] });
-    for (let index = 0; index < 3; index += 1) component.handleInput("\t");
+    for (let index = 0; index < 5; index += 1) component.handleInput("\t");
     component.handleInput("\r");
     expect(pi.setActiveTools).not.toHaveBeenCalled();
     expect(ctx.ui.notify).toHaveBeenCalledWith("At least one tool must remain active", "warning");
@@ -254,7 +264,7 @@ describe("StatusLineDashboardComponent", () => {
       },
     });
     const confirmed = component.getState().tools;
-    for (let index = 0; index < 3; index += 1) component.handleInput("\t");
+    for (let index = 0; index < 5; index += 1) component.handleInput("\t");
     component.handleInput("\r");
     expect(component.getState().tools).toEqual(confirmed);
     expect(ctx.ui.notify).toHaveBeenCalledWith(
@@ -272,7 +282,7 @@ describe("StatusLineDashboardComponent", () => {
       },
     });
     const confirmed = component.getState().tools;
-    for (let index = 0; index < 3; index += 1) component.handleInput("\t");
+    for (let index = 0; index < 5; index += 1) component.handleInput("\t");
     component.handleInput("\r");
     expect(component.getState().tools).toEqual(confirmed);
     expect(ctx.ui.notify).toHaveBeenCalledWith(
@@ -422,8 +432,9 @@ describe("StatusLineDashboardComponent", () => {
       discoveredStatuses: Array.from({ length: 40 }, (_, index) => `status-${index}`),
     });
     dirtySettings(component);
-    component.handleInput("\t");
-    component.handleInput("\t");
+    // From the settings tab, shift+tab four times reaches the statuses tab.
+    // New order: ... sidebar settings (sidebar → tools → session → statuses → layout → sidebar).
+    for (let i = 0; i < 4; i += 1) component.handleInput("\x1b[Z");
     for (let index = 0; index < 35; index += 1) component.handleInput("\x1b[B");
     setTerminalRows(18);
     component.render(80);
@@ -464,6 +475,84 @@ describe("StatusLineDashboardComponent", () => {
     component.dispose();
     expect(done).toHaveBeenCalledOnce();
     expect(order).toEqual(["done", "dispose"]);
+  });
+});
+
+describe("StatusLineDashboardComponent Sidebar tab", () => {
+  it("toggles a sidebar_panel visibility through activate", () => {
+    const { component } = makeDashboard();
+    const initial = component.getState().draft.sidebarPanelLayout;
+    expect(initial[0]?.visible).toBe(true);
+    // Default tab is now sidebar; first row is the first panel.
+    component.handleInput("\r");
+    expect(component.getState().draft.sidebarPanelLayout[0]?.visible).toBe(false);
+  });
+
+  it("moves a sidebar_panel left/right through ←/→", () => {
+    const { component } = makeDashboard();
+    const before = component.getState().draft.sidebarPanelLayout.map((e) => e.id);
+    component.handleInput("\x1b[C"); // → right
+    const after = component.getState().draft.sidebarPanelLayout.map((e) => e.id);
+    expect(after).toEqual([before[1], before[0], ...before.slice(2)]);
+  });
+
+  it("reorders clamped at edges", () => {
+    const { component } = makeDashboard();
+    component.handleInput("\x1b[D"); // ← at top row, no-op
+    const before = component.getState().draft.sidebarPanelLayout.map((e) => e.id);
+    expect(before).toEqual(BUILTIN_SIDEBAR_PANEL_IDS);
+  });
+
+  it("restores default layout through activate", () => {
+    const { component } = makeDashboard();
+    // Toggle first panel off, then move past every panel row and sidebar_tool_names
+    // to reach restore_default (index = panelCount + 1).
+    component.handleInput("\r");
+    const panelCount = BUILTIN_SIDEBAR_PANEL_IDS.length;
+    for (let i = 0; i <= panelCount; i += 1) component.handleInput("\x1b[B");
+    component.handleInput("\r"); // activate restore_default
+    expect(component.getState().draft.sidebarPanelLayout).toEqual(
+      BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
+    );
+  });
+
+  it("warns and stays dirty when saving with no visible panels", () => {
+    const { component, ctx } = makeDashboard();
+    for (let i = 0; i < BUILTIN_SIDEBAR_PANEL_IDS.length; i += 1) {
+      component.handleInput("\r"); // toggle each panel off
+      component.handleInput("\x1b[B"); // move to next panel
+    }
+    component.handleInput("\r"); // toggle last panel off (currently selected)
+    // Now navigate to Save (last row).
+    for (let i = 0; i < 2; i += 1) component.handleInput("\x1b[B"); // skip sidebar_tool_names + sidebar_default
+    component.handleInput("\r"); // activate save
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      "At least one Sidebar panel must remain visible",
+      "warning",
+    );
+    expect(isDashboardDirty(component.getState())).toBe(true);
+  });
+
+  it("persists sidebarPanelLayout and showSidebarToolNames through Save", () => {
+    const { component, save } = makeDashboard();
+    component.handleInput("\r"); // toggle first panel off
+    // Move to sidebar_tool_names (index = BUILTIN_SIDEBAR_PANEL_IDS.length).
+    for (let i = 0; i < BUILTIN_SIDEBAR_PANEL_IDS.length; i += 1) {
+      component.handleInput("\x1b[B");
+    }
+    component.handleInput("\r"); // toggle sidebar_tool_names
+    // Move past sidebar_default to save.
+    component.handleInput("\x1b[B");
+    component.handleInput("\x1b[B");
+    component.handleInput("\r");
+    expect(save).toHaveBeenCalledOnce();
+    const savedArg = save.mock.calls[0]?.[0];
+    expect(savedArg?.sidebarPanelLayout[0]).toEqual({
+      id: BUILTIN_SIDEBAR_PANEL_IDS[0],
+      visible: false,
+    });
+    expect(savedArg?.showSidebarToolNames).toBe(true);
+    expect(isDashboardDirty(component.getState())).toBe(false);
   });
 });
 
@@ -513,6 +602,7 @@ describe("openStatusLineDashboard", () => {
       discoveredStatuses: ["build"],
       usageAvailable: true,
       getPreviewInput: () => preview as Omit<FooterRenderInput, "zones" | "extensionSegments">,
+      getAvailableSidebarPanels: () => BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, title: id })),
       save: vi.fn(),
     });
     await new Promise((resolve) => setImmediate(resolve));
