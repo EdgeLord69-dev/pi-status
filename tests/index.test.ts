@@ -1213,14 +1213,11 @@ describe("/statusline dashboard wiring", () => {
   it("warns on custom rejection and retries without replacing the footer", async () => {
     const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
     const footerSpy = buildSetFooterSpy();
-    let customCallCount = 0;
-    const custom = vi.fn().mockImplementation(() => {
-      customCallCount += 1;
-      // 1st call: sidebar mount (resolves). 2nd call: dashboard open (rejects).
-      // 3rd+ calls: dashboard retries (resolve).
-      if (customCallCount === 2) return Promise.reject(new Error("Overlay rejected"));
-      return Promise.resolve(null);
-    });
+    const custom = vi
+      .fn()
+      .mockResolvedValueOnce(null)
+      .mockRejectedValueOnce(new Error("Overlay rejected"))
+      .mockResolvedValue(null);
     createExtension(pi);
     const ctx = createContext({
       ui: {
@@ -1330,23 +1327,30 @@ describe("/statusline dashboard wiring", () => {
 });
 
 describe("sidebar lifecycle", () => {
-  it("creates one registry and one controller on session_start, and the registry auto-emits exactly one discover request", async () => {
-    const { pi, handlers, events } = buildPiWithHandlers();
-    let discoverCount = 0;
+  function trackDiscoverCount(events: ReturnType<typeof buildPiWithHandlers>["events"]): {
+    count: number;
+  } {
+    const tracker = { count: 0 };
     events.on(SIDEBAR_PANEL_CHANNEL, (payload) => {
       if (
         typeof payload === "object" &&
         payload !== null &&
         (payload as { type?: unknown }).type === "discover"
       ) {
-        discoverCount += 1;
+        tracker.count += 1;
       }
     });
+    return tracker;
+  }
+
+  it("creates one registry and one controller on session_start, and the registry auto-emits exactly one discover request", async () => {
+    const { pi, handlers, events } = buildPiWithHandlers();
+    const discover = trackDiscoverCount(events);
     createExtension(pi);
     const ctx = createContext();
     for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
     await new Promise((resolve) => setImmediate(resolve));
-    expect(discoverCount).toBe(1);
+    expect(discover.count).toBe(1);
   });
 
   it("mounts the sidebar overlay on session_start", async () => {
@@ -1370,23 +1374,14 @@ describe("sidebar lifecycle", () => {
 
   it("does not recreate the registry or controller on session_tree", async () => {
     const { pi, handlers, events } = buildPiWithHandlers();
-    let discoverCount = 0;
-    events.on(SIDEBAR_PANEL_CHANNEL, (payload) => {
-      if (
-        typeof payload === "object" &&
-        payload !== null &&
-        (payload as { type?: unknown }).type === "discover"
-      ) {
-        discoverCount += 1;
-      }
-    });
+    const discover = trackDiscoverCount(events);
     createExtension(pi);
     const ctx = createContext();
     for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
     await new Promise((resolve) => setImmediate(resolve));
-    const afterStart = discoverCount;
+    const afterStart = discover.count;
     for (const handler of handlers.get("session_tree") ?? []) handler({}, ctx);
-    expect(discoverCount).toBe(afterStart);
+    expect(discover.count).toBe(afterStart);
   });
 
   it("ignores a nonmatching session_shutdown", () => {

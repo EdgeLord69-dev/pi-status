@@ -133,11 +133,7 @@ export default function createExtension(pi: ExtensionAPI): void {
       if (ctx.sessionManager !== activeTuiSessionManager) return;
       const controller = activeSidebarController;
       if (!controller || !controller.isEffectivelyVisible()) {
-        try {
-          ctx.ui.notify("pi-status sidebar is not visible", "warning");
-        } catch {
-          // Best effort: notify may not be available in every TUI host.
-        }
+        ctx.ui.notify("pi-status sidebar is not visible", "warning");
         return;
       }
       closeActiveDashboard();
@@ -414,20 +410,9 @@ export default function createExtension(pi: ExtensionAPI): void {
               sidebarPanels: activeSidebarRegistry?.getAvailable() ?? [],
             });
           },
-          onWarning: (message) => {
-            try {
-              ctx.ui.notify(message, "warning");
-            } catch {
-              // Best effort.
-            }
-          },
-          onError: (error) => {
-            try {
-              ctx.ui.notify(error instanceof Error ? error.message : String(error), "warning");
-            } catch {
-              // Best effort.
-            }
-          },
+          onWarning: (message) => ctx.ui.notify(message, "warning"),
+          onError: (error) =>
+            ctx.ui.notify(error instanceof Error ? error.message : String(error), "warning"),
         });
         activeSidebarController.setShown(true);
         syncWorkspacePulse(runtimeState.snapshot().config);
@@ -436,16 +421,12 @@ export default function createExtension(pi: ExtensionAPI): void {
         safelyDisposeSidebarRegistry();
         activeSidebarRegistry = undefined;
         activeSidebarController = undefined;
-        try {
-          ctx.ui.notify(
-            `pi-status sidebar setup failed: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-            "warning",
-          );
-        } catch {
-          // Best effort.
-        }
+        ctx.ui.notify(
+          `pi-status sidebar setup failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+          "warning",
+        );
       }
     }
   });

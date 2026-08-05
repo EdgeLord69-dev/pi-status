@@ -307,10 +307,12 @@ export async function openStatusLineDashboard(
   },
 ): Promise<void> {
   const effective = Math.max(0, Math.floor(options.getEffectiveSidebarWidth?.() ?? 0));
-  const overlayOptions: OverlayOptions =
-    effective > 0
-      ? { anchor: "center", maxHeight: "85%", width: "92%", offsetX: -Math.floor(effective / 2) }
-      : { anchor: "center", maxHeight: "85%", width: "92%" };
+  const overlayOptions: OverlayOptions = {
+    anchor: "center",
+    maxHeight: "85%",
+    width: "92%",
+    ...(effective > 0 ? { offsetX: -Math.floor(effective / 2) } : {}),
+  };
   await options.ctx.ui.custom<void>(
     (tui, piTheme, _keys, done) => {
       const component = new StatusLineDashboardComponent({
