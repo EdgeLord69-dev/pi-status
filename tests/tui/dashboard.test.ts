@@ -103,8 +103,7 @@ function makeDashboard(overrides: DashboardOverrides = {}) {
     discoveredStatuses: overrides.discoveredStatuses ?? ["build", "review"],
     usageAvailable: true,
     getPreviewInput: () => preview as Omit<FooterRenderInput, "zones" | "extensionSegments">,
-    getAvailableSidebarPanels: () =>
-      BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, title: id })),
+    getAvailableSidebarPanels: () => BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, title: id })),
     save,
     done,
   });
@@ -603,8 +602,7 @@ describe("openStatusLineDashboard", () => {
       discoveredStatuses: ["build"],
       usageAvailable: true,
       getPreviewInput: () => preview as Omit<FooterRenderInput, "zones" | "extensionSegments">,
-      getAvailableSidebarPanels: () =>
-        BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, title: id })),
+      getAvailableSidebarPanels: () => BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, title: id })),
       save: vi.fn(),
     });
     await new Promise((resolve) => setImmediate(resolve));

@@ -458,27 +458,15 @@ describe("dashboard Sidebar tab transitions", () => {
     state.activeTab = "sidebar";
     state.navigation.sidebar.selectedIndex = 0;
     state = dispatch(state, { type: "adjust", delta: -1 });
-    expect(state.draft.sidebarPanelLayout.map((e) => e.id)).toEqual([
-      "agent",
-      "activity",
-      "todos",
-    ]);
+    expect(state.draft.sidebarPanelLayout.map((e) => e.id)).toEqual(["agent", "activity", "todos"]);
 
     state.navigation.sidebar.selectedIndex = 2;
     state = dispatch(state, { type: "adjust", delta: 1 });
-    expect(state.draft.sidebarPanelLayout.map((e) => e.id)).toEqual([
-      "agent",
-      "activity",
-      "todos",
-    ]);
+    expect(state.draft.sidebarPanelLayout.map((e) => e.id)).toEqual(["agent", "activity", "todos"]);
 
     state.navigation.sidebar.selectedIndex = 0;
     state = dispatch(state, { type: "adjust", delta: 1 });
-    expect(state.draft.sidebarPanelLayout.map((e) => e.id)).toEqual([
-      "activity",
-      "agent",
-      "todos",
-    ]);
+    expect(state.draft.sidebarPanelLayout.map((e) => e.id)).toEqual(["activity", "agent", "todos"]);
   });
 
   it("activate on sidebar_default rebuilds the layout to all built-ins visible", () => {
@@ -545,9 +533,7 @@ describe("dashboard Sidebar tab transitions", () => {
     state.activeTab = "sidebar";
     state.navigation.sidebar.selectedIndex = 0;
     state = dispatch(state, { type: "adjust", delta: -1 });
-    expect(state.draft.sidebarPanelLayout.map((e) => e.id)).toEqual(
-      BUILTIN_SIDEBAR_PANEL_IDS,
-    );
+    expect(state.draft.sidebarPanelLayout.map((e) => e.id)).toEqual(BUILTIN_SIDEBAR_PANEL_IDS);
   });
 });
 

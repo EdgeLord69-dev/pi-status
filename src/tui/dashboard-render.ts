@@ -112,7 +112,10 @@ function logicalBody(
   theme: StatusLineTheme,
   width: number,
   ignoreQuery: boolean,
-  availablePanels: readonly { id: SidebarPanelId; title: string }[] = DEFAULT_BUILTIN_SIDEBAR_PANELS,
+  availablePanels: readonly {
+    id: SidebarPanelId;
+    title: string;
+  }[] = DEFAULT_BUILTIN_SIDEBAR_PANELS,
 ): LogicalBody {
   const renderState = stateForNaturalHeight(state, tab, ignoreQuery);
   const rows = selectableRows(renderState, tab);
@@ -210,9 +213,7 @@ function logicalBody(
       .map((entry) => entry.id);
     if (visibleIds.length > 0 && width >= 24) {
       lines.push("");
-      lines.push(
-        theme.dim(truncateToWidth(`Sidebar: ${visibleIds.join(", ")}`, width, "…")),
-      );
+      lines.push(theme.dim(truncateToWidth(`Sidebar: ${visibleIds.join(", ")}`, width, "…")));
     }
     lines.push(
       "",
@@ -272,7 +273,10 @@ export function renderDashboard(
   width: number,
   terminalRows: number,
   dialog?: DashboardDialog,
-  availablePanels: readonly { id: SidebarPanelId; title: string }[] = DEFAULT_BUILTIN_SIDEBAR_PANELS,
+  availablePanels: readonly {
+    id: SidebarPanelId;
+    title: string;
+  }[] = DEFAULT_BUILTIN_SIDEBAR_PANELS,
 ): DashboardRenderResult {
   const safeWidth = Math.max(1, Math.floor(width));
   const contentWidth = frameContentWidth(safeWidth);
@@ -289,7 +293,15 @@ export function renderDashboard(
 
   const active = dialog
     ? dialogBody(dialog, contentWidth, theme)
-    : logicalBody(state, state.activeTab, previewInput, theme, contentWidth, false, availablePanels);
+    : logicalBody(
+        state,
+        state.activeTab,
+        previewInput,
+        theme,
+        contentWidth,
+        false,
+        availablePanels,
+      );
   const viewport = fitViewport(
     active.lines,
     active.selectedLine,

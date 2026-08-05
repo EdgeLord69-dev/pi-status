@@ -366,19 +366,11 @@ describe("dashboard Sidebar render", () => {
     ];
     const state = initDashboardState(config({ sidebarPanelLayout: layout }), [], true);
     state.activeTab = "sidebar";
-    const output = renderDashboard(
-      state,
-      preview,
-      noTheme,
-      100,
-      60,
-      undefined,
-      [
-        { id: "agent", title: "Agent" },
-        { id: "activity", title: "Activity" },
-        { id: "todos", title: "TODOS" },
-      ],
-    ).lines.join("\n");
+    const output = renderDashboard(state, preview, noTheme, 100, 60, undefined, [
+      { id: "agent", title: "Agent" },
+      { id: "activity", title: "Activity" },
+      { id: "todos", title: "TODOS" },
+    ]).lines.join("\n");
     expect(output).toContain("1");
     expect(output).toContain("[•]");
     expect(output).toContain("[ ]");
@@ -433,11 +425,7 @@ describe("dashboard Sidebar render", () => {
   });
 
   it("shows sidebar_tool_names checked state from draft", () => {
-    const state = initDashboardState(
-      config({ showSidebarToolNames: true }),
-      [],
-      true,
-    );
+    const state = initDashboardState(config({ showSidebarToolNames: true }), [], true);
     state.activeTab = "sidebar";
     state.navigation.sidebar.selectedIndex = BUILTIN_SIDEBAR_PANEL_IDS.length;
     const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");

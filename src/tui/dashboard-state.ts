@@ -312,9 +312,10 @@ export function selectableRows(
   }
   if (tab === "sidebar") {
     return [
-      ...state.draft.sidebarPanelLayout.map(
-        (entry) => ({ type: "sidebar_panel" as const, id: entry.id }),
-      ),
+      ...state.draft.sidebarPanelLayout.map((entry) => ({
+        type: "sidebar_panel" as const,
+        id: entry.id,
+      })),
       { type: "sidebar_tool_names" },
       { type: "sidebar_default" },
       { type: "save" },
@@ -396,13 +397,8 @@ function currentRow(state: DashboardState): DashboardSelectableRow | undefined {
   return rows[activeNavigation(state).selectedIndex];
 }
 
-function toggleSidebarPanel(
-  layout: SidebarPanelLayout,
-  id: SidebarPanelId,
-): SidebarPanelLayout {
-  return layout.map((entry) =>
-    entry.id === id ? { ...entry, visible: !entry.visible } : entry,
-  );
+function toggleSidebarPanel(layout: SidebarPanelLayout, id: SidebarPanelId): SidebarPanelLayout {
+  return layout.map((entry) => (entry.id === id ? { ...entry, visible: !entry.visible } : entry));
 }
 
 function moveSidebarPanel(
