@@ -175,7 +175,10 @@ export class StatusLineDashboardComponent implements Component, Focusable {
     if (effect.type === "notify") {
       try {
         this.options.ctx.ui.notify(effect.message, effect.kind);
-      } catch {}
+      } catch {
+        // Best-effort: ui.notify is unavailable in some test hosts and broken
+        // notify implementations should never bring down the dashboard.
+      }
       return;
     }
     if (effect.type === "save") {

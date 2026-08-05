@@ -68,6 +68,13 @@ const FOOTERS: Record<DashboardTabId, string> = {
   settings: "↑/↓ Select  •  Space/Enter Toggle/Save  •  Tab Switch  •  q/Esc Close",
 };
 
+/**
+ * Default available-panels snapshot used when the caller does not supply one.
+ * Phase 7 replaces this seam with a registry-backed snapshot in `src/index.ts`.
+ */
+const DEFAULT_BUILTIN_SIDEBAR_PANELS: readonly { id: SidebarPanelId; title: string }[] =
+  BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, title: id }));
+
 function selectableLine(
   selected: boolean,
   checkbox: string,
@@ -105,9 +112,7 @@ function logicalBody(
   theme: StatusLineTheme,
   width: number,
   ignoreQuery: boolean,
-  availablePanels: readonly { id: SidebarPanelId; title: string }[] = BUILTIN_SIDEBAR_PANEL_IDS.map(
-    (id) => ({ id, title: id }),
-  ),
+  availablePanels: readonly { id: SidebarPanelId; title: string }[] = DEFAULT_BUILTIN_SIDEBAR_PANELS,
 ): LogicalBody {
   const renderState = stateForNaturalHeight(state, tab, ignoreQuery);
   const rows = selectableRows(renderState, tab);
@@ -267,9 +272,7 @@ export function renderDashboard(
   width: number,
   terminalRows: number,
   dialog?: DashboardDialog,
-  availablePanels: readonly { id: SidebarPanelId; title: string }[] = BUILTIN_SIDEBAR_PANEL_IDS.map(
-    (id) => ({ id, title: id }),
-  ),
+  availablePanels: readonly { id: SidebarPanelId; title: string }[] = DEFAULT_BUILTIN_SIDEBAR_PANELS,
 ): DashboardRenderResult {
   const safeWidth = Math.max(1, Math.floor(width));
   const contentWidth = frameContentWidth(safeWidth);
