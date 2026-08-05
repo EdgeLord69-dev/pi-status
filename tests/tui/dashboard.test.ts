@@ -661,14 +661,10 @@ describe("openStatusLineDashboard sidebar-aware overlay geometry", () => {
       config: config(),
       discoveredStatuses: ["build"],
       usageAvailable: true,
-      getPreviewInput: () =>
-        preview as Omit<FooterRenderInput, "zones" | "extensionSegments">,
-      getAvailableSidebarPanels: () =>
-        BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, title: id })),
+      getPreviewInput: () => preview as Omit<FooterRenderInput, "zones" | "extensionSegments">,
+      getAvailableSidebarPanels: () => BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, title: id })),
       save: vi.fn(),
-      ...(effectiveWidth === undefined
-        ? {}
-        : { getEffectiveSidebarWidth: () => effectiveWidth }),
+      ...(effectiveWidth === undefined ? {} : { getEffectiveSidebarWidth: () => effectiveWidth }),
     });
     return { promise, options: () => options, close: () => component.close() };
   }

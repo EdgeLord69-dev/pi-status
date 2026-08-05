@@ -396,9 +396,7 @@ export default function createExtension(pi: ExtensionAPI): void {
             const safeActiveTools = safeRead(() => pi.getActiveTools());
             const safeAvailableToolCount = safeRead(() => pi.getAllTools().length);
             const sessionFile = safeRead(() => activeCtx.sessionManager.getSessionFile());
-            const branchEntries = safeRead(
-              () => activeCtx.sessionManager.getBranch().length,
-            );
+            const branchEntries = safeRead(() => activeCtx.sessionManager.getBranch().length);
             return buildSidebarSnapshot({
               footer: currentFooterInput(ctx),
               config,

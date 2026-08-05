@@ -1392,8 +1392,7 @@ describe("sidebar lifecycle", () => {
       ui: { ...createContext().ui, setFooter: footerSpy.setFooter },
     });
     for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
-    for (const handler of handlers.get("session_shutdown") ?? [])
-      handler({}, createContext());
+    for (const handler of handlers.get("session_shutdown") ?? []) handler({}, createContext());
     expect(typeof footerSpy.calls.at(-1)).toBe("function");
   });
 
@@ -1412,10 +1411,8 @@ describe("sidebar lifecycle", () => {
   it("registers ctrl+shift+r exactly once across two session_starts", () => {
     const { pi, handlers, registeredShortcuts } = buildPiWithHandlers();
     createExtension(pi);
-    for (const handler of handlers.get("session_start") ?? [])
-      handler({}, createContext());
-    for (const handler of handlers.get("session_start") ?? [])
-      handler({}, createContext());
+    for (const handler of handlers.get("session_start") ?? []) handler({}, createContext());
+    for (const handler of handlers.get("session_start") ?? []) handler({}, createContext());
     expect(registeredShortcuts).toHaveLength(1);
     expect(registeredShortcuts[0]?.key).toBe("ctrl+shift+r");
   });
@@ -1424,8 +1421,9 @@ describe("sidebar lifecycle", () => {
     const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
     let dashboardOptions: unknown;
     let callIndex = 0;
-    const custom = vi.fn().mockImplementation(
-      (factory: (...args: unknown[]) => unknown, customOptions: unknown) => {
+    const custom = vi
+      .fn()
+      .mockImplementation((factory: (...args: unknown[]) => unknown, customOptions: unknown) => {
         const current = callIndex;
         callIndex += 1;
         if (current === 0) {
@@ -1451,8 +1449,7 @@ describe("sidebar lifecycle", () => {
           (component as { close: () => void }).close();
         }
         return Promise.resolve(null);
-      },
-    );
+      });
     createExtension(pi);
     const ctx = createContext({
       ui: { ...createContext().ui, custom: custom as never },

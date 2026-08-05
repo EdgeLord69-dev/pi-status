@@ -272,17 +272,15 @@ describe("workspace pulse sidebar demand", () => {
     fourCommandMock(() => "/repo");
     const { pi, handlers } = buildPiWithHandlers();
     // Custom mock invokes the factory so the sidebar controller's isSupported() returns true.
-    const customMock = vi.fn(
-      <T,>(factory: (...args: unknown[]) => T) => {
-        factory(
-          { terminal: { columns: 120, rows: 30 }, requestRender: () => {} },
-          null,
-          {},
-          () => {},
-        );
-        return Promise.resolve(null) as Promise<unknown>;
-      },
-    );
+    const customMock = vi.fn(<T>(factory: (...args: unknown[]) => T) => {
+      factory(
+        { terminal: { columns: 120, rows: 30 }, requestRender: () => {} },
+        null,
+        {},
+        () => {},
+      );
+      return Promise.resolve(null) as Promise<unknown>;
+    });
     createExtension(pi);
     const ctx = createContext({
       ui: { ...createContext().ui, custom: customMock as never },
