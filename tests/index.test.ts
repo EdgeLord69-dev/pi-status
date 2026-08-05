@@ -26,6 +26,7 @@ import {
   getRegisteredCommand,
   renderWithFactory,
 } from "./helpers.ts";
+import { SIDEBAR_PANEL_CHANNEL } from "../src/tui/sidebar-panels.ts";
 
 describe("extension wiring", () => {
   it("builds live telemetry from all session entries and OAuth access", () => {
@@ -806,7 +807,7 @@ describe("extension wiring", () => {
     "  Tools  ",
   ])("rejects non-empty arguments %j without opening UI", async (args) => {
     const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
-    const custom = vi.fn(),
+    const custom = vi.fn().mockResolvedValue(null),
       select = vi.fn(),
       input = vi.fn(),
       confirm = vi.fn(),
@@ -825,7 +826,8 @@ describe("extension wiring", () => {
     });
     for (const h of handlers.get("session_start") ?? []) h({}, ctx);
     await getRegisteredCommand(registerCommandCalls, "statusline").handler(args, ctx);
-    expect(custom).not.toHaveBeenCalled();
+    // Sidebar mounts via custom (1 call); the dashboard should NOT open.
+    expect(custom).toHaveBeenCalledTimes(1);
     expect(select).not.toHaveBeenCalled();
     expect(input).not.toHaveBeenCalled();
     expect(confirm).not.toHaveBeenCalled();
@@ -1143,7 +1145,8 @@ describe("/statusline dashboard wiring", () => {
       ctx,
     );
     await new Promise((resolve) => setImmediate(resolve));
-    expect(host.custom).toHaveBeenCalledTimes(1);
+    // First custom call is the sidebar mount; the second is the dashboard open.
+    expect(host.custom).toHaveBeenCalledTimes(2);
     expect(host.capturedOptions()).toEqual({
       overlay: true,
       overlayOptions: { anchor: "center", maxHeight: "85%", width: "92%" },
@@ -1175,7 +1178,8 @@ describe("/statusline dashboard wiring", () => {
     const first = getRegisteredCommand(registerCommandCalls, "statusline").handler("", ctx);
     await new Promise((resolve) => setImmediate(resolve));
     await getRegisteredCommand(registerCommandCalls, "statusline").handler("", ctx);
-    expect(host.custom).toHaveBeenCalledTimes(1);
+    // Sidebar mount + dashboard open; the second invocation is ignored.
+    expect(host.custom).toHaveBeenCalledTimes(2);
     host.resolveCustom(undefined);
     await first;
   });
@@ -1202,7 +1206,14 @@ describe("/statusline dashboard wiring", () => {
   it("warns on custom rejection and retries without replacing the footer", async () => {
     const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
     const footerSpy = buildSetFooterSpy();
-    const custom = vi.fn().mockRejectedValueOnce(new Error("Overlay rejected"));
+    let customCallCount = 0;
+    const custom = vi.fn().mockImplementation(() => {
+      customCallCount += 1;
+      // 1st call: sidebar mount (resolves). 2nd call: dashboard open (rejects).
+      // 3rd+ calls: dashboard retries (resolve).
+      if (customCallCount === 2) return Promise.reject(new Error("Overlay rejected"));
+      return Promise.resolve(null);
+    });
     createExtension(pi);
     const ctx = createContext({
       ui: {
@@ -1219,7 +1230,8 @@ describe("/statusline dashboard wiring", () => {
       "warning",
     );
     await getRegisteredCommand(registerCommandCalls, "statusline").handler("", ctx);
-    expect(custom).toHaveBeenCalledTimes(2);
+    // 1 sidebar mount + 2 dashboard attempts (rejected, then retried).
+    expect(custom).toHaveBeenCalledTimes(3);
     expect(footerSpy.calls).toHaveLength(footerCallsBeforeOpen);
     expect(renderWithFactory(footerSpy.calls.at(-1))).toContain("GPT-5 [med]");
   });
@@ -1303,8 +1315,95 @@ describe("/statusline dashboard wiring", () => {
     await new Promise((resolve) => setImmediate(resolve));
     for (const h of handlers.get("session_shutdown") ?? [])
       h({}, createContext({ sessionManager: unrelatedSessionManager as never }));
-    expect(host.custom).toHaveBeenCalledTimes(1);
+    // 1 sidebar mount + 1 dashboard open; the stale shutdown must not reopen.
+    expect(host.custom).toHaveBeenCalledTimes(2);
     host.resolveCustom(undefined);
     await commandPromise;
+  });
+});
+
+describe("sidebar lifecycle", () => {
+  it("creates one registry and one controller on session_start, and the registry auto-emits exactly one discover request", async () => {
+    const { pi, handlers, events } = buildPiWithHandlers();
+    let discoverCount = 0;
+    events.on(SIDEBAR_PANEL_CHANNEL, (payload) => {
+      if (
+        typeof payload === "object" &&
+        payload !== null &&
+        (payload as { type?: unknown }).type === "discover"
+      ) {
+        discoverCount += 1;
+      }
+    });
+    createExtension(pi);
+    const ctx = createContext();
+    for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(discoverCount).toBe(1);
+  });
+
+  it("mounts the sidebar overlay on session_start", async () => {
+    const { pi, handlers } = buildPiWithHandlers();
+    const customMock = vi.fn(async () => null);
+    createExtension(pi);
+    const ctx = createContext({
+      ui: { ...createContext().ui, custom: customMock as never },
+    });
+    for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
+    await new Promise((resolve) => setImmediate(resolve));
+    const sidebarMounted = customMock.mock.calls.some(
+      (call) =>
+        Array.isArray(call) &&
+        call[1] !== undefined &&
+        typeof call[1] === "object" &&
+        (call[1] as { overlay?: unknown }).overlay === true,
+    );
+    expect(sidebarMounted).toBe(true);
+  });
+
+  it("does not recreate the registry or controller on session_tree", async () => {
+    const { pi, handlers, events } = buildPiWithHandlers();
+    let discoverCount = 0;
+    events.on(SIDEBAR_PANEL_CHANNEL, (payload) => {
+      if (
+        typeof payload === "object" &&
+        payload !== null &&
+        (payload as { type?: unknown }).type === "discover"
+      ) {
+        discoverCount += 1;
+      }
+    });
+    createExtension(pi);
+    const ctx = createContext();
+    for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
+    await new Promise((resolve) => setImmediate(resolve));
+    const afterStart = discoverCount;
+    for (const handler of handlers.get("session_tree") ?? []) handler({}, ctx);
+    expect(discoverCount).toBe(afterStart);
+  });
+
+  it("ignores a nonmatching session_shutdown", () => {
+    const { pi, handlers } = buildPiWithHandlers();
+    const footerSpy = buildSetFooterSpy();
+    createExtension(pi);
+    const ctx = createContext({
+      ui: { ...createContext().ui, setFooter: footerSpy.setFooter },
+    });
+    for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
+    for (const handler of handlers.get("session_shutdown") ?? [])
+      handler({}, createContext());
+    expect(typeof footerSpy.calls.at(-1)).toBe("function");
+  });
+
+  it("matching session_shutdown closes the dashboard, disposes sidebar resources, and restores the default footer", () => {
+    const { pi, handlers } = buildPiWithHandlers();
+    const footerSpy = buildSetFooterSpy();
+    createExtension(pi);
+    const ctx = createContext({
+      ui: { ...createContext().ui, setFooter: footerSpy.setFooter },
+    });
+    for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
+    for (const handler of handlers.get("session_shutdown") ?? []) handler({}, ctx);
+    expect(footerSpy.calls.at(-1)).toBeUndefined();
   });
 });

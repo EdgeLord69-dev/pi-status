@@ -141,6 +141,34 @@ export default function createExtension(pi: ExtensionAPI): void {
     activeDashboard = undefined;
   }
 
+  function safelyDisposeSidebarController(): void {
+    const controller = activeSidebarController;
+    if (!controller) return;
+    try {
+      controller.dispose();
+    } catch {
+      // Disposal is best effort; never block subsequent cleanup.
+    }
+  }
+
+  function safelyDisposeSidebarRegistry(): void {
+    const registry = activeSidebarRegistry;
+    if (!registry) return;
+    try {
+      registry.dispose();
+    } catch {
+      // Disposal is best effort; never block subsequent cleanup.
+    }
+  }
+
+  function safeRead<T>(action: () => T): T | undefined {
+    try {
+      return action();
+    } catch {
+      return undefined;
+    }
+  }
+
   function currentFooterInput(ctx: ExtensionContext) {
     const snap = runtimeState.snapshot();
     const activeCtx = snap.ctx ?? ctx;
@@ -313,6 +341,11 @@ export default function createExtension(pi: ExtensionAPI): void {
 
   pi.on("session_start", (_event, ctx) => {
     closeActiveDashboard();
+    activeTuiSessionGeneration += 1;
+    safelyDisposeSidebarController();
+    safelyDisposeSidebarRegistry();
+    activeSidebarController = undefined;
+    activeSidebarRegistry = undefined;
     workspacePulseRuntime?.setOnChange(undefined);
     workspacePulseRuntime?.dispose();
     workspacePulseRuntime = undefined;
@@ -330,6 +363,53 @@ export default function createExtension(pi: ExtensionAPI): void {
     runtimeState.update({ type: "config_reload", config: loadConfig() });
     attachNotificationsForCurrentSession();
     installFooter(ctx);
+    if (ctx.mode === "tui") {
+      activeSidebarRegistry = createSidebarPanelRegistry({
+        events: pi.events as unknown as SidebarPanelEventTransport,
+        onChange: () => activeSidebarController?.requestRender(),
+      });
+      activeSidebarController = createSidebarController({
+        ctx,
+        getConfig: () => runtimeState.snapshot().config,
+        getSnapshot: () => {
+          const config = runtimeState.snapshot().config;
+          const activeCtx = runtimeState.snapshot().ctx ?? ctx;
+          const safeSessionName = safeRead(() => pi.getSessionName());
+          const safeActiveTools = safeRead(() => pi.getActiveTools());
+          const safeAvailableToolCount = safeRead(() => pi.getAllTools().length);
+          const sessionFile = safeRead(() => activeCtx.sessionManager.getSessionFile());
+          const branchEntries = safeRead(
+            () => activeCtx.sessionManager.getBranch().length,
+          );
+          return buildSidebarSnapshot({
+            footer: currentFooterInput(ctx),
+            config,
+            ...(safeSessionName !== undefined ? { sessionName: safeSessionName } : {}),
+            persisted: sessionFile !== undefined,
+            branchEntryCount: branchEntries ?? 0,
+            activeToolNames: safeActiveTools ?? [],
+            availableToolCount: safeAvailableToolCount ?? 0,
+            sidebarPanels: activeSidebarRegistry?.getAvailable() ?? [],
+          });
+        },
+        onWarning: (message) => {
+          try {
+            ctx.ui.notify(message, "warning");
+          } catch {
+            // Best effort.
+          }
+        },
+        onError: (error) => {
+          try {
+            ctx.ui.notify(error instanceof Error ? error.message : String(error), "warning");
+          } catch {
+            // Best effort.
+          }
+        },
+      });
+      activeSidebarController.setShown(true);
+      syncWorkspacePulse(runtimeState.snapshot().config);
+    }
   });
 
   pi.on("session_tree", (_event, ctx) => {
@@ -347,6 +427,9 @@ export default function createExtension(pi: ExtensionAPI): void {
     runtimeState.update({ type: "config_reload", config: loadConfig() });
     attachNotificationsForCurrentSession();
     installFooter(ctx);
+    if (ctx.mode === "tui" && activeSidebarController) {
+      activeSidebarController.requestRender();
+    }
   });
 
   pi.on("model_select", (_event, ctx) => {
@@ -430,7 +513,12 @@ export default function createExtension(pi: ExtensionAPI): void {
   pi.on("session_shutdown", (_event, ctx) => {
     const activeCtx = runtimeState.snapshot().ctx;
     if (activeCtx && activeCtx.sessionManager !== ctx.sessionManager) return;
+    activeTuiSessionGeneration += 1;
     closeActiveDashboard();
+    safelyDisposeSidebarController();
+    safelyDisposeSidebarRegistry();
+    activeSidebarController = undefined;
+    activeSidebarRegistry = undefined;
     resetFooterProviderState();
     if (
       activeTuiSessionManager === undefined ||

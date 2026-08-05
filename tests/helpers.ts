@@ -121,12 +121,19 @@ export function buildPiWithHandlers(options: { thinkingLevel?: string } = {}) {
       this.calls.push([name, definition]);
     },
   };
+  const registeredShortcuts: Array<{ key: string; description?: string }> = [];
   const pi = {
     events,
     on(event: string, handler: (event: unknown, ctx: ExtensionContext) => void) {
       handlers.set(event, [...(handlers.get(event) ?? []), handler]);
     },
     registerCommand: registerCommand.fn.bind(registerCommand),
+    registerShortcut(key: string, options: { description?: string }) {
+      registeredShortcuts.push({
+        key,
+        ...(options.description !== undefined ? { description: options.description } : {}),
+      });
+    },
     getThinkingLevel: () => options.thinkingLevel ?? "medium",
     getSessionName: vi.fn(() => undefined),
     setSessionName: vi.fn(),
@@ -136,7 +143,7 @@ export function buildPiWithHandlers(options: { thinkingLevel?: string } = {}) {
     getActiveTools: vi.fn(() => ["read"]),
     setActiveTools: vi.fn(),
   } as unknown as ExtensionAPI;
-  return { pi, handlers, registerCommandCalls: registerCommand.calls, events };
+  return { pi, handlers, registerCommandCalls: registerCommand.calls, events, registeredShortcuts };
 }
 
 export function buildSetFooterSpy() {
