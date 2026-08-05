@@ -125,7 +125,6 @@ export default function createExtension(pi: ExtensionAPI): void {
   let activeTuiSessionManager: ExtensionContext["sessionManager"] | undefined;
   let activeSidebarController: SidebarController | undefined;
   let activeSidebarRegistry: SidebarPanelRegistry | undefined;
-  let activeTuiSessionGeneration = 0;
 
   pi.registerShortcut("ctrl+shift+r", {
     description: "Resize the pi-status sidebar",
@@ -364,7 +363,6 @@ export default function createExtension(pi: ExtensionAPI): void {
 
   pi.on("session_start", (_event, ctx) => {
     closeActiveDashboard();
-    activeTuiSessionGeneration += 1;
     safelyDisposeSidebarController();
     safelyDisposeSidebarRegistry();
     activeSidebarController = undefined;
@@ -553,7 +551,6 @@ export default function createExtension(pi: ExtensionAPI): void {
   pi.on("session_shutdown", (_event, ctx) => {
     const activeCtx = runtimeState.snapshot().ctx;
     if (activeCtx && activeCtx.sessionManager !== ctx.sessionManager) return;
-    activeTuiSessionGeneration += 1;
     closeActiveDashboard();
     safelyDisposeSidebarController();
     safelyDisposeSidebarRegistry();

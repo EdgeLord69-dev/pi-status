@@ -50,16 +50,14 @@ No separate lifecycle class or session resource abstraction is added.
 
 ## Lifecycle ownership and freshness
 
-`src/index.ts` keeps extension-local references to the active sidebar registry and controller plus a monotonic lifecycle generation.
+`src/index.ts` keeps extension-local references to the active sidebar registry and controller. Each long-lived closure that can outlive a session is guarded in one of two ways:
 
-A callback is current only when both conditions hold:
+1. it reads through a module-scoped reference that is cleared (`= undefined`) on session replacement and matching shutdown; or
+2. it captures `ctx` and bails when the runtime state's `ctx.sessionManager` no longer matches the captured session manager.
 
-1. its captured generation equals the active generation; and
-2. its captured `ctx.sessionManager` equals the active TUI session manager.
+The session-manager identity check is the authoritative guard for any closure that captures `ctx` directly. Reference clearing is the authoritative guard for any closure that captures the module-scoped sidebar references. Together they ensure stale callbacks from a prior session cannot mutate the replacement session's state.
 
-The generation increments on every TUI `session_start` and on every matching `session_shutdown`. A nonmatching shutdown does not invalidate the active session.
-
-The generation/session check applies to registry `onChange`, controller snapshot/config/render callbacks, footer-factory callbacks, shortcut actions, dashboard callbacks, and runtime invalidation callbacks that can outlive setup.
+The check applies to registry `onChange`, controller snapshot/config/render callbacks, footer-factory callbacks, shortcut actions, dashboard callbacks, and runtime invalidation callbacks that can outlive setup.
 
 ## Session setup
 

@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make the sidebar lifecycle integrate with regular TUI sessions — one registry, one controller, one generation, default-on visibility, snapshot reads from current sources, dashboard geometry aware of the reserved sidebar width, a single `ctrl+shift+r` resize shortcut, and clean teardown — with no stale overlays, callbacks, render wrappers, input listeners, mouse state, timers, or workspace data on session replacement or shutdown.
+**Goal:** Make the sidebar lifecycle integrate with regular TUI sessions — one registry, one controller, default-on visibility, snapshot reads from current sources, dashboard geometry aware of the reserved sidebar width, a single `ctrl+shift+r` resize shortcut, and clean teardown — with no stale overlays, callbacks, render wrappers, input listeners, mouse state, timers, or workspace data on session replacement or shutdown.
 
 **Architecture:** `src/index.ts` remains the sole lifecycle owner. Each TUI session owns one sidebar panel registry and one sidebar controller. Existing runtimes (footer, activity, usage, workspace pulse) are reset on every TUI `session_start`; the sidebar resources are then constructed and the controller is shown by default. The dashboard overlay shrinks and shifts to sit over the main area when the sidebar is effectively visible. Workspace Pulse is started when either the footer configuration or a visible sidebar workspace panel demands it.
 
