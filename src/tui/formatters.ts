@@ -35,7 +35,7 @@ function contextRemainingColor(remainingPercent: number): "success" | "warning" 
 }
 
 export function getRateWindow(
-  input: FooterRenderInput,
+  input: Omit<FooterRenderInput, "zones" | "extensionSegments">,
   key: "fiveHour" | "weekly",
 ): { usedPercent: number } | null {
   const snapshot = input.usageState?.compatibility?.currentLiveProviderSnapshot;

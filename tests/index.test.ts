@@ -1359,7 +1359,7 @@ describe("sidebar lifecycle", () => {
     for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
     await new Promise((resolve) => setImmediate(resolve));
     const sidebarMounted = customMock.mock.calls.some(
-      (call) =>
+      (call: unknown[]) =>
         Array.isArray(call) &&
         call[1] !== undefined &&
         typeof call[1] === "object" &&
