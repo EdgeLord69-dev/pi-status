@@ -336,10 +336,6 @@ export type DashboardAction =
   | { type: "set_offset"; tab: DashboardTabId; offset: number }
   | { type: "replace_tools"; tools: DashboardTool[] }
   | { type: "replace_session"; session: SessionDetails }
-  | { type: "toggle_sidebar_panel"; id: SidebarPanelId }
-  | { type: "move_sidebar_panel"; id: SidebarPanelId; direction: -1 | 1 }
-  | { type: "toggle_sidebar_tool_names" }
-  | { type: "restore_sidebar_default" }
   | { type: "saved"; config: PiStatusConfig };
 
 export type DashboardEffect =
@@ -489,29 +485,6 @@ export function reduceDashboardState(
   }
   if (action.type === "replace_session") {
     state.session = structuredClone(action.session);
-    return { state: clampSelection(state) };
-  }
-  if (action.type === "toggle_sidebar_panel") {
-    state.draft.sidebarPanelLayout = toggleSidebarPanel(state.draft.sidebarPanelLayout, action.id);
-    return { state: clampSelection(state) };
-  }
-  if (action.type === "move_sidebar_panel") {
-    state.draft.sidebarPanelLayout = moveSidebarPanel(
-      state.draft.sidebarPanelLayout,
-      action.id,
-      action.direction,
-    );
-    return { state: clampSelection(state) };
-  }
-  if (action.type === "toggle_sidebar_tool_names") {
-    state.draft.showSidebarToolNames = !state.draft.showSidebarToolNames;
-    return { state: clampSelection(state) };
-  }
-  if (action.type === "restore_sidebar_default") {
-    state.draft.sidebarPanelLayout = BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
-      id,
-      visible: true,
-    }));
     return { state: clampSelection(state) };
   }
   if (action.type === "saved") {

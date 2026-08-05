@@ -443,18 +443,21 @@ describe("dashboard Sidebar tab transitions", () => {
     { id: "todos" as const, visible: true },
   ];
 
-  it("toggle_sidebar_panel flips visibility and dirties", () => {
+  it("activate on a sidebar_panel flips its visibility and dirties", () => {
     let state = initDashboardState(config({ sidebarPanelLayout: layout }), [], true);
+    state.activeTab = "sidebar";
+    state.navigation.sidebar.selectedIndex = 1;
     expect(state.draft.sidebarPanelLayout[1]?.visible).toBe(false);
-    state = dispatch(state, { type: "toggle_sidebar_panel", id: "activity" });
+    state = dispatch(state, { type: "activate" });
     expect(state.draft.sidebarPanelLayout[1]?.visible).toBe(true);
     expect(isDashboardDirty(state)).toBe(true);
   });
 
-  it("move_sidebar_panel swaps neighbors and clamps at edges", () => {
+  it("adjust swaps sidebar_panel neighbors and clamps at edges", () => {
     let state = initDashboardState(config({ sidebarPanelLayout: layout }), [], true);
+    state.activeTab = "sidebar";
     state.navigation.sidebar.selectedIndex = 0;
-    state = dispatch(state, { type: "move_sidebar_panel", id: "agent", direction: -1 });
+    state = dispatch(state, { type: "adjust", delta: -1 });
     expect(state.draft.sidebarPanelLayout.map((e) => e.id)).toEqual([
       "agent",
       "activity",
@@ -462,7 +465,7 @@ describe("dashboard Sidebar tab transitions", () => {
     ]);
 
     state.navigation.sidebar.selectedIndex = 2;
-    state = dispatch(state, { type: "move_sidebar_panel", id: "todos", direction: 1 });
+    state = dispatch(state, { type: "adjust", delta: 1 });
     expect(state.draft.sidebarPanelLayout.map((e) => e.id)).toEqual([
       "agent",
       "activity",
@@ -470,7 +473,7 @@ describe("dashboard Sidebar tab transitions", () => {
     ]);
 
     state.navigation.sidebar.selectedIndex = 0;
-    state = dispatch(state, { type: "move_sidebar_panel", id: "agent", direction: 1 });
+    state = dispatch(state, { type: "adjust", delta: 1 });
     expect(state.draft.sidebarPanelLayout.map((e) => e.id)).toEqual([
       "activity",
       "agent",
@@ -478,22 +481,32 @@ describe("dashboard Sidebar tab transitions", () => {
     ]);
   });
 
-  it("restore_sidebar_default rebuilds to all built-ins visible", () => {
+  it("activate on sidebar_default rebuilds the layout to all built-ins visible", () => {
     const state = initDashboardState(
       config({ sidebarPanelLayout: [{ id: "agent", visible: false }] }),
       [],
       true,
     );
-    const next = dispatch(state, { type: "restore_sidebar_default" });
+    state.activeTab = "sidebar";
+    const defaultIndex = selectableRows(state, "sidebar").findIndex(
+      (row) => row.type === "sidebar_default",
+    );
+    state.navigation.sidebar.selectedIndex = defaultIndex;
+    const next = dispatch(state, { type: "activate" });
     expect(next.draft.sidebarPanelLayout).toEqual(
       BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
     );
     expect(isDashboardDirty(next)).toBe(true);
   });
 
-  it("toggle_sidebar_tool_names flips and dirties", () => {
+  it("activate on sidebar_tool_names flips showSidebarToolNames and dirties", () => {
     const state = initDashboardState(config(), [], true);
-    const next = dispatch(state, { type: "toggle_sidebar_tool_names" });
+    state.activeTab = "sidebar";
+    const toolNamesIndex = selectableRows(state, "sidebar").findIndex(
+      (row) => row.type === "sidebar_tool_names",
+    );
+    state.navigation.sidebar.selectedIndex = toolNamesIndex;
+    const next = dispatch(state, { type: "activate" });
     expect(next.draft.showSidebarToolNames).toBe(true);
     expect(isDashboardDirty(next)).toBe(true);
   });
@@ -516,7 +529,7 @@ describe("dashboard Sidebar tab transitions", () => {
     expect(isDashboardDirty(result.state)).toBe(true);
   });
 
-  it("save emits the save effect when at least one panel is visible", () => {
+  it("save on a draft with at least one visible panel emits the save effect", () => {
     let state = initDashboardState(config(), [], true);
     state.activeTab = "sidebar";
     state.navigation.sidebar.selectedIndex = selectableRows(state, "sidebar").length - 1;
@@ -527,32 +540,7 @@ describe("dashboard Sidebar tab transitions", () => {
     expect(result.effect.config.showSidebarToolNames).toEqual(state.draft.showSidebarToolNames);
   });
 
-  it("activate on a sidebar_panel emits toggle_sidebar_panel and stays on the row", () => {
-    const state = initDashboardState(config(), [], true);
-    state.activeTab = "sidebar";
-    state.navigation.sidebar.selectedIndex = 0;
-    const next = dispatch(state, { type: "activate" });
-    expect(next.draft.sidebarPanelLayout[0]?.visible).toBe(false);
-    expect(selectableRows(next)[next.navigation.sidebar.selectedIndex]).toEqual({
-      type: "sidebar_panel",
-      id: BUILTIN_SIDEBAR_PANEL_IDS[0],
-    });
-  });
-
-  it("activate on sidebar_default emits restore_sidebar_default", () => {
-    const state = initDashboardState(config(), [], true);
-    state.activeTab = "sidebar";
-    const defaultIndex = selectableRows(state, "sidebar").findIndex(
-      (row) => row.type === "sidebar_default",
-    );
-    state.navigation.sidebar.selectedIndex = defaultIndex;
-    const next = dispatch(state, { type: "activate" });
-    expect(next.draft.sidebarPanelLayout).toEqual(
-      BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
-    );
-  });
-
-  it("adjust on a sidebar_panel routes to move_sidebar_panel with clamped edges", () => {
+  it("adjust on a sidebar_panel clamps at edges without changing layout", () => {
     let state = initDashboardState(config(), [], true);
     state.activeTab = "sidebar";
     state.navigation.sidebar.selectedIndex = 0;
