@@ -103,12 +103,7 @@ function makeCtx(host: FakeHost, tui: TUI, factoryTheme: unknown = noTheme): Ext
     ui: {
       custom: vi.fn(
         async <T>(
-          factory: (
-            tui: TUI,
-            theme: unknown,
-            _keys: unknown,
-            done: (result: T) => void,
-          ) => Component,
+          factory: (tui: TUI, theme: unknown) => Component,
           options?: {
             overlay?: boolean;
             overlayOptions?: OverlayOptions | (() => OverlayOptions);
@@ -125,7 +120,7 @@ function makeCtx(host: FakeHost, tui: TUI, factoryTheme: unknown = noTheme): Ext
                 : options.overlayOptions,
             );
           }
-          const component = factory(tui, factoryTheme, {}, () => undefined);
+          const component = factory(tui, factoryTheme);
           host.factories.push(() => component);
           options?.onHandle?.(overlay(handle));
           return Promise.resolve(undefined) as Promise<T>;
@@ -166,7 +161,8 @@ describe("sidebar controller", () => {
     });
     controller.show();
     await Promise.resolve();
-    const handle = host.handles[0]!;
+    const handle = host.handles[0];
+    if (!handle) throw new Error("expected overlay handle");
     controller.setShown(false);
     expect(handle.setHidden).toHaveBeenLastCalledWith(true);
     controller.setShown(true);
@@ -183,7 +179,8 @@ describe("sidebar controller", () => {
     });
     controller.show();
     await Promise.resolve();
-    const handle = host.handles[0]!;
+    const handle = host.handles[0];
+    if (!handle) throw new Error("expected overlay handle");
     controller.dispose();
     controller.dispose();
     expect(handle.hide).toHaveBeenCalledTimes(1);
@@ -198,7 +195,8 @@ describe("sidebar controller", () => {
     });
     controller.show();
     await Promise.resolve();
-    const handle = host.handles[0]!;
+    const handle = host.handles[0];
+    if (!handle) throw new Error("expected overlay handle");
     controller.dispose();
     controller.setShown(true);
     controller.setShown(false);
@@ -287,8 +285,9 @@ describe("sidebar controller", () => {
     controller.show();
     await Promise.resolve();
     const theme: StatusLineTheme = noTheme;
-    const component = host.factories[host.factories.length - 1]!(tui, theme);
-    const lines = component.render(44);
+    const component = host.factories[host.factories.length - 1];
+    if (!component) throw new Error("expected overlay component");
+    const lines = component(tui, theme).render(44);
     expect(lines.length).toBe(36);
     // Theme-dependent render: must not collapse to the "Sidebar unavailable" dock.
     expect(lines.some((l) => l.includes("gpt-5.6"))).toBe(true);

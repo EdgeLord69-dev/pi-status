@@ -3,6 +3,7 @@ import type { OverlayOptions, TUI } from "@earendil-works/pi-tui";
 
 const ENABLE_MOUSE = "[?1002h[?1006h";
 const DISABLE_MOUSE = "[?1006l[?1002l";
+// biome-ignore lint/suspicious/noControlCharactersInRegex: ESC byte is required for SGR mouse parsing
 const SGR_MOUSE = /^\u001b\[<(\d+);(\d+);(\d+)([Mm])$/;
 
 export interface SgrMouseEvent {

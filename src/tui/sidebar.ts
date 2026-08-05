@@ -48,7 +48,6 @@ export function createSidebarController(options: SidebarControllerOptions): Side
   let animationTimer: ReturnType<typeof setInterval> | undefined;
   let capturedTui: TUI | undefined;
   let currentColumns = 0;
-  let factoryDone: ((result: void) => void) | undefined;
 
   const safely = (action: () => unknown) => {
     try {
@@ -88,24 +87,20 @@ export function createSidebarController(options: SidebarControllerOptions): Side
     const currentGeneration = ++generation;
     try {
       const pending = options.ctx.ui.custom<void>(
-        (tui, theme, _keys, done) => {
+        (tui, theme) => {
           split.attach(tui);
           capturedTui = tui;
           currentColumns = tui.terminal.columns;
           requestOverlayRender = () => tui.requestRender?.();
-          factoryDone = done;
-          let statusTheme: StatusLineTheme | undefined = theme as unknown as
-            | StatusLineTheme
-            | undefined;
+          const statusTheme = theme as unknown as StatusLineTheme;
           return {
             render(width: number) {
               currentColumns = tui.terminal.columns;
-              if (!statusTheme) statusTheme = theme as unknown as StatusLineTheme | undefined;
               try {
                 return renderSidebarLines(
                   options.getSnapshot(),
                   options.getConfig(),
-                  statusTheme ?? ({} as StatusLineTheme),
+                  statusTheme,
                   width,
                   tui.terminal.rows,
                   {
@@ -192,13 +187,10 @@ export function createSidebarController(options: SidebarControllerOptions): Side
       safely(() => split.hide());
       safely(() => split.dispose());
       const handle = overlayHandle;
-      const done = factoryDone;
       overlayHandle = undefined;
       requestOverlayRender = undefined;
       capturedTui = undefined;
-      factoryDone = undefined;
       if (handle) safely(() => handle.hide());
-      if (done) safely(() => done(undefined));
     },
   };
 }
