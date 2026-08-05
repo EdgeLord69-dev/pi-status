@@ -127,6 +127,25 @@ export default function createExtension(pi: ExtensionAPI): void {
   let activeSidebarRegistry: SidebarPanelRegistry | undefined;
   let activeTuiSessionGeneration = 0;
 
+  pi.registerShortcut("ctrl+shift+r", {
+    description: "Resize the pi-status sidebar",
+    handler: (ctx) => {
+      if (ctx.mode !== "tui") return;
+      if (ctx.sessionManager !== activeTuiSessionManager) return;
+      const controller = activeSidebarController;
+      if (!controller || !controller.isEffectivelyVisible()) {
+        try {
+          ctx.ui.notify("pi-status sidebar is not visible", "warning");
+        } catch {
+          // Best effort: notify may not be available in every TUI host.
+        }
+        return;
+      }
+      closeActiveDashboard();
+      controller.beginResize();
+    },
+  });
+
   function saveAndApplyConfig(next: PiStatusConfig): void {
     saveConfig(next);
     runtimeState.update({ type: "config_reload", config: next });

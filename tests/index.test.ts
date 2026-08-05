@@ -218,6 +218,7 @@ describe("extension wiring", () => {
         handlers.set(event, [...(handlers.get(event) ?? []), handler]);
       },
       registerCommand,
+      registerShortcut: vi.fn(),
       getThinkingLevel: () => "medium",
     } as unknown as ExtensionAPI;
 
@@ -265,6 +266,7 @@ describe("extension wiring", () => {
         handlers.set(event, [...(handlers.get(event) ?? []), handler]);
       },
       registerCommand,
+      registerShortcut: vi.fn(),
       getThinkingLevel: () => "medium",
     } as unknown as ExtensionAPI;
 
@@ -323,6 +325,7 @@ describe("extension wiring", () => {
         handlers.set(event, [...(handlers.get(event) ?? []), handler]);
       },
       registerCommand,
+      registerShortcut: vi.fn(),
       getThinkingLevel: () => "medium",
     } as unknown as ExtensionAPI;
 
@@ -381,6 +384,7 @@ describe("extension wiring", () => {
         handlers.set(event, [...(handlers.get(event) ?? []), handler]);
       },
       registerCommand,
+      registerShortcut: vi.fn(),
       getThinkingLevel: () => "medium",
     } as unknown as ExtensionAPI;
 
@@ -442,6 +446,7 @@ describe("extension wiring", () => {
         handlers.set(event, [...(handlers.get(event) ?? []), handler]);
       },
       registerCommand,
+      registerShortcut: vi.fn(),
       getThinkingLevel: () => "medium",
     } as unknown as ExtensionAPI;
 
@@ -501,6 +506,7 @@ describe("extension wiring", () => {
         handlers.set(event, [...(handlers.get(event) ?? []), handler]);
       },
       registerCommand,
+      registerShortcut: vi.fn(),
       getThinkingLevel: () => "medium",
     } as unknown as ExtensionAPI;
 
@@ -562,6 +568,7 @@ describe("extension wiring", () => {
         handlers.set(event, [...(handlers.get(event) ?? []), handler]);
       },
       registerCommand,
+      registerShortcut: vi.fn(),
       getThinkingLevel: () => "medium",
     } as unknown as ExtensionAPI;
 
@@ -1405,5 +1412,16 @@ describe("sidebar lifecycle", () => {
     for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
     for (const handler of handlers.get("session_shutdown") ?? []) handler({}, ctx);
     expect(footerSpy.calls.at(-1)).toBeUndefined();
+  });
+
+  it("registers ctrl+shift+r exactly once across two session_starts", () => {
+    const { pi, handlers, registeredShortcuts } = buildPiWithHandlers();
+    createExtension(pi);
+    for (const handler of handlers.get("session_start") ?? [])
+      handler({}, createContext());
+    for (const handler of handlers.get("session_start") ?? [])
+      handler({}, createContext());
+    expect(registeredShortcuts).toHaveLength(1);
+    expect(registeredShortcuts[0]?.key).toBe("ctrl+shift+r");
   });
 });
