@@ -45,8 +45,7 @@ export function fitFooterRow<T extends FooterLayoutItem>(
     visibleWidth(fittedRight.map((item) => item.text).join(separator)) +
     (fittedLeft.length && fittedRight.length ? 1 : 0);
 
-  const tierOf = (key: T["key"]) =>
-    (DROP_TIER[key as StatusLineSegmentId] ?? UNKNOWN_TIER);
+  const tierOf = (key: T["key"]) => DROP_TIER[key as StatusLineSegmentId] ?? UNKNOWN_TIER;
 
   while (rowWidth() > width && fittedLeft.length + fittedRight.length > 1) {
     let dropSide: "left" | "right" = "left";

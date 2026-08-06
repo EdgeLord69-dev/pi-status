@@ -191,10 +191,7 @@ export function configsEqual(left: PiStatusConfig, right: PiStatusConfig): boole
   return (
     STATUS_LINE_ZONE_ORDER.every((zone) => sameArray(left.zones[zone], right.zones[zone])) &&
     sameArray(left.extensionSegments.hidden, right.extensionSegments.hidden) &&
-    sameArray(
-      left.sidebarExtensionSegments.hidden,
-      right.sidebarExtensionSegments.hidden,
-    ) &&
+    sameArray(left.sidebarExtensionSegments.hidden, right.sidebarExtensionSegments.hidden) &&
     left.extensionStatusZone === right.extensionStatusZone &&
     sameSidebarPanelLayout(left, right) &&
     left.completionNotifications === right.completionNotifications &&
@@ -331,11 +328,7 @@ export function selectableRows(
     ];
   }
   if (tab === "settings")
-    return [
-      { type: "notifications" },
-      { type: "sidebar_tool_names" },
-      { type: "save" },
-    ];
+    return [{ type: "notifications" }, { type: "sidebar_tool_names" }, { type: "save" }];
   return [];
 }
 
@@ -526,8 +519,7 @@ export function reduceDashboardState(
       const index = STATUS_LINE_ZONE_ORDER.indexOf(state.draft.extensionStatusZone);
       state.draft.extensionStatusZone =
         STATUS_LINE_ZONE_ORDER[
-          (index + action.delta + STATUS_LINE_ZONE_ORDER.length) %
-            STATUS_LINE_ZONE_ORDER.length
+          (index + action.delta + STATUS_LINE_ZONE_ORDER.length) % STATUS_LINE_ZONE_ORDER.length
         ];
       return { state: clampSelection(state) };
     }
@@ -598,7 +590,9 @@ export function reduceDashboardState(
     const field = row.surface === "statusbar" ? "extensionSegments" : "sidebarExtensionSegments";
     const hidden = state.draft[field].hidden;
     state.draft[field] = {
-      hidden: hidden.includes(row.key) ? hidden.filter((key) => key !== row.key) : [...hidden, row.key],
+      hidden: hidden.includes(row.key)
+        ? hidden.filter((key) => key !== row.key)
+        : [...hidden, row.key],
     };
   } else if (row.type === "tool") {
     const tool = state.tools.find(({ name }) => name === row.name);

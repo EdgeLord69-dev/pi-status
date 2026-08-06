@@ -81,13 +81,7 @@ describe("fitFooterRow", () => {
   });
 
   it("drops extension status before configured segments", () => {
-    const result = fitFooterRow(
-      [item("model")],
-      [item("model", "ext")],
-      5,
-      " · ",
-      visibleWidth,
-    );
+    const result = fitFooterRow([item("model")], [item("model", "ext")], 5, " · ", visibleWidth);
     expect(result).toEqual({ left: [item("model")], right: [] });
   });
 

@@ -45,8 +45,8 @@ function makeInput(
     config: {
       zones: footer.zones,
       extensionSegments: { hidden: [] },
-    sidebarExtensionSegments: { hidden: [] },
-    extensionStatusZone: "bottomRight",
+      sidebarExtensionSegments: { hidden: [] },
+      extensionStatusZone: "bottomRight",
       completionNotifications: false,
       showSidebarToolNames: false,
       sidebarPanelLayout: [...DEFAULT_SIDEBAR_PANEL_LAYOUT],

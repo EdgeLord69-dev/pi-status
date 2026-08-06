@@ -112,15 +112,10 @@ describe("dashboard draft initialization", () => {
     expect(configsEqual(first, structuredClone(first))).toBe(true);
     expect(configsEqual(first, config({ completionNotifications: true }))).toBe(false);
     expect(configsEqual(first, config({ showSidebarToolNames: true }))).toBe(false);
-    expect(
-      configsEqual(
-        first,
-        config({ sidebarExtensionSegments: { hidden: ["alpha"] } }),
-      ),
-    ).toBe(false);
-    expect(
-      configsEqual(first, config({ extensionStatusZone: "topLeft" })),
-    ).toBe(false);
+    expect(configsEqual(first, config({ sidebarExtensionSegments: { hidden: ["alpha"] } }))).toBe(
+      false,
+    );
+    expect(configsEqual(first, config({ extensionStatusZone: "topLeft" }))).toBe(false);
     expect(configsEqual(first, config({ extensionSegments: { hidden: ["alpha"] } }))).toBe(false);
     expect(
       configsEqual(
@@ -212,9 +207,9 @@ describe("dashboard Statusbar tab initialization", () => {
       { type: "sidebar_tool_names" },
       { type: "save" },
     ]);
-    expect(
-      selectableRows(state, "sidebar").some((row) => row.type === "sidebar_tool_names"),
-    ).toBe(false);
+    expect(selectableRows(state, "sidebar").some((row) => row.type === "sidebar_tool_names")).toBe(
+      false,
+    );
   });
 
   it("Statusbar tab exposes the extension_status_zone row between zone and segments", () => {

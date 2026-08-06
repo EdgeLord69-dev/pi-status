@@ -53,8 +53,8 @@ const FIXED_SNAPSHOT: SidebarSnapshot = buildSidebarSnapshot({
 const FIXED_CONFIG = {
   zones: DEFAULT_ZONES,
   extensionSegments: { hidden: [] },
-    sidebarExtensionSegments: { hidden: [] },
-    extensionStatusZone: "bottomRight",
+  sidebarExtensionSegments: { hidden: [] },
+  extensionStatusZone: "bottomRight",
   completionNotifications: false,
   showSidebarToolNames: false,
   sidebarPanelLayout: [...DEFAULT_SIDEBAR_PANEL_LAYOUT],

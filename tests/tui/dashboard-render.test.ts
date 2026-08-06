@@ -194,11 +194,7 @@ describe("dashboard render", () => {
   });
 
   it("renders the extension status zone row on the Statusbar tab", () => {
-    const state = initDashboardState(
-      config({ extensionStatusZone: "topLeft" }),
-      [],
-      true,
-    );
+    const state = initDashboardState(config({ extensionStatusZone: "topLeft" }), [], true);
     state.activeTab = "statusbar";
     const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
     expect(output).toContain("Extension statuses");

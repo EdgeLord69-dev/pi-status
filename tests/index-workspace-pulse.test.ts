@@ -258,8 +258,8 @@ describe("workspace pulse sidebar demand", () => {
       JSON.stringify({
         zones: { topLeft: [], topRight: [], bottomLeft: [], bottomRight: [] },
         extensionSegments: { hidden: [] },
-    sidebarExtensionSegments: { hidden: [] },
-    extensionStatusZone: "bottomRight",
+        sidebarExtensionSegments: { hidden: [] },
+        extensionStatusZone: "bottomRight",
         sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
           id,
           visible: id === "workspace" ? workspaceVisible : true,

@@ -146,20 +146,14 @@ function logicalBody(
       } else if (row.type === "zone") {
         pushSelectable("↔", "Active zone", ZONE_LABELS[state.activeZone]);
       } else if (row.type === "extension_status_zone") {
-        pushSelectable(
-          "↔",
-          "Extension statuses",
-          ZONE_LABELS[state.draft.extensionStatusZone],
-        );
+        pushSelectable("↔", "Extension statuses", ZONE_LABELS[state.draft.extensionStatusZone]);
       } else if (row.type === "segment") {
         const metadata = SEGMENT_METADATA.get(row.id);
         const assignment = findSegmentAssignment(state.draft.zones, row.id);
         const position = assignment
           ? `${ZONE_LABELS[assignment.zone]} ${assignment.index + 1}`
           : "Disabled";
-        const checkbox = assignment
-          ? theme.fg(ZONE_ROW_COLORS[assignment.zone], "[•]")
-          : "[ ]";
+        const checkbox = assignment ? theme.fg(ZONE_ROW_COLORS[assignment.zone], "[•]") : "[ ]";
         pushSelectable(
           checkbox,
           `${metadata?.label ?? row.id} (${position})`,
@@ -269,7 +263,11 @@ function dialogBody(dialog: DashboardDialog, width: number, theme: StatusLineThe
   const compact = dialog.kind === "compact";
   const save = dialog.kind === "save";
   const action = compact ? "Compact session" : save ? "Save" : "Discard changes";
-  const heading = compact ? "Compact session?" : save ? "Save changes?" : "Discard unsaved changes?";
+  const heading = compact
+    ? "Compact session?"
+    : save
+      ? "Save changes?"
+      : "Discard unsaved changes?";
   const body = compact
     ? "Pi will summarize older context."
     : save
