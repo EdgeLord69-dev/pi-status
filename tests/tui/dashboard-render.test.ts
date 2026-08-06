@@ -372,6 +372,33 @@ describe("dashboard render", () => {
     expect(result.offset).toBe(0);
   });
 
+  it("renders a save confirmation with Cancel highlighted at selectedIndex 0", () => {
+    const state = initDashboardState(config(), [], true);
+    const result = renderDashboard(state, preview, noTheme, 100, 40, {
+      type: "confirm",
+      kind: "save",
+      selectedIndex: 0,
+    });
+    const lines = result.lines.join("\n");
+    expect(lines).toContain("Save changes?");
+    expect(lines).toContain("Apply draft Layout, Statuses, Sidebar, and Settings changes.");
+    expect(lines).toContain("Save");
+    expect(result.lines.find((line) => line.includes("Cancel"))).toContain("▸");
+  });
+
+  it("renders the save confirmation with Save highlighted at selectedIndex 1", () => {
+    const state = initDashboardState(config(), [], true);
+    const result = renderDashboard(state, preview, noTheme, 100, 40, {
+      type: "confirm",
+      kind: "save",
+      selectedIndex: 1,
+    });
+    const actionLine = result.lines.find(
+      (line) => line.includes("Save") && !line.includes("Save changes?"),
+    );
+    expect(actionLine).toContain("▸");
+  });
+
   it("renders compact confirmation inside the dashboard frame", () => {
     const state = initDashboardState(config(), [], true);
     const result = renderDashboard(state, preview, noTheme, 80, 24, {

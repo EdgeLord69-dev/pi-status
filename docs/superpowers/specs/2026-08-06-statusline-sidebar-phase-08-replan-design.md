@@ -70,7 +70,7 @@ Activation flow on the `save` row:
 
 1. `openConfirmDialog("save")` opens the dialog. Selection starts at `0` (Cancel).
 2. `selectedIndex === 0` (Cancel) → `dismissDialog()`, dashboard stays open with the draft intact.
-3. `selectedIndex === 1` (Save) → emit `{ type: "save", config }` (existing `runEffect` path), `close()`, follow-up `saved` reducer is unnecessary on close.
+3. `selectedIndex === 1` (Save) → call `options.save(draft)` directly, update `state.baseline = structuredClone(draft)`, and `dismissDialog()`. The dashboard stays open so the user can iterate edits.
 4. `Esc`/`q` dismisses without saving, matching the existing discard pattern.
 
 The `save` row remains the last selectable row on the Statusbar, Statuses, Sidebar, and Settings tabs. Activation gating is the only behavior change — the underlying `save(config)` callback and the config file write are unchanged.

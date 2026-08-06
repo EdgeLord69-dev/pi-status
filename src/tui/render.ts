@@ -28,7 +28,9 @@ export type ThemeLike = {
   rainbow: (text: string) => string;
 };
 
-export type FooterLayoutKey = StatusLineSegmentId;
+// Extension-status keys are extension-supplied strings; built-in segment IDs are the union below.
+// ponytail: widened to allow non-built-in keys; DROP_TIER handles missing entries as tier 0.
+export type FooterLayoutKey = StatusLineSegmentId | (string & {});
 
 export interface FooterLayoutItem {
   readonly key: FooterLayoutKey;
@@ -160,7 +162,7 @@ export function formatExtensionStatuses(
         );
     const text = trimmed.trim();
     if (!text) continue;
-    resolved.push({ key: key as StatusLineSegmentId, text, color: null });
+    resolved.push({ key, text, color: null });
   }
 
   return resolved;

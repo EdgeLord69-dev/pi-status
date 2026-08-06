@@ -20,7 +20,11 @@ import {
   SEGMENT_METADATA,
   selectableRows,
 } from "./dashboard-state.ts";
-import type { FooterRenderColor } from "./render.ts";
+import {
+  buildFooterRowsFromResolved,
+  type FooterRenderColor,
+  type FooterRenderInput,
+} from "./render.ts";
 import {
   frame,
   frameContentWidth,
@@ -28,8 +32,6 @@ import {
   renderTabBar,
   renderTooSmall,
 } from "./overlay-render.ts";
-import type { FooterRenderInput } from "./render.ts";
-import { buildFooterRowsFromResolved } from "./render.ts";
 import type { StatusLineTheme } from "./theme.ts";
 
 export interface DashboardRenderResult {
@@ -94,6 +96,7 @@ function selectableLine(
   return truncateToWidth(`${prefix}${truncateToWidth(text, remaining, "")}`, width, "");
 }
 
+// ponytail: fixed 4-color zone mapping; per-user override deferred until requested.
 const ZONE_ROW_COLORS: Record<StatusLineZone, FooterRenderColor> = {
   topLeft: "accent",
   topRight: "success",

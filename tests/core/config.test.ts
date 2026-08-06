@@ -454,6 +454,44 @@ describe("config — load/save round-trip", () => {
     expect(loaded.sidebarExtensionSegments).toEqual({ hidden: [] });
     expect(loaded.extensionStatusZone).toBe("bottomRight");
   });
+
+  it("defaults extensionStatusZone when only sidebarExtensionSegments is present", () => {
+    const store = new MemoryConfigStore();
+    const partial = JSON.stringify({
+      zones: { topLeft: ["model"], topRight: [], bottomLeft: [], bottomRight: [] },
+      extensionSegments: { hidden: [] },
+      sidebarExtensionSegments: { hidden: ["x"] },
+      completionNotifications: false,
+      showSidebarToolNames: false,
+      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
+        id,
+        visible: true,
+      })),
+    });
+    store.seed(getConfigPath("/agent"), partial);
+    const loaded = loadConfig({ agentDir: "/agent", store });
+    expect(loaded.sidebarExtensionSegments).toEqual({ hidden: ["x"] });
+    expect(loaded.extensionStatusZone).toBe("bottomRight");
+  });
+
+  it("defaults sidebarExtensionSegments when only extensionStatusZone is present", () => {
+    const store = new MemoryConfigStore();
+    const partial = JSON.stringify({
+      zones: { topLeft: ["model"], topRight: [], bottomLeft: [], bottomRight: [] },
+      extensionSegments: { hidden: [] },
+      extensionStatusZone: "topRight",
+      completionNotifications: false,
+      showSidebarToolNames: false,
+      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
+        id,
+        visible: true,
+      })),
+    });
+    store.seed(getConfigPath("/agent"), partial);
+    const loaded = loadConfig({ agentDir: "/agent", store });
+    expect(loaded.sidebarExtensionSegments).toEqual({ hidden: [] });
+    expect(loaded.extensionStatusZone).toBe("topRight");
+  });
 });
 
 describe("config — sidebar tool names", () => {

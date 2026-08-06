@@ -290,13 +290,14 @@ describe("dashboard transitions", () => {
   it("moves and reorders segments while protecting the final segment", () => {
     let state = initDashboardState(config({ zones: zones({ bottomLeft: [] }) }), [], true);
     state.activeTab = "statusbar";
-    state.navigation.statusbar.selectedIndex = 3; // first segment row
+    state.navigation.statusbar.selectedIndex = 3; // first segment row (model-with-reasoning in topLeft)
     state = dispatch(state, { type: "activate" });
     expect(state.draft.zones.topLeft).toEqual(["model-with-reasoning"]);
 
     state = initDashboardState(config(), [], true);
     state.activeTab = "statusbar";
-    state.navigation.statusbar.selectedIndex = 4; // current-dir row (preset=0, zone=1, ext_zone=2, model=3, current-dir=4)
+    // rows: preset(0), zone(1), extension_status_zone(2), model-with-reasoning(3), current-dir(4)
+    state.navigation.statusbar.selectedIndex = 4;
     state = dispatch(state, { type: "activate" });
     expect(state.draft.zones.topLeft).toContain("current-dir");
     expect(state.draft.zones.bottomLeft).toEqual([]);
