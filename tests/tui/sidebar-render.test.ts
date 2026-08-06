@@ -156,18 +156,19 @@ describe("buildSidebarSnapshot", () => {
     expect(snap.statuses.map((s) => s.key)).toEqual(["lsp"]);
   });
 
-  it("filters out statuses whose key is in extensionSegments.hidden", () => {
+  it("filters out statuses whose key is in sidebarExtensionSegments.hidden", () => {
     const input = makeInput({
       config: {
         ...makeInput().config,
-        extensionSegments: { hidden: ["lsp"] },
-    sidebarExtensionSegments: { hidden: [] },
-    extensionStatusZone: "bottomRight",
+        extensionSegments: { hidden: ["err"] },
+        sidebarExtensionSegments: { hidden: ["lsp"] },
       },
     });
     const snap = buildSidebarSnapshot(input);
     expect(snap.alerts.find((a) => a.key === "lsp")).toBeUndefined();
     expect(snap.statuses.find((s) => s.key === "lsp")).toBeUndefined();
+    // extensionSegments.hidden does not affect sidebar — "err" still shows.
+    expect(snap.alerts.find((a) => a.key === "err")).toBeDefined();
   });
 
   it("deduplicates active tool names", () => {
