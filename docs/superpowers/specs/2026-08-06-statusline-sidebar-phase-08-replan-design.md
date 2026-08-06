@@ -5,7 +5,7 @@
 
 ## Goal
 
-Replan Phase 8 around user-facing dashboard and extension-status changes. The current Phase 8 (release verification: attribution, README, changelog, manual matrix) is renumbered to Phase 9 with no content change. Phase 8 becomes the seven changes below.
+Replan Phase 8 around user-facing dashboard and extension-status changes. The current Phase 8 (release verification: attribution, README, changelog, manual matrix) is renumbered to Phase 9 with no content change. Phase 8 becomes the eight changes below.
 
 ## Scope
 
@@ -18,6 +18,7 @@ Replan Phase 8 around user-facing dashboard and extension-status changes. The cu
 5. Add a user-configurable `extensionStatusZone` so extension statuses no longer lock to the bottom-right zone.
 6. Render each extension status as its own segment in the Statusbar (similar to built-in segments).
 7. Keep the existing built-in segment → sidebar panel mapping independent of Statusbar config (no cross-coupling).
+8. Tint each segment in the Statusbar tab by its zone (4 distinct colors for topLeft / topRight / bottomLeft / bottomRight) so a user can tell at a glance which zone a segment belongs to.
 
 ### Out of scope
 
@@ -27,6 +28,8 @@ Replan Phase 8 around user-facing dashboard and extension-status changes. The cu
 - Adding a separate command for opening the dashboard or for toggling extension status visibility.
 - Color-coding individual extension statuses (alerts/error styling in the Statusbar). The existing sidebar alerts/statuses split stays; the Statusbar renders each entry neutrally.
 - Removing the Phase 7 release-verification work. The current Phase 8 plan becomes Phase 9 untouched.
+- Custom user-chosen zone colors. Phase 8 picks a fixed 4-color mapping; per-user overrides are deferred.
+- Tinting the unassigned-segment rows (currently shown as "Disabled"). They render with the `dim` color and a single checkbox like today.
 
 ## Config additions
 
@@ -35,9 +38,9 @@ Replan Phase 8 around user-facing dashboard and extension-status changes. The cu
 ```ts
 export type PiStatusConfig = {
   zones: StatusLineZones;
-  extensionSegments: ExtensionSegments;        // existing; statusbar hidden list
+  extensionSegments: ExtensionSegments; // existing; statusbar hidden list
   sidebarExtensionSegments: ExtensionSegments; // new; sidebar hidden list
-  extensionStatusZone: StatusLineZone;         // new; defaults to "bottomRight"
+  extensionStatusZone: StatusLineZone; // new; defaults to "bottomRight"
   completionNotifications: boolean;
   showSidebarToolNames: boolean;
   sidebarPanelLayout: SidebarPanelLayout;
@@ -122,6 +125,39 @@ Activation on a row toggles whichever column is highlighted; row-level selection
 
 `dashboard-render.ts` for the `statuses` tab draws two checkboxes per line; the dim "Show in the status line" description is replaced with the two columns.
 
+## Zone color-coding in the Statusbar tab
+
+Each segment listed on the Statusbar tab carries a position (`topLeft`, `topRight`, `bottomLeft`, `bottomRight`) or "Disabled". Phase 8 tints the row's checkbox and position text by zone so a user can identify the zone at a glance.
+
+### Zone → color mapping
+
+A new helper in `src/tui/dashboard-render.ts`:
+
+```ts
+const ZONE_ROW_COLORS: Record<StatusLineZone, FooterRenderColor> = {
+  topLeft: "accent",
+  topRight: "success",
+  bottomLeft: "warning",
+  bottomRight: "dim",
+};
+```
+
+The four `FooterRenderColor` values are reused from the existing `ThemeLike` palette — no new theme field, no new dependency. `accent` / `success` / `warning` / `dim` are already wired through `theme.fg(...)` and survive `NO_COLOR` (each becomes an empty-string pass-through in `noTheme`). The mapping is fixed for Phase 8; per-user overrides are deferred.
+
+### Rendering change
+
+The Statusbar tab body in `dashboard-render.ts` (the `tab === "statusbar"` branch) replaces its single `pushSelectable(checkbox, label, description)` call with one that tints the checkbox and the position suffix using the resolved zone color. Concretely:
+
+- `selectableLine(selected, checkbox, label, description, width, theme)` gains an optional `accentColor?: FooterRenderColor` argument.
+- When set, the checkbox (`[·]` / `[ ]`) and the position suffix (`(Top Left 1)` etc.) are wrapped in `theme.fg(accentColor, ...)`; the label text and description remain unstyled.
+- For unassigned segments the caller passes `undefined`, leaving the row in the current `dim` style.
+
+`pushSelectable` in `logicalBody` is widened to accept the optional color and forward it to `selectableLine`. Other tabs (Statuses, Session, Tools, Sidebar, Settings) keep the existing uncolored rendering.
+
+### `NO_COLOR` and `noTheme`
+
+`noTheme.fg` returns its text argument unchanged, so all four zone colors collapse to the same uncolored glyphs under `NO_COLOR`. Phase 8 does not need to special-case the no-color path beyond what already exists.
+
 ## Existing boundaries to reuse
 
 - `runEffect({ type: "save" })` and `save(config)` callback in `src/index.ts` are unchanged.
@@ -152,6 +188,7 @@ Activation on a row toggles whichever column is highlighted; row-level selection
 - Statusbar tab render shows the new `extension_status_zone` row with the current zone label.
 - Settings tab render includes "Show tool names."
 - Sidebar tab render does not include "Show tool names."
+- Statusbar tab render includes the zone-tinted checkbox/position text for each segment; the four zones use four distinct colors under a non-noColor theme; under `noTheme` all four zones render identical uncolored glyphs.
 
 ### `tests/tui/dashboard.test.ts`
 
@@ -220,4 +257,5 @@ Phase 8 is complete when:
 - the two hidden lists are independent and round-trip through config;
 - `extensionStatusZone` controls where extension statuses render in the Statusbar;
 - each extension status is its own `ResolvedSegment` in the Statusbar;
+- the Statusbar tab renders each segment with its zone's tint (and falls back to uncolored under `NO_COLOR`);
 - and no existing Phase 7 lifecycle, sidebar, dashboard overlay, registry, or footer behavior regresses.
