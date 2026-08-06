@@ -217,6 +217,30 @@ describe("dashboard Statusbar tab initialization", () => {
     ).toBe(false);
   });
 
+  it("Statusbar tab exposes the extension_status_zone row between zone and segments", () => {
+    const state = initDashboardState(config(), [], true);
+    const rows = selectableRows(state, "statusbar");
+    const zoneIndex = rows.findIndex((row) => row.type === "zone");
+    expect(zoneIndex).toBeGreaterThanOrEqual(0);
+    expect(rows[zoneIndex + 1]).toEqual({ type: "extension_status_zone" });
+  });
+
+  it("extension_status_zone adjust cycles through the four zones", () => {
+    let state = initDashboardState(config(), [], true);
+    state.activeTab = "statusbar";
+    const extensionZoneIndex = selectableRows(state, "statusbar").findIndex(
+      (row) => row.type === "extension_status_zone",
+    );
+    state.navigation.statusbar.selectedIndex = extensionZoneIndex;
+    const initial = state.draft.extensionStatusZone;
+    state = reduceDashboardState(state, { type: "adjust", delta: 1 }).state;
+    expect(state.draft.extensionStatusZone).not.toBe(initial);
+    for (let i = 0; i < 3; i += 1) {
+      state = reduceDashboardState(state, { type: "adjust", delta: 1 }).state;
+    }
+    expect(state.draft.extensionStatusZone).toBe(initial);
+  });
+
   it("initializes Sidebar navigation with selectedIndex 0 and empty query", () => {
     const state = initDashboardState(config(), [], true);
     expect(state.navigation.sidebar).toEqual({ selectedIndex: 0, query: "", offset: 0 });
@@ -258,7 +282,7 @@ describe("dashboard transitions", () => {
     expect(state.draft.zones).toEqual(displayPreset("balanced"));
     expect(state.baseline.zones).toEqual(zones());
 
-    state.navigation.statusbar.selectedIndex = 2;
+    state.navigation.statusbar.selectedIndex = 3; // first segment row (preset=0, zone=1, ext_zone=2)
     state = dispatch(state, { type: "activate" });
     expect(state.preset).toBe("custom");
   });
@@ -266,13 +290,13 @@ describe("dashboard transitions", () => {
   it("moves and reorders segments while protecting the final segment", () => {
     let state = initDashboardState(config({ zones: zones({ bottomLeft: [] }) }), [], true);
     state.activeTab = "statusbar";
-    state.navigation.statusbar.selectedIndex = 2;
+    state.navigation.statusbar.selectedIndex = 3; // first segment row
     state = dispatch(state, { type: "activate" });
     expect(state.draft.zones.topLeft).toEqual(["model-with-reasoning"]);
 
     state = initDashboardState(config(), [], true);
     state.activeTab = "statusbar";
-    state.navigation.statusbar.selectedIndex = 3;
+    state.navigation.statusbar.selectedIndex = 4; // current-dir row (preset=0, zone=1, ext_zone=2, model=3, current-dir=4)
     state = dispatch(state, { type: "activate" });
     expect(state.draft.zones.topLeft).toContain("current-dir");
     expect(state.draft.zones.bottomLeft).toEqual([]);

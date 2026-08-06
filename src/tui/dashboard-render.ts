@@ -137,6 +137,12 @@ function logicalBody(
         pushSelectable("↔", "Preset", PRESET_LABELS[state.preset]);
       } else if (row.type === "zone") {
         pushSelectable("↔", "Active zone", ZONE_LABELS[state.activeZone]);
+      } else if (row.type === "extension_status_zone") {
+        pushSelectable(
+          "↔",
+          "Extension statuses",
+          ZONE_LABELS[state.draft.extensionStatusZone],
+        );
       } else if (row.type === "segment") {
         const metadata = SEGMENT_METADATA.get(row.id);
         const assignment = findSegmentAssignment(state.draft.zones, row.id);

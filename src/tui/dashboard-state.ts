@@ -49,6 +49,7 @@ export interface DashboardState {
 export type DashboardSelectableRow =
   | { type: "preset" }
   | { type: "zone" }
+  | { type: "extension_status_zone" }
   | { type: "segment"; id: StatusLineSegmentId }
   | { type: "status"; key: string }
   | { type: "tool"; name: string }
@@ -291,6 +292,7 @@ export function selectableRows(
     return [
       { type: "preset" },
       { type: "zone" },
+      { type: "extension_status_zone" },
       ...[...assigned, ...unassigned].map((id) => ({ type: "segment" as const, id })),
       { type: "save" },
     ];
@@ -513,6 +515,15 @@ export function reduceDashboardState(
         (r) => r.type === "sidebar_panel" && r.id === row.id,
       );
       if (index >= 0) state.navigation.sidebar.selectedIndex = index;
+      return { state: clampSelection(state) };
+    }
+    if (row.type === "extension_status_zone") {
+      const index = STATUS_LINE_ZONE_ORDER.indexOf(state.draft.extensionStatusZone);
+      state.draft.extensionStatusZone =
+        STATUS_LINE_ZONE_ORDER[
+          (index + action.delta + STATUS_LINE_ZONE_ORDER.length) %
+            STATUS_LINE_ZONE_ORDER.length
+        ];
       return { state: clampSelection(state) };
     }
     if (row.type === "preset") {

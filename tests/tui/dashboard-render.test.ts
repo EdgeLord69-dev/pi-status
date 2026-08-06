@@ -69,7 +69,7 @@ describe("dashboard render", () => {
     expect(output).toContain("Preset");
     expect(output).toContain("Save changes");
     expect(output).toContain("GPT-5");
-    expect(result.lines).toHaveLength(36);
+    expect(result.lines).toHaveLength(37);
     expect(result.lines.every((line) => visibleWidth(line) === 100)).toBe(true);
   });
 
@@ -81,7 +81,7 @@ describe("dashboard render", () => {
       bottomLeft: [],
       bottomRight: [],
     };
-    const flat = renderDashboard(state, preview, noTheme, 100, 40)
+    const flat = renderDashboard(state, preview, noTheme, 100, 60)
       .lines.join(" ")
       .replace(/\s+/g, " ");
     expect(flat).toMatch(/sid abcdef12/);
@@ -190,6 +190,18 @@ describe("dashboard render", () => {
     state.activeTab = "sidebar";
     const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
     expect(output).not.toContain("Show tool names");
+  });
+
+  it("renders the extension status zone row on the Statusbar tab", () => {
+    const state = initDashboardState(
+      config({ extensionStatusZone: "topLeft" }),
+      [],
+      true,
+    );
+    state.activeTab = "statusbar";
+    const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
+    expect(output).toContain("Extension statuses");
+    expect(output).toContain("Top Left");
   });
 
   it.each(["statusbar", "statuses"] as const)(
