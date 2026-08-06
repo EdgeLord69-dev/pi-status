@@ -218,11 +218,56 @@ describe("StatusLineDashboardComponent", () => {
     expect(done).not.toHaveBeenCalled();
   });
 
+  it("opens a Confirm/Cancel dialog instead of saving immediately", () => {
+    const { component, save, done } = makeDashboard();
+    dirtySettings(component);
+    component.handleInput("\x1b[B"); // → Save
+    component.handleInput("\r"); // activate Save → opens dialog
+    expect(save).not.toHaveBeenCalled();
+    expect(component.render(100).join("\n")).toContain("Save changes?");
+    expect(done).not.toHaveBeenCalled();
+  });
+
+  it("Cancel in the save dialog dismisses without saving", () => {
+    const { component, save, done } = makeDashboard();
+    dirtySettings(component);
+    component.handleInput("\x1b[B");
+    component.handleInput("\r"); // open dialog (Cancel selected)
+    component.handleInput("\r"); // confirm Cancel
+    expect(save).not.toHaveBeenCalled();
+    expect(component.render(100).join("\n")).not.toContain("Save changes?");
+    expect(done).not.toHaveBeenCalled();
+  });
+
+  it.each(["q", "\x1b"])("Esc/q dismisses save dialog without saving (%j)", (input) => {
+    const { component, save, done } = makeDashboard();
+    dirtySettings(component);
+    component.handleInput("\x1b[B");
+    component.handleInput("\r");
+    component.handleInput(input);
+    expect(save).not.toHaveBeenCalled();
+    expect(component.render(100).join("\n")).not.toContain("Save changes?");
+    expect(done).not.toHaveBeenCalled();
+  });
+
+  it("Save on the destructive row writes the draft and closes", () => {
+    const { component, save, done } = makeDashboard();
+    dirtySettings(component);
+    component.handleInput("\x1b[B");
+    component.handleInput("\r"); // open dialog (Cancel selected)
+    component.handleInput("\x1b[B"); // → Save
+    component.handleInput("\r"); // confirm Save
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({ completionNotifications: true }));
+    expect(done).toHaveBeenCalledOnce();
+  });
+
   it("saves the whole draft and marks clean only after success", () => {
     const { component, save } = makeDashboard();
     dirtySettings(component);
     component.handleInput("\x1b[B");
-    component.handleInput("\r");
+    component.handleInput("\r"); // open dialog
+    component.handleInput("\x1b[B"); // → Save
+    component.handleInput("\r"); // confirm Save
     expect(save).toHaveBeenCalledWith(expect.objectContaining({ completionNotifications: true }));
     expect(component.getState().baseline.completionNotifications).toBe(true);
   });
@@ -234,7 +279,9 @@ describe("StatusLineDashboardComponent", () => {
     });
     dirtySettings(component);
     component.handleInput("\x1b[B");
-    component.handleInput("\r");
+    component.handleInput("\r"); // open dialog
+    component.handleInput("\x1b[B"); // → Save
+    component.handleInput("\r"); // confirm Save
     expect(ctx.ui.notify).toHaveBeenCalledWith("Failed to save statusline config", "warning");
     expect(isDashboardDirty(component.getState())).toBe(true);
   });
@@ -555,7 +602,9 @@ describe("StatusLineDashboardComponent Sidebar tab", () => {
     // Move past sidebar_default to save.
     component.handleInput("\x1b[B");
     component.handleInput("\x1b[B");
-    component.handleInput("\r");
+    component.handleInput("\r"); // open dialog
+    component.handleInput("\x1b[B"); // → Save
+    component.handleInput("\r"); // confirm Save
     expect(save).toHaveBeenCalledOnce();
     const savedArg = save.mock.calls[0]?.[0];
     expect(savedArg?.sidebarPanelLayout[0]).toEqual({

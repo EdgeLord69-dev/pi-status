@@ -37,7 +37,7 @@ export interface DashboardRenderResult {
 
 export type DashboardDialog =
   | { type: "rename"; input: Input }
-  | { type: "confirm"; kind: "discard" | "compact"; selectedIndex: 0 | 1 };
+  | { type: "confirm"; kind: "discard" | "compact" | "save"; selectedIndex: 0 | 1 };
 
 type LogicalBody = {
   lines: string[];
@@ -246,13 +246,18 @@ function dialogBody(dialog: DashboardDialog, width: number, theme: StatusLineThe
   }
 
   const compact = dialog.kind === "compact";
-  const action = compact ? "Compact session" : "Discard changes";
+  const save = dialog.kind === "save";
+  const action = compact ? "Compact session" : save ? "Save" : "Discard changes";
+  const heading = compact ? "Compact session?" : save ? "Save changes?" : "Discard unsaved changes?";
+  const body = compact
+    ? "Pi will summarize older context."
+    : save
+      ? "Apply draft Layout, Statuses, Sidebar, and Settings changes."
+      : "Unsaved Layout, Statuses, or Settings changes will be lost.";
   return {
     lines: [
-      compact ? "Compact session?" : "Discard unsaved changes?",
-      compact
-        ? "Pi will summarize older context."
-        : "Unsaved Layout, Statuses, or Settings changes will be lost.",
+      heading,
+      body,
       selectableLine(dialog.selectedIndex === 0, "", "Cancel", "", width, theme),
       selectableLine(dialog.selectedIndex === 1, "", action, "", width, theme),
     ],

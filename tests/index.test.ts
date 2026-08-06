@@ -625,7 +625,9 @@ describe("extension wiring", () => {
       component.handleInput("\t");
       component.handleInput("\r"); // toggle notifications
       component.handleInput("\x1b[B"); // move to Save
-      component.handleInput("\r"); // activate Save
+      component.handleInput("\r"); // open dialog
+      component.handleInput("\x1b[B"); // → Save
+      component.handleInput("\r"); // confirm Save
       return customPromise;
     });
 

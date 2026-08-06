@@ -106,14 +106,16 @@ describe("/statusline persistence", () => {
     component.handleInput("\t");
     component.handleInput("\r"); // toggle notifications
     component.handleInput("\x1b[B"); // Save
-    component.handleInput("\r");
+    component.handleInput("\r"); // open dialog
+    component.handleInput("\x1b[B"); // → Save
+    component.handleInput("\r"); // confirm Save
 
     expect(saveConfig).toHaveBeenCalledWith(
       expect.objectContaining({ completionNotifications: true }),
     );
     expect(renderWithFactory(footerSpy.calls.at(-1))).toContain("project");
     expect(isDashboardDirty(component.getState())).toBe(false);
-    expect(host.done).not.toHaveBeenCalled();
+    expect(host.done).toHaveBeenCalledOnce();
 
     host.resolveCustom(undefined);
     await commandPromise;
@@ -154,9 +156,11 @@ describe("/statusline persistence", () => {
     component.handleInput("\t");
     component.handleInput("\t");
     component.handleInput("\t");
-    component.handleInput("\r");
-    component.handleInput("\x1b[B");
-    component.handleInput("\r");
+    component.handleInput("\r"); // toggle notifications
+    component.handleInput("\x1b[B"); // Save
+    component.handleInput("\r"); // open dialog
+    component.handleInput("\x1b[B"); // → Save
+    component.handleInput("\r"); // confirm Save
     expect(ctx.ui.notify).toHaveBeenCalledWith("Failed to save statusline config", "warning");
     expect(ctx.ui.notify).toHaveBeenCalledTimes(1);
     expect(isDashboardDirty(component.getState())).toBe(true);
