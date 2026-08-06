@@ -112,6 +112,15 @@ describe("dashboard draft initialization", () => {
     expect(configsEqual(first, structuredClone(first))).toBe(true);
     expect(configsEqual(first, config({ completionNotifications: true }))).toBe(false);
     expect(configsEqual(first, config({ showSidebarToolNames: true }))).toBe(false);
+    expect(
+      configsEqual(
+        first,
+        config({ sidebarExtensionSegments: { hidden: ["alpha"] } }),
+      ),
+    ).toBe(false);
+    expect(
+      configsEqual(first, config({ extensionStatusZone: "topLeft" })),
+    ).toBe(false);
     expect(configsEqual(first, config({ extensionSegments: { hidden: ["alpha"] } }))).toBe(false);
     expect(
       configsEqual(

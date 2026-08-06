@@ -190,6 +190,11 @@ export function configsEqual(left: PiStatusConfig, right: PiStatusConfig): boole
   return (
     STATUS_LINE_ZONE_ORDER.every((zone) => sameArray(left.zones[zone], right.zones[zone])) &&
     sameArray(left.extensionSegments.hidden, right.extensionSegments.hidden) &&
+    sameArray(
+      left.sidebarExtensionSegments.hidden,
+      right.sidebarExtensionSegments.hidden,
+    ) &&
+    left.extensionStatusZone === right.extensionStatusZone &&
     sameSidebarPanelLayout(left, right) &&
     left.completionNotifications === right.completionNotifications &&
     left.showSidebarToolNames === right.showSidebarToolNames
