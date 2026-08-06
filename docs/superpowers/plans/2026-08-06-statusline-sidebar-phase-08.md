@@ -1,4 +1,4 @@
-# Statusline Sidebar Phase 8 Replan Implementation Plan
+# Statusline Sidebar Phase 8 Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -13,6 +13,7 @@
 ## File Structure
 
 **Modify:**
+
 - `src/shared/types.ts` — add `sidebarExtensionSegments: ExtensionSegments` and `extensionStatusZone: StatusLineZone` to `PiStatusConfig`.
 - `src/core/config.ts` — defaults, `normalizeConfig`, `cloneDefaultConfig`, `saveConfig` round-trip.
 - `src/tui/dashboard-state.ts` — `DASHBOARD_TABS`, `initDashboardState`, `configsEqual`, `selectableRows`, `reduceDashboardState`, two-column statuses row types.
@@ -30,6 +31,7 @@
 - `tests/tui/dashboard.test.ts` — Confirm/Cancel save dialog, two-column statuses row toggle.
 
 **Rename:**
+
 - `docs/superpowers/plans/2026-08-03-statusline-sidebar-phase-08-release-verification.md` → `docs/superpowers/plans/2026-08-06-statusline-sidebar-phase-09-release-verification.md`. Title updated inside the file. No other edits.
 
 ---
@@ -37,6 +39,7 @@
 ## Task 1: Add `sidebarExtensionSegments` and `extensionStatusZone` to `PiStatusConfig`
 
 **Files:**
+
 - Modify: `src/shared/types.ts:90-96`
 - Modify: `src/core/config.ts:27-43,183-195,215-221`
 - Test: `tests/core/config.test.ts`
@@ -68,18 +71,28 @@ it("preserves sidebarExtensionSegments and extensionStatusZone through save and 
   };
   saveConfig(source, { agentDir: "/agent", store });
   const loaded = loadConfig({ agentDir: "/agent", store });
-  expect(loaded.sidebarExtensionSegments).toEqual({ hidden: ["build", "lint"] });
+  expect(loaded.sidebarExtensionSegments).toEqual({
+    hidden: ["build", "lint"],
+  });
   expect(loaded.extensionStatusZone).toBe("topLeft");
 });
 
 it("injects defaults for configs that pre-date the new fields", () => {
   const store = new MemoryConfigStore();
   const legacy = JSON.stringify({
-    zones: { topLeft: ["model"], topRight: [], bottomLeft: [], bottomRight: [] },
+    zones: {
+      topLeft: ["model"],
+      topRight: [],
+      bottomLeft: [],
+      bottomRight: [],
+    },
     extensionSegments: { hidden: [] },
     completionNotifications: false,
     showSidebarToolNames: false,
-    sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
+    sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
+      id,
+      visible: true,
+    })),
   });
   store.write(getConfigPath("/agent"), legacy);
   const loaded = loadConfig({ agentDir: "/agent", store });
@@ -137,11 +150,15 @@ function cloneDefaultConfig(): PiStatusConfig {
   return {
     zones: cloneZones(DEFAULT_CONFIG.zones),
     extensionSegments: { hidden: [...DEFAULT_CONFIG.extensionSegments.hidden] },
-    sidebarExtensionSegments: { hidden: [...DEFAULT_CONFIG.sidebarExtensionSegments.hidden] },
+    sidebarExtensionSegments: {
+      hidden: [...DEFAULT_CONFIG.sidebarExtensionSegments.hidden],
+    },
     extensionStatusZone: DEFAULT_CONFIG.extensionStatusZone,
     completionNotifications: DEFAULT_CONFIG.completionNotifications,
     showSidebarToolNames: DEFAULT_CONFIG.showSidebarToolNames,
-    sidebarPanelLayout: cloneSidebarPanelLayout(DEFAULT_CONFIG.sidebarPanelLayout),
+    sidebarPanelLayout: cloneSidebarPanelLayout(
+      DEFAULT_CONFIG.sidebarPanelLayout,
+    ),
   };
 }
 ```
@@ -150,7 +167,12 @@ Add a new export after `normalizeExtensionSegments`:
 
 ```ts
 export function normalizeExtensionStatusZone(input: unknown): StatusLineZone {
-  if (input === "topLeft" || input === "topRight" || input === "bottomLeft" || input === "bottomRight") {
+  if (
+    input === "topLeft" ||
+    input === "topRight" ||
+    input === "bottomLeft" ||
+    input === "bottomRight"
+  ) {
     return input;
   }
   return "bottomRight";
@@ -171,7 +193,9 @@ function normalizeConfig(input: Record<string, unknown>): PiStatusConfig {
     sidebarExtensionSegments: Object.hasOwn(input, "sidebarExtensionSegments")
       ? normalizeExtensionSegments(input.sidebarExtensionSegments)
       : { hidden: [] },
-    extensionStatusZone: normalizeExtensionStatusZone(input.extensionStatusZone),
+    extensionStatusZone: normalizeExtensionStatusZone(
+      input.extensionStatusZone,
+    ),
     completionNotifications: input.completionNotifications === true,
     showSidebarToolNames: input.showSidebarToolNames === true,
     sidebarPanelLayout: normalizeSidebarPanelLayout(input.sidebarPanelLayout),
@@ -185,7 +209,9 @@ Extend `saveConfig`'s `next` payload (lines 215–221):
 const next: PiStatusConfig = {
   zones: cloneZones(config.zones),
   extensionSegments: { hidden: [...config.extensionSegments.hidden] },
-  sidebarExtensionSegments: { hidden: [...config.sidebarExtensionSegments.hidden] },
+  sidebarExtensionSegments: {
+    hidden: [...config.sidebarExtensionSegments.hidden],
+  },
   extensionStatusZone: config.extensionStatusZone,
   completionNotifications: config.completionNotifications,
   showSidebarToolNames: config.showSidebarToolNames,
@@ -225,6 +251,7 @@ git commit -m "feat(config): add sidebarExtensionSegments and extensionStatusZon
 ## Task 2: Extend `configsEqual` for the two new fields
 
 **Files:**
+
 - Modify: `src/tui/dashboard-state.ts:174-197`
 - Test: `tests/tui/dashboard-state.test.ts`
 
@@ -280,9 +307,14 @@ Expected: `FAIL` — `configsEqual` ignores the two new fields.
 Edit `src/tui/dashboard-state.ts` around line 189. Replace the function body:
 
 ```ts
-export function configsEqual(left: PiStatusConfig, right: PiStatusConfig): boolean {
+export function configsEqual(
+  left: PiStatusConfig,
+  right: PiStatusConfig,
+): boolean {
   return (
-    STATUS_LINE_ZONE_ORDER.every((zone) => sameArray(left.zones[zone], right.zones[zone])) &&
+    STATUS_LINE_ZONE_ORDER.every((zone) =>
+      sameArray(left.zones[zone], right.zones[zone]),
+    ) &&
     sameArray(left.extensionSegments.hidden, right.extensionSegments.hidden) &&
     sameArray(
       left.sidebarExtensionSegments.hidden,
@@ -318,6 +350,7 @@ git commit -m "feat(dashboard): include new fields in configsEqual"
 ## Task 3: Rename the `layout` tab to `statusbar` and make it the default
 
 **Files:**
+
 - Modify: `src/tui/dashboard-state.ts:18-25,240-273`
 - Modify: `src/tui/dashboard-render.ts:62-69,133-156`
 - Test: `tests/tui/dashboard-state.test.ts`
@@ -399,7 +432,9 @@ return {
   draft: structuredClone(config),
   activeZone: "topLeft",
   preset: presetForZones(config.zones, visibleSegmentIds),
-  discoveredStatuses: [...new Set(discoveredStatuses)].sort((a, b) => a.localeCompare(b)),
+  discoveredStatuses: [...new Set(discoveredStatuses)].sort((a, b) =>
+    a.localeCompare(b),
+  ),
   visibleSegmentIds,
   navigation: {
     statusbar: emptyNavigation(),
@@ -422,13 +457,17 @@ In `FOOTERS` (line 62) rename the key and the wording:
 
 ```ts
 const FOOTERS: Record<DashboardTabId, string> = {
-  statusbar: "↑/↓ Select  •  ←/→ Adjust  •  Space/Enter Apply  •  Tab Switch  •  q/Esc Close",
-  statuses: "Type Search  •  ↑/↓ Select  •  Space/Enter Toggle  •  Esc Clear/Close",
+  statusbar:
+    "↑/↓ Select  •  ←/→ Adjust  •  Space/Enter Apply  •  Tab Switch  •  q/Esc Close",
+  statuses:
+    "Type Search  •  ↑/↓ Select  •  Space/Enter Toggle  •  Esc Clear/Close",
   session: "↑/↓ Select  •  Space/Enter Open  •  Tab Switch  •  q/Esc Close",
-  tools: "Type Search  •  ↑/↓ Select  •  Space/Enter Toggle  •  Esc Clear/Close",
+  tools:
+    "Type Search  •  ↑/↓ Select  •  Space/Enter Toggle  •  Esc Clear/Close",
   sidebar:
     "↑/↓ Select  •  ←/→ Reorder  •  Space/Enter Toggle/Restore/Save  •  Tab Switch  •  q/Esc Close",
-  settings: "↑/↓ Select  •  Space/Enter Toggle/Save  •  Tab Switch  •  q/Esc Close",
+  settings:
+    "↑/↓ Select  •  Space/Enter Toggle/Save  •  Tab Switch  •  q/Esc Close",
 };
 ```
 
@@ -447,7 +486,10 @@ function config(overrides: Partial<PiStatusConfig> = {}): PiStatusConfig {
     extensionStatusZone: "bottomRight",
     completionNotifications: false,
     showSidebarToolNames: false,
-    sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
+    sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
+      id,
+      visible: true,
+    })),
     ...overrides,
   };
 }
@@ -477,6 +519,7 @@ git commit -m "refactor(dashboard): rename layout tab to statusbar and default i
 ## Task 4: Add Confirm/Cancel dialog for the `save` row
 
 **Files:**
+
 - Modify: `src/tui/dashboard-render.ts:38-40`
 - Modify: `src/tui/dashboard.ts:243-285`
 - Test: `tests/tui/dashboard.test.ts`
@@ -509,16 +552,19 @@ describe("statusline dashboard save confirm dialog", () => {
     expect(done).not.toHaveBeenCalled();
   });
 
-  it.each(["q", "\x1b[113u", "\x1b"])("Esc/q dismisses save dialog without saving (%j)", (input) => {
-    const { component, save, done } = makeDashboard();
-    const lastRowCount = 1;
-    for (let i = 0; i < lastRowCount; i += 1) component.handleInput("\x1b[B");
-    component.handleInput("\r");
-    component.handleInput(input);
-    expect(save).not.toHaveBeenCalled();
-    expect(component.render(100).join("\n")).not.toContain("Save changes?");
-    expect(done).not.toHaveBeenCalled();
-  });
+  it.each(["q", "\x1b[113u", "\x1b"])(
+    "Esc/q dismisses save dialog without saving (%j)",
+    (input) => {
+      const { component, save, done } = makeDashboard();
+      const lastRowCount = 1;
+      for (let i = 0; i < lastRowCount; i += 1) component.handleInput("\x1b[B");
+      component.handleInput("\r");
+      component.handleInput(input);
+      expect(save).not.toHaveBeenCalled();
+      expect(component.render(100).join("\n")).not.toContain("Save changes?");
+      expect(done).not.toHaveBeenCalled();
+    },
+  );
 
   it("Save on the destructive row writes the draft and closes", () => {
     const { component, save, done } = makeDashboard();
@@ -550,13 +596,21 @@ In `src/tui/dashboard-render.ts` extend the `DashboardDialog` union (line 38):
 ```ts
 export type DashboardDialog =
   | { type: "rename"; input: Input }
-  | { type: "confirm"; kind: "discard" | "compact" | "save"; selectedIndex: 0 | 1 };
+  | {
+      type: "confirm";
+      kind: "discard" | "compact" | "save";
+      selectedIndex: 0 | 1;
+    };
 ```
 
 Extend `dialogBody` to render the save variant (replace the existing function so all three kinds share the same code path):
 
 ```ts
-function dialogBody(dialog: DashboardDialog, width: number, theme: StatusLineTheme): LogicalBody {
+function dialogBody(
+  dialog: DashboardDialog,
+  width: number,
+  theme: StatusLineTheme,
+): LogicalBody {
   if (dialog.type === "rename") {
     return {
       lines: ["Rename session", dialog.input.render(width)[0] ?? ""],
@@ -586,7 +640,14 @@ function dialogBody(dialog: DashboardDialog, width: number, theme: StatusLineThe
     lines: [
       heading,
       body,
-      selectableLine(dialog.selectedIndex === 0, "", "Cancel", "", width, theme),
+      selectableLine(
+        dialog.selectedIndex === 0,
+        "",
+        "Cancel",
+        "",
+        width,
+        theme,
+      ),
       selectableLine(dialog.selectedIndex === 1, "", action, "", width, theme),
     ],
     selectedLine: 2 + dialog.selectedIndex,
@@ -673,6 +734,7 @@ git commit -m "feat(dashboard): confirm-or-cancel dialog for save activation"
 ## Task 5: Move `showSidebarToolNames` from Sidebar to Settings
 
 **Files:**
+
 - Modify: `src/tui/dashboard-state.ts:313-326`
 - Modify: `src/tui/dashboard-render.ts:194-231`
 - Test: `tests/tui/dashboard-state.test.ts`
@@ -687,9 +749,16 @@ it("builds Sidebar rows in layout order then control rows", () => {
   const layout = config().sidebarPanelLayout.map((entry, index) =>
     index % 2 === 0 ? entry : { ...entry, visible: false },
   );
-  const state = initDashboardState(config({ sidebarPanelLayout: layout }), [], true);
+  const state = initDashboardState(
+    config({ sidebarPanelLayout: layout }),
+    [],
+    true,
+  );
   expect(selectableRows(state, "sidebar")).toEqual([
-    ...layout.map((entry) => ({ type: "sidebar_panel" as const, id: entry.id })),
+    ...layout.map((entry) => ({
+      type: "sidebar_panel" as const,
+      id: entry.id,
+    })),
     { type: "sidebar_default" },
     { type: "save" },
   ]);
@@ -706,9 +775,11 @@ it("exposes show tool names on the Settings tab only", () => {
     { type: "sidebar_tool_names" },
     { type: "save" },
   ]);
-  expect(selectableRows(state, "sidebar").some((row) => row.type === "sidebar_tool_names")).toBe(
-    false,
-  );
+  expect(
+    selectableRows(state, "sidebar").some(
+      (row) => row.type === "sidebar_tool_names",
+    ),
+  ).toBe(false);
 });
 ```
 
@@ -718,7 +789,9 @@ Add a render assertion in `tests/tui/dashboard-render.test.ts`:
 it("renders the Settings tab with Show tool names", () => {
   const state = initDashboardState(config(), [], true);
   state.activeTab = "settings";
-  const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
+  const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join(
+    "\n",
+  );
   expect(output).toContain("Completion notifications");
   expect(output).toContain("Show tool names");
 });
@@ -726,7 +799,9 @@ it("renders the Settings tab with Show tool names", () => {
 it("does not render Show tool names on the Sidebar tab", () => {
   const state = initDashboardState(config(), [], true);
   state.activeTab = "sidebar";
-  const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
+  const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join(
+    "\n",
+  );
   expect(output).not.toContain("Show tool names");
 });
 ```
@@ -807,6 +882,7 @@ git commit -m "feat(dashboard): move show tool names toggle to settings tab"
 ## Task 6: Render each extension status as its own segment and route by `extensionStatusZone`
 
 **Files:**
+
 - Modify: `src/tui/render.ts:141-162,211-227`
 - Modify: `src/core/resolve-footer.ts:159-170`
 - Modify: `src/tui/layout.ts` (delete `EXTENSION_STATUS_PRIORITY` and its sole reader)
@@ -883,7 +959,12 @@ In `tests/core/resolve-footer.test.ts` add:
 ```ts
 it("routes extension statuses through extensionStatusZone", () => {
   const config: PiStatusConfig = {
-    zones: cloneZones({ topLeft: ["model"], topRight: [], bottomLeft: [], bottomRight: [] }),
+    zones: cloneZones({
+      topLeft: ["model"],
+      topRight: [],
+      bottomLeft: [],
+      bottomRight: [],
+    }),
     extensionSegments: { hidden: [] },
     sidebarExtensionSegments: { hidden: [] },
     extensionStatusZone: "topRight",
@@ -918,9 +999,12 @@ Expected: `FAIL` — `formatExtensionStatuses` returns a string, not segments; `
 Replace lines 141–162:
 
 ```ts
-export function formatExtensionStatuses(input: FooterRenderInput, theme: ThemeLike): ResolvedSegment[] {
-  const entries = [...(input.extensionStatuses?.entries() ?? [])].sort(([a], [b]) =>
-    a.localeCompare(b),
+export function formatExtensionStatuses(
+  input: FooterRenderInput,
+  theme: ThemeLike,
+): ResolvedSegment[] {
+  const entries = [...(input.extensionStatuses?.entries() ?? [])].sort(
+    ([a], [b]) => a.localeCompare(b),
   );
   if (entries.length === 0) return [];
 
@@ -932,7 +1016,10 @@ export function formatExtensionStatuses(input: FooterRenderInput, theme: ThemeLi
     const trimmed = hasAnsi(value)
       ? value
       : value.replace(
-          new RegExp(`^${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:\\s*[:=-]\\s*|\\s+)`, "i"),
+          new RegExp(
+            `^${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:\\s*[:=-]\\s*|\\s+)`,
+            "i",
+          ),
           "",
         );
     const text = trimmed.trim();
@@ -1022,6 +1109,7 @@ git commit -m "feat(footer): render extension statuses per segment and route by 
 ## Task 7: Decouple the Sidebar's hidden list from the Statusbar's
 
 **Files:**
+
 - Modify: `src/tui/sidebar-render.ts:161-178,180-220`
 - Test: `tests/tui/sidebar-render.test.ts`
 
@@ -1032,7 +1120,12 @@ In `tests/tui/sidebar-render.test.ts` add (find an existing snapshot test that c
 ```ts
 it("splitStatuses uses sidebarExtensionSegments.hidden only", () => {
   const snapshot = buildSidebarSnapshot({
-    footer: makeFooter({ extensionStatuses: new Map([["alpha", "warn"], ["beta", "ok"]]) }),
+    footer: makeFooter({
+      extensionStatuses: new Map([
+        ["alpha", "warn"],
+        ["beta", "ok"],
+      ]),
+    }),
     config: {
       ...baseConfig(),
       extensionSegments: { hidden: ["alpha"] },
@@ -1064,7 +1157,10 @@ In `src/tui/sidebar-render.ts` change the function signature to accept the hidde
 function splitStatuses(
   statuses: ReadonlyMap<string, string>,
   hidden: readonly string[],
-): { alerts: { key: string; text: string }[]; statuses: { key: string; text: string }[] } {
+): {
+  alerts: { key: string; text: string }[];
+  statuses: { key: string; text: string }[];
+} {
   const blocked = new Set(hidden);
   // ...rest unchanged
 }
@@ -1099,6 +1195,7 @@ git commit -m "feat(sidebar): use independent sidebarExtensionSegments.hidden"
 ## Task 8: Add the `extensionStatusZone` row on the Statusbar tab
 
 **Files:**
+
 - Modify: `src/tui/dashboard-state.ts:49-62,278-326,495-543`
 - Modify: `src/tui/dashboard-render.ts:93-156`
 - Test: `tests/tui/dashboard-state.test.ts`
@@ -1139,7 +1236,9 @@ it("renders the extension status zone row on the Statusbar tab", () => {
     true,
   );
   state.activeTab = "statusbar";
-  const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
+  const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join(
+    "\n",
+  );
   expect(output).toContain("Extension statuses");
   expect(output).toContain("Top Left");
 });
@@ -1181,7 +1280,9 @@ Edit the Statusbar branch (line 278) to insert the row after `zone`:
 ```ts
 if (tab === "statusbar") {
   const assigned = STATUS_LINE_ZONE_ORDER.flatMap((zone) =>
-    state.draft.zones[zone].filter((id) => state.visibleSegmentIds.includes(id)),
+    state.draft.zones[zone].filter((id) =>
+      state.visibleSegmentIds.includes(id),
+    ),
   );
   const unassigned = state.visibleSegmentIds.filter(
     (id) => !findSegmentAssignment(state.draft.zones, id),
@@ -1190,7 +1291,10 @@ if (tab === "statusbar") {
     { type: "preset" },
     { type: "zone" },
     { type: "extension_status_zone" },
-    ...[...assigned, ...unassigned].map((id) => ({ type: "segment" as const, id })),
+    ...[...assigned, ...unassigned].map((id) => ({
+      type: "segment" as const,
+      id,
+    })),
     { type: "save" },
   ];
 }
@@ -1205,7 +1309,8 @@ if (row.type === "extension_status_zone") {
   const index = STATUS_LINE_ZONE_ORDER.indexOf(state.draft.extensionStatusZone);
   state.draft.extensionStatusZone =
     STATUS_LINE_ZONE_ORDER[
-      (index + action.delta + STATUS_LINE_ZONE_ORDER.length) % STATUS_LINE_ZONE_ORDER.length
+      (index + action.delta + STATUS_LINE_ZONE_ORDER.length) %
+        STATUS_LINE_ZONE_ORDER.length
     ];
   return { state: clampSelection(state) };
 }
@@ -1257,6 +1362,7 @@ git commit -m "feat(dashboard): add extension_status_zone row to statusbar tab"
 ## Task 9: Two-column Statuses tab for parallel hidden lists
 
 **Files:**
+
 - Modify: `src/tui/dashboard-state.ts:49-62,293-302,439-491,572-580`
 - Modify: `src/tui/dashboard-render.ts:38-40,157-164`
 - Test: `tests/tui/dashboard-state.test.ts`
@@ -1305,7 +1411,9 @@ In `tests/tui/dashboard-render.test.ts`:
 it("Statuses tab renders both checkboxes per status", () => {
   const state = initDashboardState(config(), ["alpha", "beta"], true);
   state.activeTab = "statuses";
-  const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
+  const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join(
+    "\n",
+  );
   expect(output).toContain("alpha");
   expect(output).toContain("beta");
   expect(output).toContain("Statusbar");
@@ -1335,7 +1443,9 @@ Update `selectableRows` for the `statuses` branch (line 293) to emit one pair pe
 ```ts
 if (tab === "statuses") {
   const query = state.navigation.statuses.query;
-  const matching = state.discoveredStatuses.filter((key) => includesFuzzy(key, query));
+  const matching = state.discoveredStatuses.filter((key) =>
+    includesFuzzy(key, query),
+  );
   return [
     ...matching.flatMap((key) => [
       { type: "status_bar_visibility" as const, key },
@@ -1401,10 +1511,12 @@ function reconcileStatusSelection(
 ): DashboardState {
   const rows = selectableRows(state);
   const index =
-    previous?.type === "status_bar_visibility" || previous?.type === "status_sidebar_visibility"
+    previous?.type === "status_bar_visibility" ||
+    previous?.type === "status_sidebar_visibility"
       ? rows.findIndex(
           (row) =>
-            (row.type === "status_bar_visibility" || row.type === "status_sidebar_visibility") &&
+            (row.type === "status_bar_visibility" ||
+              row.type === "status_sidebar_visibility") &&
             row.key === previous.key,
         )
       : -1;
@@ -1433,6 +1545,7 @@ git commit -m "feat(dashboard): two-column statuses tab for statusbar and sideba
 ## Task 10: Zone color-coding on the Statusbar tab
 
 **Files:**
+
 - Modify: `src/tui/dashboard-render.ts:78-91,108-156`
 - Test: `tests/tui/dashboard-render.test.ts`
 
@@ -1471,7 +1584,7 @@ it("Statusbar tab renders uncolored glyphs under noTheme", () => {
 });
 ```
 
-(The test imports `fromPiTheme` and a `piTheme` fixture — search the existing dashboard-render test for the pattern; if no theme fixture exists, use a stub object with `fg: (color, text) => `\x1b[${colorMap[color]}m${text}\x1b[0m`` and a `dim` mapping that matches `noTheme`'s passthrough.)
+(The test imports `fromPiTheme` and a `piTheme` fixture — search the existing dashboard-render test for the pattern; if no theme fixture exists, use a stub object with `fg: (color, text) => `\x1b[${colorMap[color]}m${text}\x1b[0m``and a`dim`mapping that matches`noTheme`'s passthrough.)
 
 - [ ] **Step 2: Run and verify they fail**
 
@@ -1506,8 +1619,13 @@ function selectableLine(
 ): string {
   const marker = selected ? theme.fg("accent", "▸") : " ";
   const prefix = `${marker} `;
-  const coloredCheckbox = accentColor ? theme.fg(accentColor, checkbox) : checkbox;
-  const remaining = Math.max(0, width - visibleWidth(prefix) - visibleWidth(coloredCheckbox) - 1);
+  const coloredCheckbox = accentColor
+    ? theme.fg(accentColor, checkbox)
+    : checkbox;
+  const remaining = Math.max(
+    0,
+    width - visibleWidth(prefix) - visibleWidth(coloredCheckbox) - 1,
+  );
   const text = description ? `${label} - ${theme.dim(description)}` : label;
   return truncateToWidth(
     `${prefix}${coloredCheckbox} ${truncateToWidth(text, remaining, "")}`,
@@ -1529,7 +1647,15 @@ const pushSelectable = (
   const selected = !ignoreQuery && interactiveIndex === selectedIndex;
   if (selected) selectedLine = lines.length;
   lines.push(
-    selectableLine(selected, checkbox, label, description, width, theme, accentColor),
+    selectableLine(
+      selected,
+      checkbox,
+      label,
+      description,
+      width,
+      theme,
+      accentColor,
+    ),
   );
   interactiveIndex += 1;
 };
@@ -1585,6 +1711,7 @@ git commit -m "feat(dashboard): tint statusbar tab rows by zone"
 ## Task 11: Renumber the current Phase 8 plan to Phase 9
 
 **Files:**
+
 - Rename: `docs/superpowers/plans/2026-08-03-statusline-sidebar-phase-08-release-verification.md` → `docs/superpowers/plans/2026-08-06-statusline-sidebar-phase-09-release-verification.md`
 
 - [ ] **Step 1: Move the file**
