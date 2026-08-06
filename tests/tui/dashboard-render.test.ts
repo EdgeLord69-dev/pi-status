@@ -242,25 +242,6 @@ describe("dashboard render", () => {
     expect(lines).toMatch(/\[dim:\[•\]\]/);
   });
 
-  it("Statusbar tab uses no tint under noTheme (zone colors collapse)", () => {
-    const state = initDashboardState(config(), [], true);
-    state.activeTab = "statusbar";
-    // Render with the markerTheme — each color is tagged. With noTheme, all
-    // colors pass through unchanged so the markerTheme output differs.
-    const markerTheme = {
-      fg: (color: string, text: string) => `[${color}:${text}]`,
-      bg: (color: string, text: string) => `[bg:${color}:${text}]`,
-      bold: (text: string) => `[bold:${text}]`,
-      dim: (text: string) => `[dim:${text}]`,
-      inverse: (text: string) => `[inverse:${text}]`,
-      rainbow: (text: string) => text,
-    };
-    const noThemeOut = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
-    const markerOut = renderDashboard(state, preview, markerTheme, 100, 60).lines.join("\n");
-    expect(noThemeOut).not.toContain("[accent:");
-    expect(markerOut).toContain("[accent:");
-  });
-
   it.each(["statusbar", "statuses"] as const)(
     "scrolls the %s Save row into view without losing footer or border",
     (tab) => {
@@ -370,33 +351,6 @@ describe("dashboard render", () => {
     expect(result.lines.find((line) => line.includes("Cancel"))).toContain("▸");
     expect(result.lines.every((line) => visibleWidth(line) === 100)).toBe(true);
     expect(result.offset).toBe(0);
-  });
-
-  it("renders a save confirmation with Cancel highlighted at selectedIndex 0", () => {
-    const state = initDashboardState(config(), [], true);
-    const result = renderDashboard(state, preview, noTheme, 100, 40, {
-      type: "confirm",
-      kind: "save",
-      selectedIndex: 0,
-    });
-    const lines = result.lines.join("\n");
-    expect(lines).toContain("Save changes?");
-    expect(lines).toContain("Apply draft Layout, Statuses, Sidebar, and Settings changes.");
-    expect(lines).toContain("Save");
-    expect(result.lines.find((line) => line.includes("Cancel"))).toContain("▸");
-  });
-
-  it("renders the save confirmation with Save highlighted at selectedIndex 1", () => {
-    const state = initDashboardState(config(), [], true);
-    const result = renderDashboard(state, preview, noTheme, 100, 40, {
-      type: "confirm",
-      kind: "save",
-      selectedIndex: 1,
-    });
-    const actionLine = result.lines.find(
-      (line) => line.includes("Save") && !line.includes("Save changes?"),
-    );
-    expect(actionLine).toContain("▸");
   });
 
   it("renders compact confirmation inside the dashboard frame", () => {

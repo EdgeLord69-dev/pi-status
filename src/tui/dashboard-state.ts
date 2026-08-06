@@ -51,8 +51,7 @@ export type DashboardSelectableRow =
   | { type: "zone" }
   | { type: "extension_status_zone" }
   | { type: "segment"; id: StatusLineSegmentId }
-  | { type: "status_bar_visibility"; key: string }
-  | { type: "status_sidebar_visibility"; key: string }
+  | { type: "status_visibility"; key: string; surface: "statusbar" | "sidebar" }
   | { type: "tool"; name: string }
   | { type: "rename_session" }
   | { type: "compact_session" }
@@ -304,8 +303,8 @@ export function selectableRows(
       ...state.discoveredStatuses
         .filter((key) => includesFuzzy(key, query))
         .flatMap((key) => [
-          { type: "status_bar_visibility" as const, key },
-          { type: "status_sidebar_visibility" as const, key },
+          { type: "status_visibility" as const, key, surface: "statusbar" as const },
+          { type: "status_visibility" as const, key, surface: "sidebar" as const },
         ]),
       { type: "save" },
     ];
@@ -443,13 +442,9 @@ function reconcileStatusSelection(
   previous: DashboardSelectableRow | undefined,
 ): DashboardState {
   const index =
-    previous?.type === "status_bar_visibility" ||
-    previous?.type === "status_sidebar_visibility"
+    previous?.type === "status_visibility"
       ? selectableRows(state).findIndex(
-          (row) =>
-            (row.type === "status_bar_visibility" ||
-              row.type === "status_sidebar_visibility") &&
-            row.key === previous.key,
+          (row) => row.type === "status_visibility" && row.key === previous.key,
         )
       : -1;
   activeNavigation(state).selectedIndex = index >= 0 ? index : 0;
@@ -599,16 +594,12 @@ export function reduceDashboardState(
       id,
       visible: true,
     }));
-  } else if (row.type === "status_bar_visibility") {
-    const hidden = state.draft.extensionSegments.hidden;
-    state.draft.extensionSegments.hidden = hidden.includes(row.key)
-      ? hidden.filter((key) => key !== row.key)
-      : [...hidden, row.key];
-  } else if (row.type === "status_sidebar_visibility") {
-    const hidden = state.draft.sidebarExtensionSegments.hidden;
-    state.draft.sidebarExtensionSegments.hidden = hidden.includes(row.key)
-      ? hidden.filter((key) => key !== row.key)
-      : [...hidden, row.key];
+  } else if (row.type === "status_visibility") {
+    const field = row.surface === "statusbar" ? "extensionSegments" : "sidebarExtensionSegments";
+    const hidden = state.draft[field].hidden;
+    state.draft[field] = {
+      hidden: hidden.includes(row.key) ? hidden.filter((key) => key !== row.key) : [...hidden, row.key],
+    };
   } else if (row.type === "tool") {
     const tool = state.tools.find(({ name }) => name === row.name);
     return tool

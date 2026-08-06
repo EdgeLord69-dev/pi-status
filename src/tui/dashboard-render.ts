@@ -72,10 +72,6 @@ const FOOTERS: Record<DashboardTabId, string> = {
   settings: "↑/↓ Select  •  Space/Enter Toggle/Save  •  Tab Switch  •  q/Esc Close",
 };
 
-/**
- * Default available-panels snapshot used when the caller does not supply one.
- * Phase 7 replaces this seam with a registry-backed snapshot in `src/index.ts`.
- */
 const DEFAULT_BUILTIN_SIDEBAR_PANELS: readonly { id: SidebarPanelId; title: string }[] =
   BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, title: id }));
 
@@ -86,11 +82,9 @@ function selectableLine(
   description: string,
   width: number,
   theme: StatusLineTheme,
-  accentColor?: FooterRenderColor,
 ): string {
   const marker = selected ? theme.fg("accent", "▸") : " ";
-  const coloredCheckbox = accentColor ? theme.fg(accentColor, checkbox) : checkbox;
-  const prefix = `${marker} ${coloredCheckbox} `;
+  const prefix = `${marker} ${checkbox} `;
   const remaining = Math.max(0, width - visibleWidth(prefix));
   const text = description ? `${label} - ${theme.dim(description)}` : label;
   return truncateToWidth(`${prefix}${truncateToWidth(text, remaining, "")}`, width, "");
@@ -137,17 +131,10 @@ function logicalBody(
   const lines: string[] = [];
   let interactiveIndex = 0;
   let selectedLine: number | undefined;
-  const pushSelectable = (
-    checkbox: string,
-    label: string,
-    description = "",
-    accentColor?: FooterRenderColor,
-  ): void => {
+  const pushSelectable = (checkbox: string, label: string, description = ""): void => {
     const selected = !ignoreQuery && interactiveIndex === selectedIndex;
     if (selected) selectedLine = lines.length;
-    lines.push(
-      selectableLine(selected, checkbox, label, description, width, theme, accentColor),
-    );
+    lines.push(selectableLine(selected, checkbox, label, description, width, theme));
     interactiveIndex += 1;
   };
 
@@ -170,11 +157,13 @@ function logicalBody(
         const position = assignment
           ? `${ZONE_LABELS[assignment.zone]} ${assignment.index + 1}`
           : "Disabled";
+        const checkbox = assignment
+          ? theme.fg(ZONE_ROW_COLORS[assignment.zone], "[•]")
+          : "[ ]";
         pushSelectable(
-          assignment ? "[•]" : "[ ]",
+          checkbox,
           `${metadata?.label ?? row.id} (${position})`,
           metadata?.description ?? "",
-          assignment ? ZONE_ROW_COLORS[assignment.zone] : undefined,
         );
       }
     }

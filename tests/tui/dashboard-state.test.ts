@@ -352,8 +352,9 @@ describe("dashboard transitions", () => {
 
     state = dispatch(state, { type: "type_char", char: "b" });
     expect(selectableRows(state)[state.navigation.statuses.selectedIndex]).toEqual({
-      type: "status_bar_visibility",
+      type: "status_visibility",
       key: "beta",
+      surface: "statusbar",
     });
 
     state = dispatch(state, { type: "type_char", char: "z" });
@@ -387,8 +388,8 @@ describe("dashboard transitions", () => {
     state.activeTab = "statuses";
     state.navigation.statuses.query = "ab";
     expect(selectableRows(state)).toEqual([
-      { type: "status_bar_visibility", key: "alpha-build" },
-      { type: "status_sidebar_visibility", key: "alpha-build" },
+      { type: "status_visibility", key: "alpha-build", surface: "statusbar" },
+      { type: "status_visibility", key: "alpha-build", surface: "sidebar" },
       { type: "save" },
     ]);
     state = dispatch(state, { type: "activate" });
@@ -399,16 +400,18 @@ describe("dashboard transitions", () => {
     const state = initDashboardState(config(), ["alpha"], true);
     const rows = selectableRows(state, "statuses");
     expect(rows).toContainEqual({
-      type: "status_bar_visibility",
+      type: "status_visibility",
       key: "alpha",
+      surface: "statusbar",
     });
     expect(rows).toContainEqual({
-      type: "status_sidebar_visibility",
+      type: "status_visibility",
       key: "alpha",
+      surface: "sidebar",
     });
   });
 
-  it("activating status_bar_visibility toggles extensionSegments.hidden", () => {
+  it("activating status_visibility (statusbar) toggles extensionSegments.hidden", () => {
     let state = initDashboardState(config(), ["alpha"], true);
     state.activeTab = "statuses";
     state = reduceDashboardState(state, { type: "activate" }).state;
@@ -417,7 +420,7 @@ describe("dashboard transitions", () => {
     expect(state.draft.extensionSegments.hidden).toEqual([]);
   });
 
-  it("activating status_sidebar_visibility toggles sidebarExtensionSegments.hidden", () => {
+  it("activating status_visibility (sidebar) toggles sidebarExtensionSegments.hidden", () => {
     let state = initDashboardState(config(), ["alpha"], true);
     state.activeTab = "statuses";
     state.navigation.statuses.selectedIndex = 1; // second row (sidebar column)

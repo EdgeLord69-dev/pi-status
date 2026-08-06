@@ -1763,20 +1763,7 @@ git commit -m "feat(dashboard): tint statusbar tab rows by zone"
 
 ---
 
-## Task 11: Renumber the current Phase 8 plan to Phase 9
-
-**Status:** Already completed on disk during brainstorming (commits `ad69adb` and `0fa3ea6`). Skip this task — the renames are in place.
-
-**Files (reference only):**
-
-- Already renamed: `docs/superpowers/plans/2026-08-03-statusline-sidebar-phase-08-release-verification.md` → `docs/superpowers/plans/2026-08-06-statusline-sidebar-phase-09-release-verification.md`. Title updated to "Statusline Sidebar Phase 9: Release Verification Plan".
-- Already renamed: `docs/superpowers/plans/2026-08-06-statusline-sidebar-phase-08-replan.md` → `docs/superpowers/plans/2026-08-06-statusline-sidebar-phase-08.md`. Title updated to "Statusline Sidebar Phase 8 Implementation Plan".
-
-No action required.
-
----
-
-## Task 12: Phase gate
+## Task 11: Phase gate
 
 **Files:** none — pure verification.
 

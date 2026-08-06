@@ -152,18 +152,6 @@ export function normalizeExtensionSegments(input: unknown): ExtensionSegments {
   return { hidden: normalizeFilterValues((input as { hidden?: unknown }).hidden) };
 }
 
-export function normalizeExtensionStatusZone(input: unknown): StatusLineZone {
-  if (
-    input === "topLeft" ||
-    input === "topRight" ||
-    input === "bottomLeft" ||
-    input === "bottomRight"
-  ) {
-    return input;
-  }
-  return "bottomRight";
-}
-
 export function normalizeSidebarPanelLayout(input: unknown): SidebarPanelLayout {
   if (!Array.isArray(input)) return cloneSidebarPanelLayout(DEFAULT_SIDEBAR_PANEL_LAYOUT);
 
@@ -210,7 +198,13 @@ function normalizeConfig(input: Record<string, unknown>): PiStatusConfig {
     sidebarExtensionSegments: Object.hasOwn(input, "sidebarExtensionSegments")
       ? normalizeExtensionSegments(input.sidebarExtensionSegments)
       : { hidden: [] },
-    extensionStatusZone: normalizeExtensionStatusZone(input.extensionStatusZone),
+    extensionStatusZone:
+      input.extensionStatusZone === "topLeft" ||
+      input.extensionStatusZone === "topRight" ||
+      input.extensionStatusZone === "bottomLeft" ||
+      input.extensionStatusZone === "bottomRight"
+        ? input.extensionStatusZone
+        : "bottomRight",
     completionNotifications: input.completionNotifications === true,
     showSidebarToolNames: input.showSidebarToolNames === true,
     sidebarPanelLayout: normalizeSidebarPanelLayout(input.sidebarPanelLayout),

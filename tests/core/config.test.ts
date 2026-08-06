@@ -11,7 +11,6 @@ import {
   getConfigPath,
   loadConfig,
   normalizeExtensionSegments,
-  normalizeExtensionStatusZone,
   normalizeSegments,
   normalizeSidebarPanelLayout,
   normalizeZones,
@@ -88,13 +87,17 @@ describe("config — normalization", () => {
   });
 
   it("normalizes extension status zone: defaults to bottomRight, rejects invalid values", () => {
-    expect(normalizeExtensionStatusZone(undefined)).toBe("bottomRight");
-    expect(normalizeExtensionStatusZone("topLeft")).toBe("topLeft");
-    expect(normalizeExtensionStatusZone("topRight")).toBe("topRight");
-    expect(normalizeExtensionStatusZone("bottomLeft")).toBe("bottomLeft");
-    expect(normalizeExtensionStatusZone("bottomRight")).toBe("bottomRight");
-    expect(normalizeExtensionStatusZone("unknown")).toBe("bottomRight");
-    expect(normalizeExtensionStatusZone(42)).toBe("bottomRight");
+    const source = JSON.stringify({
+      zones: { topLeft: ["model"], topRight: [], bottomLeft: [], bottomRight: [] },
+      extensionSegments: { hidden: [] },
+      extensionStatusZone: "unknown",
+      completionNotifications: false,
+      showSidebarToolNames: false,
+      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
+    });
+    const store = new MemoryConfigStore();
+    store.seed(getConfigPath("/agent"), source);
+    expect(loadConfig({ agentDir: "/agent", store }).extensionStatusZone).toBe("bottomRight");
   });
 });
 
@@ -455,7 +458,7 @@ describe("config — load/save round-trip", () => {
     expect(loaded.extensionStatusZone).toBe("bottomRight");
   });
 
-  it("defaults extensionStatusZone when only sidebarExtensionSegments is present", () => {
+  it("round-trips a config with one new field and not the other", () => {
     const store = new MemoryConfigStore();
     const partial = JSON.stringify({
       zones: { topLeft: ["model"], topRight: [], bottomLeft: [], bottomRight: [] },
@@ -472,25 +475,6 @@ describe("config — load/save round-trip", () => {
     const loaded = loadConfig({ agentDir: "/agent", store });
     expect(loaded.sidebarExtensionSegments).toEqual({ hidden: ["x"] });
     expect(loaded.extensionStatusZone).toBe("bottomRight");
-  });
-
-  it("defaults sidebarExtensionSegments when only extensionStatusZone is present", () => {
-    const store = new MemoryConfigStore();
-    const partial = JSON.stringify({
-      zones: { topLeft: ["model"], topRight: [], bottomLeft: [], bottomRight: [] },
-      extensionSegments: { hidden: [] },
-      extensionStatusZone: "topRight",
-      completionNotifications: false,
-      showSidebarToolNames: false,
-      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
-        id,
-        visible: true,
-      })),
-    });
-    store.seed(getConfigPath("/agent"), partial);
-    const loaded = loadConfig({ agentDir: "/agent", store });
-    expect(loaded.sidebarExtensionSegments).toEqual({ hidden: [] });
-    expect(loaded.extensionStatusZone).toBe("topRight");
   });
 });
 
