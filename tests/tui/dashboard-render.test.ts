@@ -1,6 +1,7 @@
 import { Input, visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it } from "vitest";
 import { buildSnapshot } from "../../src/core/resolve-footer.ts";
+import { fromPiTheme } from "../../src/tui/theme.ts";
 import {
   BUILTIN_SIDEBAR_PANEL_IDS,
   type PiStatusConfig,
@@ -212,6 +213,52 @@ describe("dashboard render", () => {
     expect(output).toContain("beta");
     expect(output).toContain("Statusbar");
     expect(output).toContain("Sidebar");
+  });
+
+  it("Statusbar tab colors segment rows by their zone", () => {
+    const state = initDashboardState(
+      config({
+        zones: {
+          topLeft: ["model"],
+          topRight: ["git-branch"],
+          bottomLeft: ["current-dir"],
+          bottomRight: ["run-state"],
+        },
+      }),
+      [],
+      true,
+    );
+    state.activeTab = "statusbar";
+    const piTheme = {
+      fg: (color: string, text: string) => `[${color}:${text}]`,
+      bold: (text: string) => `[bold:${text}]`,
+      rainbow: (text: string) => `[rainbow:${text}]`,
+    };
+    const result = renderDashboard(state, preview, fromPiTheme(piTheme), 100, 60);
+    const lines = result.lines.join("\n");
+    expect(lines).toMatch(/\[accent:\[•\]\]/);
+    expect(lines).toMatch(/\[success:\[•\]\]/);
+    expect(lines).toMatch(/\[warning:\[•\]\]/);
+    expect(lines).toMatch(/\[dim:\[•\]\]/);
+  });
+
+  it("Statusbar tab uses no tint under noTheme (zone colors collapse)", () => {
+    const state = initDashboardState(config(), [], true);
+    state.activeTab = "statusbar";
+    // Render with the markerTheme — each color is tagged. With noTheme, all
+    // colors pass through unchanged so the markerTheme output differs.
+    const markerTheme = {
+      fg: (color: string, text: string) => `[${color}:${text}]`,
+      bg: (color: string, text: string) => `[bg:${color}:${text}]`,
+      bold: (text: string) => `[bold:${text}]`,
+      dim: (text: string) => `[dim:${text}]`,
+      inverse: (text: string) => `[inverse:${text}]`,
+      rainbow: (text: string) => text,
+    };
+    const noThemeOut = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
+    const markerOut = renderDashboard(state, preview, markerTheme, 100, 60).lines.join("\n");
+    expect(noThemeOut).not.toContain("[accent:");
+    expect(markerOut).toContain("[accent:");
   });
 
   it.each(["statusbar", "statuses"] as const)(

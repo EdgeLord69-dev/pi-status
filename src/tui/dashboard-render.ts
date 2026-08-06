@@ -20,6 +20,7 @@ import {
   SEGMENT_METADATA,
   selectableRows,
 } from "./dashboard-state.ts";
+import type { FooterRenderColor } from "./render.ts";
 import {
   frame,
   frameContentWidth,
@@ -83,13 +84,22 @@ function selectableLine(
   description: string,
   width: number,
   theme: StatusLineTheme,
+  accentColor?: FooterRenderColor,
 ): string {
   const marker = selected ? theme.fg("accent", "▸") : " ";
-  const prefix = `${marker} ${checkbox} `;
+  const coloredCheckbox = accentColor ? theme.fg(accentColor, checkbox) : checkbox;
+  const prefix = `${marker} ${coloredCheckbox} `;
   const remaining = Math.max(0, width - visibleWidth(prefix));
   const text = description ? `${label} - ${theme.dim(description)}` : label;
   return truncateToWidth(`${prefix}${truncateToWidth(text, remaining, "")}`, width, "");
 }
+
+const ZONE_ROW_COLORS: Record<StatusLineZone, FooterRenderColor> = {
+  topLeft: "accent",
+  topRight: "success",
+  bottomLeft: "warning",
+  bottomRight: "dim",
+};
 
 function stateForNaturalHeight(
   state: DashboardState,
@@ -124,10 +134,17 @@ function logicalBody(
   const lines: string[] = [];
   let interactiveIndex = 0;
   let selectedLine: number | undefined;
-  const pushSelectable = (checkbox: string, label: string, description = ""): void => {
+  const pushSelectable = (
+    checkbox: string,
+    label: string,
+    description = "",
+    accentColor?: FooterRenderColor,
+  ): void => {
     const selected = !ignoreQuery && interactiveIndex === selectedIndex;
     if (selected) selectedLine = lines.length;
-    lines.push(selectableLine(selected, checkbox, label, description, width, theme));
+    lines.push(
+      selectableLine(selected, checkbox, label, description, width, theme, accentColor),
+    );
     interactiveIndex += 1;
   };
 
@@ -154,6 +171,7 @@ function logicalBody(
           assignment ? "[•]" : "[ ]",
           `${metadata?.label ?? row.id} (${position})`,
           metadata?.description ?? "",
+          assignment ? ZONE_ROW_COLORS[assignment.zone] : undefined,
         );
       }
     }
