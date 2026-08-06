@@ -221,6 +221,7 @@ describe("StatusLineDashboardComponent", () => {
   it("opens a Confirm/Cancel dialog instead of saving immediately", () => {
     const { component, save, done } = makeDashboard();
     dirtySettings(component);
+    component.handleInput("\x1b[B"); // → sidebar_tool_names
     component.handleInput("\x1b[B"); // → Save
     component.handleInput("\r"); // activate Save → opens dialog
     expect(save).not.toHaveBeenCalled();
@@ -231,6 +232,7 @@ describe("StatusLineDashboardComponent", () => {
   it("Cancel in the save dialog dismisses without saving", () => {
     const { component, save, done } = makeDashboard();
     dirtySettings(component);
+    component.handleInput("\x1b[B");
     component.handleInput("\x1b[B");
     component.handleInput("\r"); // open dialog (Cancel selected)
     component.handleInput("\r"); // confirm Cancel
@@ -243,6 +245,7 @@ describe("StatusLineDashboardComponent", () => {
     const { component, save, done } = makeDashboard();
     dirtySettings(component);
     component.handleInput("\x1b[B");
+    component.handleInput("\x1b[B");
     component.handleInput("\r");
     component.handleInput(input);
     expect(save).not.toHaveBeenCalled();
@@ -250,20 +253,22 @@ describe("StatusLineDashboardComponent", () => {
     expect(done).not.toHaveBeenCalled();
   });
 
-  it("Save on the destructive row writes the draft and closes", () => {
+  it("Save on the destructive row writes the draft and dismisses the dialog", () => {
     const { component, save, done } = makeDashboard();
     dirtySettings(component);
+    component.handleInput("\x1b[B");
     component.handleInput("\x1b[B");
     component.handleInput("\r"); // open dialog (Cancel selected)
     component.handleInput("\x1b[B"); // → Save
     component.handleInput("\r"); // confirm Save
     expect(save).toHaveBeenCalledWith(expect.objectContaining({ completionNotifications: true }));
-    expect(done).toHaveBeenCalledOnce();
+    expect(done).not.toHaveBeenCalled();
   });
 
   it("saves the whole draft and marks clean only after success", () => {
     const { component, save } = makeDashboard();
     dirtySettings(component);
+    component.handleInput("\x1b[B");
     component.handleInput("\x1b[B");
     component.handleInput("\r"); // open dialog
     component.handleInput("\x1b[B"); // → Save
@@ -278,6 +283,7 @@ describe("StatusLineDashboardComponent", () => {
       throw new Error("disk full");
     });
     dirtySettings(component);
+    component.handleInput("\x1b[B");
     component.handleInput("\x1b[B");
     component.handleInput("\r"); // open dialog
     component.handleInput("\x1b[B"); // → Save
@@ -564,7 +570,7 @@ describe("StatusLineDashboardComponent Sidebar tab", () => {
     for (let i = 0; i < 4; i += 1) component.handleInput("\t");
     component.handleInput("\r");
     const panelCount = BUILTIN_SIDEBAR_PANEL_IDS.length;
-    for (let i = 0; i <= panelCount; i += 1) component.handleInput("\x1b[B");
+    for (let i = 0; i < panelCount; i += 1) component.handleInput("\x1b[B");
     component.handleInput("\r"); // activate restore_default
     expect(component.getState().draft.sidebarPanelLayout).toEqual(
       BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
@@ -578,10 +584,8 @@ describe("StatusLineDashboardComponent Sidebar tab", () => {
       component.handleInput("\r"); // toggle each panel off
       component.handleInput("\x1b[B"); // move to next panel
     }
-    component.handleInput("\r"); // toggle sidebar_tool_names (still on Sidebar until Task 5)
     // Now navigate to Save (last row).
     component.handleInput("\x1b[B"); // skip sidebar_default
-    component.handleInput("\x1b[B");
     component.handleInput("\r"); // activate save
     expect(ctx.ui.notify).toHaveBeenCalledWith(
       "At least one Sidebar panel must remain visible",
@@ -594,14 +598,11 @@ describe("StatusLineDashboardComponent Sidebar tab", () => {
     const { component, save } = makeDashboard();
     for (let i = 0; i < 4; i += 1) component.handleInput("\t");
     component.handleInput("\r"); // toggle first panel off
-    // Move to sidebar_default (index = BUILTIN_SIDEBAR_PANEL_IDS.length).
-    for (let i = 0; i < BUILTIN_SIDEBAR_PANEL_IDS.length; i += 1) {
-      component.handleInput("\x1b[B");
-    }
+    // Navigate to Settings tab (one forward tab from Sidebar) and toggle sidebar_tool_names.
+    component.handleInput("\t"); // sidebar → settings
+    component.handleInput("\x1b[B"); // → sidebar_tool_names (row 1)
     component.handleInput("\r"); // toggle sidebar_tool_names
-    // Move past sidebar_default to save.
-    component.handleInput("\x1b[B");
-    component.handleInput("\x1b[B");
+    component.handleInput("\x1b[B"); // → Save
     component.handleInput("\r"); // open dialog
     component.handleInput("\x1b[B"); // → Save
     component.handleInput("\r"); // confirm Save

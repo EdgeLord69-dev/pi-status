@@ -623,8 +623,9 @@ describe("extension wiring", () => {
       component.handleInput("\t");
       component.handleInput("\t");
       component.handleInput("\t");
-      component.handleInput("\r"); // toggle notifications
-      component.handleInput("\x1b[B"); // move to Save
+      component.handleInput("\r"); // toggle notifications (row 0)
+      component.handleInput("\x1b[B"); // → sidebar_tool_names (row 1)
+      component.handleInput("\x1b[B"); // → Save (row 2)
       component.handleInput("\r"); // open dialog
       component.handleInput("\x1b[B"); // → Save
       component.handleInput("\r"); // confirm Save

@@ -200,10 +200,21 @@ describe("dashboard Statusbar tab initialization", () => {
     const state = initDashboardState(config({ sidebarPanelLayout: layout }), [], true);
     expect(selectableRows(state, "sidebar")).toEqual([
       ...layout.map((entry) => ({ type: "sidebar_panel" as const, id: entry.id })),
-      { type: "sidebar_tool_names" },
       { type: "sidebar_default" },
       { type: "save" },
     ]);
+  });
+
+  it("exposes show tool names on the Settings tab only", () => {
+    const state = initDashboardState(config(), [], true);
+    expect(selectableRows(state, "settings")).toEqual([
+      { type: "notifications" },
+      { type: "sidebar_tool_names" },
+      { type: "save" },
+    ]);
+    expect(
+      selectableRows(state, "sidebar").some((row) => row.type === "sidebar_tool_names"),
+    ).toBe(false);
   });
 
   it("initializes Sidebar navigation with selectedIndex 0 and empty query", () => {
@@ -414,7 +425,7 @@ describe("dashboard transitions", () => {
     expect(moved.state).not.toBe(state);
 
     moved.state.activeTab = "settings";
-    moved.state.navigation.settings.selectedIndex = 1;
+    moved.state.navigation.settings.selectedIndex = 2; // Save row
     const saved = reduceDashboardState(moved.state, { type: "activate" });
     if (saved.effect?.type !== "save") throw new Error("expected save effect");
     saved.effect.config.zones.topLeft.push("model");
@@ -498,11 +509,11 @@ describe("dashboard Sidebar tab transitions", () => {
 
   it("activate on sidebar_tool_names flips showSidebarToolNames and dirties", () => {
     const state = initDashboardState(config(), [], true);
-    state.activeTab = "sidebar";
-    const toolNamesIndex = selectableRows(state, "sidebar").findIndex(
+    state.activeTab = "settings";
+    const toolNamesIndex = selectableRows(state, "settings").findIndex(
       (row) => row.type === "sidebar_tool_names",
     );
-    state.navigation.sidebar.selectedIndex = toolNamesIndex;
+    state.navigation.settings.selectedIndex = toolNamesIndex;
     const next = dispatch(state, { type: "activate" });
     expect(next.draft.showSidebarToolNames).toBe(true);
     expect(isDashboardDirty(next)).toBe(true);

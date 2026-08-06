@@ -177,6 +177,21 @@ describe("dashboard render", () => {
     expect(output).toContain("Save changes");
   });
 
+  it("renders the Settings tab with Show tool names", () => {
+    const state = initDashboardState(config(), [], true);
+    state.activeTab = "settings";
+    const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
+    expect(output).toContain("Completion notifications");
+    expect(output).toContain("Show tool names");
+  });
+
+  it("does not render Show tool names on the Sidebar tab", () => {
+    const state = initDashboardState(config(), [], true);
+    state.activeTab = "sidebar";
+    const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
+    expect(output).not.toContain("Show tool names");
+  });
+
   it.each(["statusbar", "statuses"] as const)(
     "scrolls the %s Save row into view without losing footer or border",
     (tab) => {
@@ -380,7 +395,7 @@ describe("dashboard Sidebar render", () => {
     expect(output).toContain("Activity");
     expect(output).toContain("TODOS");
     expect(output).toContain("Restore default");
-    expect(output).toContain("Show tool names");
+    expect(output).not.toContain("Show tool names");
   });
 
   it("marks unavailable configured panels with unavailable suffix", () => {
@@ -426,10 +441,10 @@ describe("dashboard Sidebar render", () => {
     expect(saveIndex).toBeGreaterThan(defaultIndex);
   });
 
-  it("shows sidebar_tool_names checked state from draft", () => {
+  it("shows sidebar_tool_names checked state on Settings tab", () => {
     const state = initDashboardState(config({ showSidebarToolNames: true }), [], true);
-    state.activeTab = "sidebar";
-    state.navigation.sidebar.selectedIndex = BUILTIN_SIDEBAR_PANEL_IDS.length;
+    state.activeTab = "settings";
+    state.navigation.settings.selectedIndex = 1;
     const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
     expect(output).toContain("[•] Show tool names");
   });

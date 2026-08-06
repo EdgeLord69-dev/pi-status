@@ -321,12 +321,16 @@ export function selectableRows(
         type: "sidebar_panel" as const,
         id: entry.id,
       })),
-      { type: "sidebar_tool_names" },
       { type: "sidebar_default" },
       { type: "save" },
     ];
   }
-  if (tab === "settings") return [{ type: "notifications" }, { type: "save" }];
+  if (tab === "settings")
+    return [
+      { type: "notifications" },
+      { type: "sidebar_tool_names" },
+      { type: "save" },
+    ];
   return [];
 }
 

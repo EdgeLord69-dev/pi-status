@@ -202,11 +202,6 @@ function logicalBody(
         `${String(index + 1).padStart(2)}  ${title}${suffix}`,
       );
     });
-    pushSelectable(
-      state.draft.showSidebarToolNames ? "[•]" : "[ ]",
-      "Show tool names",
-      "Reveal active tool names in the Sidebar (when not compact)",
-    );
     pushSelectable(" ", "Restore default", "Reset Sidebar to the built-in visible layout");
     const visibleIds = state.draft.sidebarPanelLayout
       .filter((entry) => entry.visible)
@@ -226,6 +221,11 @@ function logicalBody(
         state.draft.completionNotifications ? "[•]" : "[ ]",
         "Completion notifications",
         "Notify when Pi finishes a response",
+      );
+      pushSelectable(
+        state.draft.showSidebarToolNames ? "[•]" : "[ ]",
+        "Show tool names",
+        "Reveal active tool names in the Sidebar (when not compact)",
       );
     }
   }

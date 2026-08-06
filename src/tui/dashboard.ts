@@ -278,7 +278,7 @@ export class StatusLineDashboardComponent implements Component, Focusable {
           this.dismissDialog();
           return;
         }
-        this.close();
+        this.dismissDialog();
       } else {
         this.close();
         try {
