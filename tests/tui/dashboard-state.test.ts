@@ -351,7 +351,7 @@ describe("dashboard transitions", () => {
 
     state = dispatch(state, { type: "type_char", char: "b" });
     expect(selectableRows(state)[state.navigation.statuses.selectedIndex]).toEqual({
-      type: "status",
+      type: "status_bar_visibility",
       key: "beta",
     });
 
@@ -386,11 +386,42 @@ describe("dashboard transitions", () => {
     state.activeTab = "statuses";
     state.navigation.statuses.query = "ab";
     expect(selectableRows(state)).toEqual([
-      { type: "status", key: "alpha-build" },
+      { type: "status_bar_visibility", key: "alpha-build" },
+      { type: "status_sidebar_visibility", key: "alpha-build" },
       { type: "save" },
     ]);
     state = dispatch(state, { type: "activate" });
     expect(state.draft.extensionSegments.hidden).toEqual(["missing-extension"]);
+  });
+
+  it("Statuses tab rows expose both statusbar and sidebar visibility toggles", () => {
+    const state = initDashboardState(config(), ["alpha"], true);
+    const rows = selectableRows(state, "statuses");
+    expect(rows).toContainEqual({
+      type: "status_bar_visibility",
+      key: "alpha",
+    });
+    expect(rows).toContainEqual({
+      type: "status_sidebar_visibility",
+      key: "alpha",
+    });
+  });
+
+  it("activating status_bar_visibility toggles extensionSegments.hidden", () => {
+    let state = initDashboardState(config(), ["alpha"], true);
+    state.activeTab = "statuses";
+    state = reduceDashboardState(state, { type: "activate" }).state;
+    expect(state.draft.extensionSegments.hidden).toEqual(["alpha"]);
+    state = reduceDashboardState(state, { type: "activate" }).state;
+    expect(state.draft.extensionSegments.hidden).toEqual([]);
+  });
+
+  it("activating status_sidebar_visibility toggles sidebarExtensionSegments.hidden", () => {
+    let state = initDashboardState(config(), ["alpha"], true);
+    state.activeTab = "statuses";
+    state.navigation.statuses.selectedIndex = 1; // second row (sidebar column)
+    state = reduceDashboardState(state, { type: "activate" }).state;
+    expect(state.draft.sidebarExtensionSegments.hidden).toEqual(["alpha"]);
   });
 
   it("toggles notification draft without saving", () => {

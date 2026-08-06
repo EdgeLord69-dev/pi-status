@@ -204,6 +204,16 @@ describe("dashboard render", () => {
     expect(output).toContain("Top Left");
   });
 
+  it("Statuses tab renders two checkboxes per status", () => {
+    const state = initDashboardState(config(), ["alpha", "beta"], true);
+    state.activeTab = "statuses";
+    const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
+    expect(output).toContain("alpha");
+    expect(output).toContain("beta");
+    expect(output).toContain("Statusbar");
+    expect(output).toContain("Sidebar");
+  });
+
   it.each(["statusbar", "statuses"] as const)(
     "scrolls the %s Save row into view without losing footer or border",
     (tab) => {

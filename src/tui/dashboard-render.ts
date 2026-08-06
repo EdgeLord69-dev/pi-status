@@ -16,6 +16,7 @@ import {
   type DashboardState,
   type DashboardTabId,
   findSegmentAssignment,
+  includesFuzzy,
   SEGMENT_METADATA,
   selectableRows,
 } from "./dashboard-state.ts";
@@ -162,11 +163,15 @@ function logicalBody(
     );
   } else if (tab === "statuses") {
     lines.push(`Search: ${renderState.navigation.statuses.query}`);
-    const statuses = rows.filter((row) => row.type === "status");
-    if (statuses.length === 0) lines.push(theme.dim("No matching statuses."));
-    for (const row of statuses) {
-      const shown = !state.draft.extensionSegments.hidden.includes(row.key);
-      pushSelectable(shown ? "[•]" : "[ ]", row.key, "Show in the status line");
+    const statusKeys = state.discoveredStatuses.filter((key) =>
+      includesFuzzy(key, renderState.navigation.statuses.query),
+    );
+    if (statusKeys.length === 0) lines.push(theme.dim("No matching statuses."));
+    for (const key of statusKeys) {
+      const statusBarShown = !state.draft.extensionSegments.hidden.includes(key);
+      const sidebarShown = !state.draft.sidebarExtensionSegments.hidden.includes(key);
+      pushSelectable(statusBarShown ? "[•]" : "[ ]", "Statusbar", key);
+      pushSelectable(sidebarShown ? "[•]" : "[ ]", "Sidebar", key);
     }
   } else if (tab === "session") {
     if (!state.session) {
