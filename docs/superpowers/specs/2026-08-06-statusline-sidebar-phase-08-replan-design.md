@@ -55,7 +55,7 @@ export type PiStatusConfig = {
 
 - `DASHBOARD_TABS` in `src/tui/dashboard-state.ts` becomes `[{ id: "statusbar", label: "Statusbar" }, …]`. The five other tabs keep their ids.
 - `initDashboardState` sets `activeTab: "statusbar"` (was `"sidebar"`).
-- The `navigation` initializer in `initDashboardState` renames the `layout` key to `statusbar` (single key swap; no other reader relies on the literal).
+- The `navigation` initializer in `initDashboardState` renames the `layout` key to `statusbar`. Existing tests reference `state.navigation.layout.selectedIndex` and `state.activeTab = "layout"`; they need a mechanical rename in the same task.
 - `dashboard-render.ts` switches its `tab === "layout"` body to `tab === "statusbar"`. The footer hint for the renamed tab updates from `"Layout"` wording to `"Statusbar"`.
 
 ### Save confirm dialog

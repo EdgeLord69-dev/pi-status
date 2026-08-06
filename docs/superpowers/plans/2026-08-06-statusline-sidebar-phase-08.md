@@ -229,15 +229,34 @@ mise exec node@24.15.0 -- pnpm vitest run tests/core/config.test.ts
 
 Expected: `PASS`. All existing config tests still pass; the two new tests pass.
 
-- [ ] **Step 6: Run typecheck**
+- [ ] **Step 6: Update existing `PiStatusConfig` fixtures across all test files**
 
-Run:
+The new fields are required on every `PiStatusConfig` literal. Add `sidebarExtensionSegments: { hidden: [] }` and `extensionStatusZone: "bottomRight"` to every literal that omits them.
+
+Run this grep to enumerate every test file with such a literal:
+
+```bash
+grep -rln "extensionSegments: { hidden: " tests
+```
+
+Update each:
+
+- `tests/index.test.ts` — multiple inline literals around the index setup; add the two new fields to each. If many, introduce a `makeConfig(overrides)` helper near the top.
+- `tests/index-save.test.ts` — `config()` helper (~line 20) and the inline `initial` literal (~line 64).
+- `tests/tui/dashboard.test.ts` — `makeDashboard()` helper (~line 19) constructs the inline `PiStatusConfig` literal.
+- `tests/tui/dashboard-state.test.ts` — `config()` helper (~line 30).
+- `tests/tui/dashboard-render.test.ts` — `config()` helper (~line 30).
+- `tests/tui/sidebar.test.ts` — two literals around lines 38 and 53.
+- `tests/tui/sidebar-render.test.ts` — `makeInput()` helper (~line 47); spreads (`{ ...input.config, sidebarPanelLayout: ... }`) keep the new fields automatically.
+- `tests/tui/sidebar-panels.test.ts` and `tests/core/resolve-footer.test.ts` — verify via the grep and update if they contain literals.
+
+Confirm via:
 
 ```bash
 mise exec node@24.15.0 -- pnpm typecheck
 ```
 
-Expected: exit 0. The two new fields are referenced throughout the rest of the plan, so subsequent tasks will fail typecheck until their work is done. Resolve any existing call sites that build a `PiStatusConfig` literal without the new fields by adding the defaults.
+Expected: exit 0.
 
 - [ ] **Step 7: Commit**
 
@@ -473,9 +492,23 @@ const FOOTERS: Record<DashboardTabId, string> = {
 
 Update `logicalBody`'s `if (tab === "layout")` branch (line 133) to `if (tab === "statusbar")`. The body content stays unchanged for this task (the zone color tint and `extension_status_zone` row are added in later tasks).
 
-- [ ] **Step 5: Update fixtures in tests**
+- [ ] **Step 5: Mechanically rename `layout` → `statusbar` across existing tests**
 
-The `tests/tui/dashboard-state.test.ts` helper `config()` and `tests/tui/dashboard-render.test.ts` helper `config()` must include the two new fields. Update both helpers:
+Existing tests use the old tab id and navigation key. A mechanical rename is required, not just the two specific tests listed in the original Step 1.
+
+Enumerate the sites:
+
+```bash
+grep -rn "\"layout\"\|navigation\.layout\|state\.activeTab = \"layout\"\|tab: \"layout\"\|activeTab: \"layout\"" tests
+```
+
+Update each occurrence:
+
+- `tests/tui/dashboard-state.test.ts` — `state.activeTab = "layout"` (multiple) and `state.navigation.layout.selectedIndex` (multiple). Also `selectableRows(state, "layout")` (line ~79 and elsewhere). Also `it.each(["layout", "statuses", "settings"] as const)` (line ~415) — `"layout"` becomes `"statusbar"`. Also `tab: "layout"` action type at line ~392. Rename all.
+- `tests/tui/dashboard-render.test.ts` — `state.activeTab = "layout"` at lines 62 and 163. `it.each(["layout", "statuses"] as const)` at line ~178 — `"layout"` becomes `"statusbar"`.
+- `tests/tui/dashboard.test.ts` — none for `"layout"`, but Task 5 covers the `sidebar_tool_names` migration below.
+
+After the rename, the `config()` helper in both `dashboard-state.test.ts` and `dashboard-render.test.ts` must include the two new config fields added in Task 1:
 
 ```ts
 function config(overrides: Partial<PiStatusConfig> = {}): PiStatusConfig {
@@ -494,8 +527,6 @@ function config(overrides: Partial<PiStatusConfig> = {}): PiStatusConfig {
   };
 }
 ```
-
-Apply to both test files.
 
 - [ ] **Step 6: Run and verify they pass**
 
@@ -677,7 +708,7 @@ if (effect.type === "save") {
 }
 ```
 
-The dialog activation lives in `handleDialogInput` (line 248 onward). Extend the `kind === "discard"` branch so a new `kind === "save"` branch closes + saves:
+The dialog activation lives in `handleDialogInput` (line 248 onward). Add a new `kind === "save"` branch between the existing `kind === "discard"` branch and the bare `else` (compact) branch. The discard branch itself is unchanged:
 
 ```ts
 if (matchesKey(data, Key.space) || matchesKey(data, Key.enter)) {
@@ -742,7 +773,7 @@ git commit -m "feat(dashboard): confirm-or-cancel dialog for save activation"
 
 - [ ] **Step 1: Write the failing tests**
 
-Update the existing sidebar-tab test at `tests/tui/dashboard-state.test.ts` (~line 185) — drop `sidebar_tool_names` from the expected rows:
+Update the existing sidebar-tab test at `tests/tui/dashboard-state.test.ts` (~line 185) — drop `sidebar_tool_names` from the expected rows. Also update the existing test at line ~490 (`activate on sidebar_tool_names flips showSidebarToolNames and dirties`) to switch to the Settings tab and drive input against the new row index there. Specifically: after Task 3's rename, `state.activeTab = "sidebar"` becomes `state.activeTab = "settings"` (or a `next_tab` call moves from Statusbar → Statuses → Session → Tools → Sidebar → Settings, i.e. 5 `Tab` presses). The `sidebar_tool_names` row index on Settings is 1 (after `notifications`). Existing assertions on `state.draft.showSidebarToolNames` stay valid.
 
 ```ts
 it("builds Sidebar rows in layout order then control rows", () => {
@@ -805,6 +836,21 @@ it("does not render Show tool names on the Sidebar tab", () => {
   expect(output).not.toContain("Show tool names");
 });
 ```
+
+Update the existing input-driven tests in `tests/tui/dashboard.test.ts` that drive `sidebar_tool_names` while on the Sidebar tab:
+
+- `persists sidebarPanelLayout and showSidebarToolNames through Save` (~line 536) — currently navigates `BUILTIN_SIDEBAR_PANEL_IDS.length` rows down to reach `sidebar_tool_names` on Sidebar. Update to:
+  1. Move to Settings tab (5 `Tab` presses from Statusbar default, or set `state.activeTab = "settings"` if the test exposes that). The component starts on Settings only after Task 3, so prefer `state.activeTab = "settings"`.
+  2. Navigate one row down (past `notifications`) to reach `sidebar_tool_names`, then activate.
+  3. Then navigate one row down to `save`, activate. Note: the save path now opens the Confirm/Cancel dialog (Task 4); press `↓` then `Space`/`Enter` to confirm Save.
+
+- `warns and stays dirty when saving with no visible panels` (~line 519) — toggle all panels off while on Sidebar, then move to Save. Update to either:
+  - Stay on Sidebar (the panel rows are still there, only `sidebar_tool_names` moved), or
+  - Use the existing Sidebar-only flow and reach the Save row via Sidebar's `sidebar_default` row (still present) — index = `panelCount + 1` instead of `panelCount + 2`.
+
+  Confirm the warning text still matches: "At least one Sidebar panel must remain visible".
+
+Apply both updates and confirm all `dashboard.test.ts` tests that drive input to `sidebar_tool_names` now route through Settings or the panel rows on Sidebar correctly.
 
 - [ ] **Step 2: Run and verify they fail**
 
@@ -1115,7 +1161,9 @@ git commit -m "feat(footer): render extension statuses per segment and route by 
 
 - [ ] **Step 1: Write the failing test**
 
-In `tests/tui/sidebar-render.test.ts` add (find an existing snapshot test that constructs a config and use the same pattern):
+In `tests/tui/sidebar-render.test.ts` add (find an existing snapshot test that constructs a config and use the same pattern). The `baseConfig()` and `makeInput()` helpers in that file must include the two new config fields added in Task 1 (`sidebarExtensionSegments: { hidden: [] }`, `extensionStatusZone: "bottomRight"`). If they don't, update them as part of this step.
+
+Note: the existing test "filters out statuses whose key is in extensionSegments.hidden" (~line 157) currently exercises `extensionSegments.hidden` and expects it to filter sidebar statuses. After this task, that test's expectation must change: it should use `sidebarExtensionSegments.hidden` instead, since the sidebar now reads from that field. Update the test to set `sidebarExtensionSegments: { hidden: ["lsp"] }` instead of `extensionSegments: { hidden: ["lsp"] }` and assert the same observable outcome.
 
 ```ts
 it("splitStatuses uses sidebarExtensionSegments.hidden only", () => {
@@ -1370,6 +1418,13 @@ git commit -m "feat(dashboard): add extension_status_zone row to statusbar tab"
 - Test: `tests/tui/dashboard.test.ts`
 
 - [ ] **Step 1: Write the failing tests**
+
+Two existing tests in `tests/tui/dashboard-state.test.ts` reference the old `{ type: "status", key: "..." }` row and must be updated as part of this task:
+
+- `keeps or resets status selection safely when filtering` (~line 303) — currently asserts `{ type: "status", key: "beta" }` after a `type_char` filter. Update to assert the new `status_bar_visibility` variant for the matching key.
+- `fuzzily matches statuses and preserves hidden undiscovered keys when toggled` (~line 336) — currently asserts `[{ type: "status", key: "alpha-build" }, { type: "save" }]`. Update to assert `[{ type: "status_bar_visibility", key: "alpha-build" }, { type: "status_sidebar_visibility", key: "alpha-build" }, { type: "save" }]`. The `activate` action continues to mutate `extensionSegments.hidden`, so the trailing assertion stays valid.
+
+After updating those two existing tests, add the new tests below.
 
 In `tests/tui/dashboard-state.test.ts`:
 
@@ -1710,41 +1765,14 @@ git commit -m "feat(dashboard): tint statusbar tab rows by zone"
 
 ## Task 11: Renumber the current Phase 8 plan to Phase 9
 
-**Files:**
+**Status:** Already completed on disk during brainstorming (commits `ad69adb` and `0fa3ea6`). Skip this task — the renames are in place.
 
-- Rename: `docs/superpowers/plans/2026-08-03-statusline-sidebar-phase-08-release-verification.md` → `docs/superpowers/plans/2026-08-06-statusline-sidebar-phase-09-release-verification.md`
+**Files (reference only):**
 
-- [ ] **Step 1: Move the file**
+- Already renamed: `docs/superpowers/plans/2026-08-03-statusline-sidebar-phase-08-release-verification.md` → `docs/superpowers/plans/2026-08-06-statusline-sidebar-phase-09-release-verification.md`. Title updated to "Statusline Sidebar Phase 9: Release Verification Plan".
+- Already renamed: `docs/superpowers/plans/2026-08-06-statusline-sidebar-phase-08-replan.md` → `docs/superpowers/plans/2026-08-06-statusline-sidebar-phase-08.md`. Title updated to "Statusline Sidebar Phase 8 Implementation Plan".
 
-```bash
-git mv docs/superpowers/plans/2026-08-03-statusline-sidebar-phase-08-release-verification.md \
-       docs/superpowers/plans/2026-08-06-statusline-sidebar-phase-09-release-verification.md
-```
-
-- [ ] **Step 2: Update the title**
-
-Inside the moved file, replace the H1 line:
-
-```md
-# Statusline Sidebar Phase 9: Release Verification Plan
-```
-
-The body references Phase 7 (the gate command) — that still applies. No other edits.
-
-- [ ] **Step 3: Verify the rename**
-
-```bash
-git status docs/superpowers/plans/
-```
-
-Expected: shows the new file path staged for commit; the old path is gone.
-
-- [ ] **Step 4: Commit**
-
-```bash
-git add docs/superpowers/plans/2026-08-06-statusline-sidebar-phase-09-release-verification.md
-git commit -m "docs: renumber phase 8 release verification to phase 9"
-```
+No action required.
 
 ---
 
