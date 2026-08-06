@@ -83,7 +83,7 @@ describe("fitFooterRow", () => {
   it("drops extension status before configured segments", () => {
     const result = fitFooterRow(
       [item("model")],
-      [item("extension-status", "ext")],
+      [item("model", "ext")],
       5,
       " · ",
       visibleWidth,

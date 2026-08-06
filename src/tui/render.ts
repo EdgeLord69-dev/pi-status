@@ -28,7 +28,7 @@ export type ThemeLike = {
   rainbow: (text: string) => string;
 };
 
-export type FooterLayoutKey = StatusLineSegmentId | "extension-status";
+export type FooterLayoutKey = StatusLineSegmentId;
 
 export interface FooterLayoutItem {
   readonly key: FooterLayoutKey;
@@ -138,27 +138,32 @@ function normalizeFilterList(input: string[]): string[] {
   return out;
 }
 
-export function formatExtensionStatuses(input: FooterRenderInput, theme: ThemeLike): string | null {
+export function formatExtensionStatuses(
+  input: FooterRenderInput,
+  theme: ThemeLike,
+): ResolvedSegment[] {
   const entries = [...(input.extensionStatuses?.entries() ?? [])].sort(([a], [b]) =>
     a.localeCompare(b),
   );
-  if (entries.length === 0) return null;
+  if (entries.length === 0) return [];
 
   const blocked = new Set(normalizeFilterList(input.extensionSegments.hidden));
-  const visible = entries.filter(([key]) => !blocked.has(key));
+  const resolved: ResolvedSegment[] = [];
 
-  const parts = visible.slice(0, 5).map(([key, value]) => {
+  for (const [key, value] of entries) {
+    if (blocked.has(key)) continue;
     const trimmed = hasAnsi(value)
       ? value
       : value.replace(
           new RegExp(`^${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:\\s*[:=-]\\s*|\\s+)`, "i"),
           "",
         );
-    return truncateToWidth(trimmed, 18, "...");
-  });
+    const text = trimmed.trim();
+    if (!text) continue;
+    resolved.push({ key: key as StatusLineSegmentId, text, color: null });
+  }
 
-  if (parts.length === 0) return null;
-  return parts.join(theme.fg("dim", " | "));
+  return resolved;
 }
 
 export function formatSegment(
@@ -219,9 +224,9 @@ export function buildFooterRows(
     bottomLeft: resolveZone(input.zones.bottomLeft, input, theme),
     bottomRight: resolveZone(input.zones.bottomRight, input, theme),
   };
-  const extensionStatusText = formatExtensionStatuses(input, theme);
-  if (extensionStatusText) {
-    zones.bottomRight.push({ key: "extension-status", text: extensionStatusText, color: null });
+  const extensionStatusSegments = formatExtensionStatuses(input, theme);
+  if (extensionStatusSegments.length > 0) {
+    zones.bottomRight.push(...extensionStatusSegments);
   }
   return buildFooterRowsFromResolved(zones, theme, width);
 }

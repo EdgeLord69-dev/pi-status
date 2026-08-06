@@ -162,9 +162,9 @@ export function resolveFooter(
     bottomLeft: resolveZone(input.zones.bottomLeft),
     bottomRight: resolveZone(input.zones.bottomRight),
   };
-  const extensionStatusText = formatExtensionStatuses(input, theme);
-  if (extensionStatusText) {
-    zones.bottomRight.push({ key: "extension-status", text: extensionStatusText, color: null });
+  const extensionStatusSegments = formatExtensionStatuses(input, theme);
+  if (extensionStatusSegments.length > 0) {
+    zones[config.extensionStatusZone].push(...extensionStatusSegments);
   }
   return zones;
 }

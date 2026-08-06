@@ -379,7 +379,7 @@ describe("resolveFooter", () => {
       sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
     };
     const result = resolveFooter(snapshot, config, identityTheme);
-    expect(result.bottomRight).toEqual([{ key: "extension-status", text: "5h: 60%", color: null }]);
+    expect(result.bottomRight).toEqual([{ key: "pi-usage", text: "5h: 60%", color: null }]);
   });
 
   it("filters hidden extension statuses", () => {
@@ -401,7 +401,7 @@ describe("resolveFooter", () => {
       sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
     };
     const result = resolveFooter(snapshot, config, identityTheme);
-    expect(result.bottomRight).toEqual([{ key: "extension-status", text: "ok", color: null }]);
+    expect(result.bottomRight).toEqual([{ key: "other-ext", text: "ok", color: null }]);
   });
 
   it("omits extension status when no extension statuses", () => {
@@ -457,5 +457,26 @@ describe("resolveFooter", () => {
     expect(result.topLeft).toEqual([
       { key: "workspace-pulse", text: "Git ✓ main", color: "success" },
     ]);
+  });
+
+  it("routes extension statuses through extensionStatusZone", () => {
+    const config: PiStatusConfig = {
+      zones: { topLeft: [], topRight: [], bottomLeft: [], bottomRight: [] },
+      extensionSegments: { hidden: [] },
+      sidebarExtensionSegments: { hidden: [] },
+      extensionStatusZone: "topRight",
+      completionNotifications: false,
+      showSidebarToolNames: false,
+      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
+    };
+    const snapshot = makeInput();
+    const withStatuses = {
+      ...snapshot,
+      runState: "idle" as const,
+      extensionStatuses: new Map([["alpha", "ready"]]),
+    };
+    const result = resolveFooter(withStatuses, config, identityTheme);
+    expect(result.topRight.map(({ key }) => key)).toContain("alpha");
+    expect(result.bottomRight.map(({ key }) => key)).not.toContain("alpha");
   });
 });
