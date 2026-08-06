@@ -78,7 +78,7 @@ describe("dashboard draft initialization", () => {
       [],
       true,
     );
-    const ids = selectableRows(state, "layout")
+    const ids = selectableRows(state, "statusbar")
       .filter((row) => row.type === "segment")
       .map((row) => row.id);
 
@@ -176,10 +176,10 @@ describe("dashboard draft initialization", () => {
   });
 });
 
-describe("dashboard Sidebar tab initialization", () => {
-  it("exposes six tabs with Sidebar between Tools and Settings", () => {
+describe("dashboard Statusbar tab initialization", () => {
+  it("exposes six tabs with Statusbar first and Sidebar between Tools and Settings", () => {
     expect(DASHBOARD_TABS.map(({ id }) => id)).toEqual([
-      "layout",
+      "statusbar",
       "statuses",
       "session",
       "tools",
@@ -188,9 +188,9 @@ describe("dashboard Sidebar tab initialization", () => {
     ]);
   });
 
-  it("selects the Sidebar tab by default", () => {
+  it("selects the Statusbar tab by default", () => {
     const state = initDashboardState(config(), [], true);
-    expect(state.activeTab).toBe("sidebar");
+    expect(state.activeTab).toBe("statusbar");
   });
 
   it("builds Sidebar rows in layout order then control rows", () => {
@@ -227,43 +227,41 @@ function dispatch(state: DashboardState, action: DashboardAction): DashboardStat
 describe("dashboard transitions", () => {
   it("cycles tabs while preserving independent navigation", () => {
     let state = initDashboardState(config(), ["alpha"], true);
-    state.navigation.layout.selectedIndex = 3;
-    // New default tab is sidebar; three next_tab presses reach statuses.
-    state = dispatch(state, { type: "next_tab" });
-    state = dispatch(state, { type: "next_tab" });
+    state.navigation.statusbar.selectedIndex = 3;
+    // Default is statusbar; one next_tab reaches statuses.
     state = dispatch(state, { type: "next_tab" });
     expect(state.activeTab).toBe("statuses");
     state = dispatch(state, { type: "type_char", char: "q" });
     state = dispatch(state, { type: "previous_tab" });
-    expect(state.activeTab).toBe("layout");
-    expect(state.navigation.layout.selectedIndex).toBe(3);
+    expect(state.activeTab).toBe("statusbar");
+    expect(state.navigation.statusbar.selectedIndex).toBe(3);
     expect(state.navigation.statuses.query).toBe("q");
   });
 
   it("applies presets to draft only and marks manual edits custom", () => {
     let state = initDashboardState(config(), [], true);
-    state.activeTab = "layout";
+    state.activeTab = "statusbar";
     expect(state.preset).toBe("minimal");
     state = dispatch(state, { type: "adjust", delta: 1 });
     expect(state.preset).toBe("balanced");
     expect(state.draft.zones).toEqual(displayPreset("balanced"));
     expect(state.baseline.zones).toEqual(zones());
 
-    state.navigation.layout.selectedIndex = 2;
+    state.navigation.statusbar.selectedIndex = 2;
     state = dispatch(state, { type: "activate" });
     expect(state.preset).toBe("custom");
   });
 
   it("moves and reorders segments while protecting the final segment", () => {
     let state = initDashboardState(config({ zones: zones({ bottomLeft: [] }) }), [], true);
-    state.activeTab = "layout";
-    state.navigation.layout.selectedIndex = 2;
+    state.activeTab = "statusbar";
+    state.navigation.statusbar.selectedIndex = 2;
     state = dispatch(state, { type: "activate" });
     expect(state.draft.zones.topLeft).toEqual(["model-with-reasoning"]);
 
     state = initDashboardState(config(), [], true);
-    state.activeTab = "layout";
-    state.navigation.layout.selectedIndex = 3;
+    state.activeTab = "statusbar";
+    state.navigation.statusbar.selectedIndex = 3;
     state = dispatch(state, { type: "activate" });
     expect(state.draft.zones.topLeft).toContain("current-dir");
     expect(state.draft.zones.bottomLeft).toEqual([]);
@@ -275,16 +273,16 @@ describe("dashboard transitions", () => {
       [],
       true,
     );
-    state.activeTab = "layout";
+    state.activeTab = "statusbar";
     const original = structuredClone(state.draft.zones);
 
-    state.navigation.layout.selectedIndex = selectableRows(state, "layout").findIndex(
+    state.navigation.statusbar.selectedIndex = selectableRows(state, "statusbar").findIndex(
       (row) => row.type === "segment" && row.id === "model",
     );
     state = dispatch(state, { type: "adjust", delta: -1 });
     expect(state.draft.zones).toEqual(original);
 
-    state.navigation.layout.selectedIndex = selectableRows(state, "layout").findIndex(
+    state.navigation.statusbar.selectedIndex = selectableRows(state, "statusbar").findIndex(
       (row) => row.type === "segment" && row.id === "git-branch",
     );
     state = dispatch(state, { type: "adjust", delta: 1 });
@@ -301,8 +299,8 @@ describe("dashboard transitions", () => {
       [],
       false,
     );
-    state.activeTab = "layout";
-    state.navigation.layout.selectedIndex = selectableRows(state, "layout").findIndex(
+    state.activeTab = "statusbar";
+    state.navigation.statusbar.selectedIndex = selectableRows(state, "statusbar").findIndex(
       (row) => row.type === "segment" && row.id === "model",
     );
 
@@ -331,7 +329,7 @@ describe("dashboard transitions", () => {
 
   it("filters unavailable usage segments out of applied presets", () => {
     let state = initDashboardState(config(), [], false);
-    state.activeTab = "layout";
+    state.activeTab = "statusbar";
     state = dispatch(state, { type: "adjust", delta: 1 });
     expect(state.preset).toBe("balanced");
     expect(state.draft.zones).toEqual({
@@ -374,23 +372,23 @@ describe("dashboard transitions", () => {
       [],
       true,
     );
-    state.activeTab = "layout";
-    state.navigation.layout.selectedIndex = selectableRows(state, "layout").findIndex(
+    state.activeTab = "statusbar";
+    state.navigation.statusbar.selectedIndex = selectableRows(state, "statusbar").findIndex(
       (row) => row.type === "segment" && row.id === "model",
     );
 
     state = dispatch(state, { type: "adjust", delta: 1 });
     expect(state.draft.zones.topLeft).toEqual(["git-branch", "model"]);
-    expect(selectableRows(state, "layout")[state.navigation.layout.selectedIndex]).toEqual({
+    expect(selectableRows(state, "statusbar")[state.navigation.statusbar.selectedIndex]).toEqual({
       type: "segment",
       id: "model",
     });
 
-    state.navigation.layout.selectedIndex = selectableRows(state, "layout").findIndex(
+    state.navigation.statusbar.selectedIndex = selectableRows(state, "statusbar").findIndex(
       (row) => row.type === "segment" && row.id === "session-cost",
     );
     state = dispatch(state, { type: "activate" });
-    expect(selectableRows(state, "layout")[state.navigation.layout.selectedIndex]).toEqual({
+    expect(selectableRows(state, "statusbar")[state.navigation.statusbar.selectedIndex]).toEqual({
       type: "segment",
       id: "session-cost",
     });
@@ -400,11 +398,11 @@ describe("dashboard transitions", () => {
     const state = initDashboardState(config(), [], true);
     const result = reduceDashboardState(state, {
       type: "set_offset",
-      tab: "layout",
+      tab: "statusbar",
       offset: 4,
     });
-    expect(result.state.navigation.layout.offset).toBe(4);
-    expect(state.navigation.layout.offset).toBe(0);
+    expect(result.state.navigation.statusbar.offset).toBe(4);
+    expect(state.navigation.statusbar.offset).toBe(0);
     expect(result.effect).toBeUndefined();
   });
 
@@ -423,7 +421,7 @@ describe("dashboard transitions", () => {
     expect(saved.state.draft.zones.topLeft).toEqual(["model-with-reasoning"]);
   });
 
-  it.each(["layout", "statuses", "settings"] as const)(
+  it.each(["statusbar", "statuses", "settings"] as const)(
     "emits the whole draft from the %s Save row and remains dirty until saved",
     (tab) => {
       const state = initDashboardState(config(), ["alpha"], true);

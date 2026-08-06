@@ -59,7 +59,7 @@ const PRESET_LABELS = {
 } as const;
 
 const FOOTERS: Record<DashboardTabId, string> = {
-  layout: "↑/↓ Select  •  ←/→ Adjust  •  Space/Enter Apply  •  Tab Switch  •  q/Esc Close",
+  statusbar: "↑/↓ Select  •  ←/→ Adjust  •  Space/Enter Apply  •  Tab Switch  •  q/Esc Close",
   statuses: "Type Search  •  ↑/↓ Select  •  Space/Enter Toggle  •  Esc Clear/Close",
   session: "↑/↓ Select  •  Space/Enter Open  •  Tab Switch  •  q/Esc Close",
   tools: "Type Search  •  ↑/↓ Select  •  Space/Enter Toggle  •  Esc Clear/Close",
@@ -130,7 +130,7 @@ function logicalBody(
     interactiveIndex += 1;
   };
 
-  if (tab === "layout") {
+  if (tab === "statusbar") {
     for (const row of rows) {
       if (row.type === "save") continue;
       if (row.type === "preset") {

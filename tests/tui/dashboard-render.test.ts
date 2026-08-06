@@ -61,11 +61,11 @@ const preview = buildSnapshot(snapshotInput);
 describe("dashboard render", () => {
   it("renders the pi-usage shell and draft preview", () => {
     const state = initDashboardState(config(), ["alpha"], true);
-    state.activeTab = "layout";
+    state.activeTab = "statusbar";
     const result = renderDashboard(state, preview, noTheme, 100, 60);
     const output = result.lines.join("\n");
     expect(output).toContain("┏");
-    expect(output).toContain("Layout");
+    expect(output).toContain("Statusbar");
     expect(output).toContain("Preset");
     expect(output).toContain("Save changes");
     expect(output).toContain("GPT-5");
@@ -160,9 +160,9 @@ describe("dashboard render", () => {
     expect(state.navigation.tools.query).toBe("no-match");
   });
 
-  it("keeps the selected Layout row visible when capped", () => {
+  it("keeps the selected Statusbar row visible when capped", () => {
     const state = initDashboardState(config(), [], true);
-    state.activeTab = "layout";
+    state.activeTab = "statusbar";
     const result = renderDashboard(state, preview, noTheme, 100, 24);
 
     expect(result.lines.find((line) => line.includes("Preset"))).toContain("▸");
@@ -177,7 +177,7 @@ describe("dashboard render", () => {
     expect(output).toContain("Save changes");
   });
 
-  it.each(["layout", "statuses"] as const)(
+  it.each(["statusbar", "statuses"] as const)(
     "scrolls the %s Save row into view without losing footer or border",
     (tab) => {
       const state = initDashboardState(

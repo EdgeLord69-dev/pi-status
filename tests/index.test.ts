@@ -311,9 +311,7 @@ describe("extension wiring", () => {
           handleInput: (data: string) => void;
         }
       )({ terminal: { columns: 80, rows: 30 }, requestRender: () => {} }, null, {}, () => {});
-      // New default tab is sidebar; three forward cycles reach the statuses tab.
-      component.handleInput("\t");
-      component.handleInput("\t");
+      // Default tab is statusbar; one forward cycle reaches the statuses tab.
       component.handleInput("\t");
       preview = component.render(200).join("\n");
       return customPromise;
@@ -619,7 +617,11 @@ describe("extension wiring", () => {
       const component = (
         factory as (...args: unknown[]) => { handleInput: (data: string) => void }
       )({ terminal: { columns: 80, rows: 30 }, requestRender: () => {} }, null, {}, () => {});
-      // New default tab is sidebar; one forward tab reaches the settings tab.
+      // Default tab is statusbar; five forward tabs reach the settings tab.
+      component.handleInput("\t");
+      component.handleInput("\t");
+      component.handleInput("\t");
+      component.handleInput("\t");
       component.handleInput("\t");
       component.handleInput("\r"); // toggle notifications
       component.handleInput("\x1b[B"); // move to Save

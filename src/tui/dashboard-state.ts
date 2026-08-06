@@ -16,7 +16,7 @@ import type { DashboardTool } from "./tool-controls.ts";
 import { DISPLAY_PRESET_NAMES, displayPreset } from "./preset-actions.ts";
 
 export const DASHBOARD_TABS = [
-  { id: "layout", label: "Layout" },
+  { id: "statusbar", label: "Statusbar" },
   { id: "statuses", label: "Statuses" },
   { id: "session", label: "Session" },
   { id: "tools", label: "Tools" },
@@ -257,7 +257,7 @@ export function initDashboardState(
   const tools = structuredClone(options.tools ?? []);
   const session = options.session ? structuredClone(options.session) : undefined;
   return {
-    activeTab: "sidebar",
+    activeTab: "statusbar",
     baseline,
     draft: structuredClone(config),
     activeZone: "topLeft",
@@ -265,7 +265,7 @@ export function initDashboardState(
     discoveredStatuses: [...new Set(discoveredStatuses)].sort((a, b) => a.localeCompare(b)),
     visibleSegmentIds,
     navigation: {
-      layout: emptyNavigation(),
+      statusbar: emptyNavigation(),
       statuses: emptyNavigation(),
       session: emptyNavigation(),
       tools: emptyNavigation(),
@@ -281,7 +281,7 @@ export function selectableRows(
   state: DashboardState,
   tab: DashboardTabId = state.activeTab,
 ): DashboardSelectableRow[] {
-  if (tab === "layout") {
+  if (tab === "statusbar") {
     const assigned = STATUS_LINE_ZONE_ORDER.flatMap((zone) =>
       state.draft.zones[zone].filter((id) => state.visibleSegmentIds.includes(id)),
     );

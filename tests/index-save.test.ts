@@ -98,7 +98,11 @@ describe("/statusline persistence", () => {
     await new Promise((resolve) => setImmediate(resolve));
     const component = host.component();
 
-    // Settings tab: new default is sidebar, forward reaches settings.
+    // Settings tab: default is statusbar; five forward cycles reach settings.
+    component.handleInput("\t");
+    component.handleInput("\t");
+    component.handleInput("\t");
+    component.handleInput("\t");
     component.handleInput("\t");
     component.handleInput("\r"); // toggle notifications
     component.handleInput("\x1b[B"); // Save
@@ -144,7 +148,11 @@ describe("/statusline persistence", () => {
 
     await new Promise((resolve) => setImmediate(resolve));
     const component = host.component();
-    // Settings tab: new default is sidebar, forward tab reaches settings.
+    // Settings tab: default is statusbar; five forward cycles reach settings.
+    component.handleInput("\t");
+    component.handleInput("\t");
+    component.handleInput("\t");
+    component.handleInput("\t");
     component.handleInput("\t");
     component.handleInput("\r");
     component.handleInput("\x1b[B");
