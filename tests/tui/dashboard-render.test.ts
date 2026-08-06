@@ -30,6 +30,8 @@ function config(overrides: Partial<PiStatusConfig> = {}): PiStatusConfig {
   return {
     zones: zones(),
     extensionSegments: { hidden: [] },
+    sidebarExtensionSegments: { hidden: [] },
+    extensionStatusZone: "bottomRight",
     completionNotifications: false,
     showSidebarToolNames: false,
     sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),

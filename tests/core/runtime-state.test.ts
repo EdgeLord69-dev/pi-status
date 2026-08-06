@@ -11,6 +11,8 @@ const defaultConfig: PiStatusConfig = {
     bottomRight: [],
   },
   extensionSegments: { hidden: [] },
+    sidebarExtensionSegments: { hidden: [] },
+    extensionStatusZone: "bottomRight",
   completionNotifications: false,
   showSidebarToolNames: false,
   sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
@@ -76,6 +78,8 @@ describe("RuntimeStateMachine", () => {
     const newConfig: PiStatusConfig = {
       zones: { topLeft: ["git-branch"], topRight: [], bottomLeft: [], bottomRight: [] },
       extensionSegments: { hidden: ["x"] },
+    sidebarExtensionSegments: { hidden: [] },
+    extensionStatusZone: "bottomRight",
       completionNotifications: false,
       showSidebarToolNames: false,
       sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),

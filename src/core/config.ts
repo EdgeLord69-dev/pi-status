@@ -21,12 +21,15 @@ import {
   type SidebarPanelId,
   type SidebarPanelLayout,
   type StatusLineSegmentId,
+  type StatusLineZone,
   type StatusLineZones,
 } from "../shared/types.ts";
 
 export const DEFAULT_CONFIG: PiStatusConfig = {
   zones: cloneZones(DEFAULT_ZONES),
   extensionSegments: { hidden: [] },
+  sidebarExtensionSegments: { hidden: [] },
+  extensionStatusZone: "bottomRight",
   completionNotifications: false,
   showSidebarToolNames: false,
   sidebarPanelLayout: cloneSidebarPanelLayout(DEFAULT_SIDEBAR_PANEL_LAYOUT),
@@ -36,6 +39,10 @@ function cloneDefaultConfig(): PiStatusConfig {
   return {
     zones: cloneZones(DEFAULT_CONFIG.zones),
     extensionSegments: { hidden: [...DEFAULT_CONFIG.extensionSegments.hidden] },
+    sidebarExtensionSegments: {
+      hidden: [...DEFAULT_CONFIG.sidebarExtensionSegments.hidden],
+    },
+    extensionStatusZone: DEFAULT_CONFIG.extensionStatusZone,
     completionNotifications: DEFAULT_CONFIG.completionNotifications,
     showSidebarToolNames: DEFAULT_CONFIG.showSidebarToolNames,
     sidebarPanelLayout: cloneSidebarPanelLayout(DEFAULT_CONFIG.sidebarPanelLayout),
@@ -145,6 +152,18 @@ export function normalizeExtensionSegments(input: unknown): ExtensionSegments {
   return { hidden: normalizeFilterValues((input as { hidden?: unknown }).hidden) };
 }
 
+export function normalizeExtensionStatusZone(input: unknown): StatusLineZone {
+  if (
+    input === "topLeft" ||
+    input === "topRight" ||
+    input === "bottomLeft" ||
+    input === "bottomRight"
+  ) {
+    return input;
+  }
+  return "bottomRight";
+}
+
 export function normalizeSidebarPanelLayout(input: unknown): SidebarPanelLayout {
   if (!Array.isArray(input)) return cloneSidebarPanelLayout(DEFAULT_SIDEBAR_PANEL_LAYOUT);
 
@@ -188,6 +207,10 @@ function normalizeConfig(input: Record<string, unknown>): PiStatusConfig {
         ? normalizeZones({ topLeft: input.segments })
         : cloneZones(DEFAULT_ZONES),
     extensionSegments: normalizeExtensionSegments(input.extensionSegments),
+    sidebarExtensionSegments: Object.hasOwn(input, "sidebarExtensionSegments")
+      ? normalizeExtensionSegments(input.sidebarExtensionSegments)
+      : { hidden: [] },
+    extensionStatusZone: normalizeExtensionStatusZone(input.extensionStatusZone),
     completionNotifications: input.completionNotifications === true,
     showSidebarToolNames: input.showSidebarToolNames === true,
     sidebarPanelLayout: normalizeSidebarPanelLayout(input.sidebarPanelLayout),
@@ -215,6 +238,10 @@ export function saveConfig(
   const next: PiStatusConfig = {
     zones: cloneZones(config.zones),
     extensionSegments: { hidden: [...config.extensionSegments.hidden] },
+    sidebarExtensionSegments: {
+      hidden: [...config.sidebarExtensionSegments.hidden],
+    },
+    extensionStatusZone: config.extensionStatusZone,
     completionNotifications: config.completionNotifications,
     showSidebarToolNames: config.showSidebarToolNames,
     sidebarPanelLayout: cloneSidebarPanelLayout(config.sidebarPanelLayout),

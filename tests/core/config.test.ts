@@ -11,6 +11,7 @@ import {
   getConfigPath,
   loadConfig,
   normalizeExtensionSegments,
+  normalizeExtensionStatusZone,
   normalizeSegments,
   normalizeSidebarPanelLayout,
   normalizeZones,
@@ -29,6 +30,8 @@ import { MemoryConfigStore } from "../helpers.ts";
 const config: PiStatusConfig = {
   zones: { topLeft: ["git-branch"], topRight: [], bottomLeft: [], bottomRight: [] },
   extensionSegments: { hidden: ["alpha"] },
+  sidebarExtensionSegments: { hidden: [] },
+  extensionStatusZone: "bottomRight",
   completionNotifications: false,
   showSidebarToolNames: false,
   sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
@@ -82,6 +85,16 @@ describe("config — normalization", () => {
   it("normalizes extension segments: dedupes, rejects empty and non-strings", () => {
     expect(normalizeExtensionSegments(undefined)).toEqual({ hidden: [] });
     expect(normalizeExtensionSegments({ hidden: ["a", "a", "", 1] })).toEqual({ hidden: ["a"] });
+  });
+
+  it("normalizes extension status zone: defaults to bottomRight, rejects invalid values", () => {
+    expect(normalizeExtensionStatusZone(undefined)).toBe("bottomRight");
+    expect(normalizeExtensionStatusZone("topLeft")).toBe("topLeft");
+    expect(normalizeExtensionStatusZone("topRight")).toBe("topRight");
+    expect(normalizeExtensionStatusZone("bottomLeft")).toBe("bottomLeft");
+    expect(normalizeExtensionStatusZone("bottomRight")).toBe("bottomRight");
+    expect(normalizeExtensionStatusZone("unknown")).toBe("bottomRight");
+    expect(normalizeExtensionStatusZone(42)).toBe("bottomRight");
   });
 });
 
@@ -300,6 +313,8 @@ describe("config — direct extension file", () => {
     expect(loadConfig({ agentDir, store })).toEqual({
       zones: DEFAULT_ZONES,
       extensionSegments: { hidden: [] },
+      sidebarExtensionSegments: { hidden: [] },
+      extensionStatusZone: "bottomRight",
       completionNotifications: false,
       showSidebarToolNames: false,
       sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
@@ -333,6 +348,8 @@ describe("config — direct extension file", () => {
       expect(loadConfig({ agentDir: "/agent", store })).toEqual({
         zones: DEFAULT_ZONES,
         extensionSegments: { hidden: [] },
+        sidebarExtensionSegments: { hidden: [] },
+        extensionStatusZone: "bottomRight",
         completionNotifications: false,
         showSidebarToolNames: false,
         sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
@@ -406,6 +423,39 @@ describe("config — direct extension file", () => {
   });
 });
 
+describe("config — load/save round-trip", () => {
+  it("preserves sidebarExtensionSegments and extensionStatusZone through save and reload", () => {
+    const store = new MemoryConfigStore();
+    const source: PiStatusConfig = {
+      ...config,
+      sidebarExtensionSegments: { hidden: ["build", "lint"] },
+      extensionStatusZone: "topLeft",
+    };
+    saveConfig(source, { agentDir: "/agent", store });
+    const loaded = loadConfig({ agentDir: "/agent", store });
+    expect(loaded.sidebarExtensionSegments).toEqual({ hidden: ["build", "lint"] });
+    expect(loaded.extensionStatusZone).toBe("topLeft");
+  });
+
+  it("injects defaults for configs that pre-date the new fields", () => {
+    const store = new MemoryConfigStore();
+    const legacy = JSON.stringify({
+      zones: { topLeft: ["model"], topRight: [], bottomLeft: [], bottomRight: [] },
+      extensionSegments: { hidden: [] },
+      completionNotifications: false,
+      showSidebarToolNames: false,
+      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
+        id,
+        visible: true,
+      })),
+    });
+    store.seed(getConfigPath("/agent"), legacy);
+    const loaded = loadConfig({ agentDir: "/agent", store });
+    expect(loaded.sidebarExtensionSegments).toEqual({ hidden: [] });
+    expect(loaded.extensionStatusZone).toBe("bottomRight");
+  });
+});
+
 describe("config — sidebar tool names", () => {
   it.each([
     ["missing", undefined, false],
@@ -450,6 +500,8 @@ describe("config — filesystem", () => {
     expect(loadConfig()).toEqual({
       zones: DEFAULT_ZONES,
       extensionSegments: { hidden: [] },
+      sidebarExtensionSegments: { hidden: [] },
+      extensionStatusZone: "bottomRight",
       completionNotifications: false,
       showSidebarToolNames: false,
       sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
@@ -557,7 +609,9 @@ describe("config — completion notifications", () => {
       [
         "completionNotifications",
         "extensionSegments",
+        "extensionStatusZone",
         "showSidebarToolNames",
+        "sidebarExtensionSegments",
         "sidebarPanelLayout",
         "zones",
       ].sort(),
