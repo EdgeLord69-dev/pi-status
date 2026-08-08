@@ -166,16 +166,23 @@ function logicalBody(
       ...buildFooterRowsFromResolved(resolveFooter(previewInput, state.draft, theme), theme, width),
     );
   } else if (tab === "statuses") {
+    const rows = selectableRows(state, "statuses");
+    const surface = renderState.navigation.statuses.surface;
+    const surfaceLabel = surface === "statusbar" ? "Statusbar" : "Sidebar";
     lines.push(`Search: ${renderState.navigation.statuses.query}`);
+    if (rows[0]?.type === "surface_picker") {
+      pushSelectable(" ", "Surface", surfaceLabel);
+    }
     const statusKeys = state.discoveredStatuses.filter((key) =>
       includesFuzzy(key, renderState.navigation.statuses.query),
     );
     if (statusKeys.length === 0) lines.push(theme.dim("No matching statuses."));
     for (const key of statusKeys) {
-      const statusBarShown = !state.draft.extensionSegments.hidden.includes(key);
-      const sidebarShown = !state.draft.sidebarExtensionSegments.hidden.includes(key);
-      pushSelectable(statusBarShown ? "[•]" : "[ ]", "Statusbar", key);
-      pushSelectable(sidebarShown ? "[•]" : "[ ]", "Sidebar", key);
+      const hidden = surface === "statusbar"
+        ? state.draft.extensionSegments.hidden
+        : state.draft.sidebarExtensionSegments.hidden;
+      const shown = !hidden.includes(key);
+      pushSelectable(shown ? "[•]" : "[ ]", "", key);
     }
   } else if (tab === "session") {
     if (!state.session) {
