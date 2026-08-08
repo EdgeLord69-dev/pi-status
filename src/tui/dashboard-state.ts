@@ -31,6 +31,7 @@ export interface TabNavigation {
   selectedIndex: number;
   query: string;
   offset: number;
+  surface: "statusbar" | "sidebar";
 }
 
 export interface DashboardState {
@@ -240,7 +241,12 @@ function presetForZones(
   return "custom";
 }
 
-const emptyNavigation = (): TabNavigation => ({ selectedIndex: 0, query: "", offset: 0 });
+const emptyNavigation = (): TabNavigation => ({
+  selectedIndex: 0,
+  query: "",
+  offset: 0,
+  surface: "statusbar",
+});
 
 export function initDashboardState(
   config: PiStatusConfig,

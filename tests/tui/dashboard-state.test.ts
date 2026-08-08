@@ -188,6 +188,16 @@ describe("dashboard Statusbar tab initialization", () => {
     expect(state.activeTab).toBe("statusbar");
   });
 
+  it("initializes Statuses navigation with surface='statusbar' by default", () => {
+    const state = initDashboardState(config(), [], true);
+    expect(state.navigation.statuses).toEqual({
+      selectedIndex: 0,
+      query: "",
+      offset: 0,
+      surface: "statusbar",
+    });
+  });
+
   it("next_tab from Statusbar lands on Sidebar", () => {
     let state = initDashboardState(config(), [], true);
     state.activeTab = "statusbar";
@@ -252,7 +262,12 @@ describe("dashboard Statusbar tab initialization", () => {
 
   it("initializes Sidebar navigation with selectedIndex 0 and empty query", () => {
     const state = initDashboardState(config(), [], true);
-    expect(state.navigation.sidebar).toEqual({ selectedIndex: 0, query: "", offset: 0 });
+    expect(state.navigation.sidebar).toEqual({
+      selectedIndex: 0,
+      query: "",
+      offset: 0,
+      surface: "statusbar",
+    });
   });
 });
 
