@@ -172,19 +172,33 @@ describe("dashboard draft initialization", () => {
 });
 
 describe("dashboard Statusbar tab initialization", () => {
-  it("exposes six tabs with Statusbar first and Sidebar between Tools and Settings", () => {
+  it("exposes six tabs with Statusbar first and Sidebar between Statusbar and Statuses", () => {
     expect(DASHBOARD_TABS.map(({ id }) => id)).toEqual([
       "statusbar",
+      "sidebar",
       "statuses",
       "session",
       "tools",
-      "sidebar",
       "settings",
     ]);
   });
 
   it("selects the Statusbar tab by default", () => {
     const state = initDashboardState(config(), [], true);
+    expect(state.activeTab).toBe("statusbar");
+  });
+
+  it("next_tab from Statusbar lands on Sidebar", () => {
+    let state = initDashboardState(config(), [], true);
+    state.activeTab = "statusbar";
+    state = reduceDashboardState(state, { type: "next_tab" }).state;
+    expect(state.activeTab).toBe("sidebar");
+  });
+
+  it("previous_tab from Sidebar lands on Statusbar", () => {
+    let state = initDashboardState(config(), [], true);
+    state.activeTab = "sidebar";
+    state = reduceDashboardState(state, { type: "previous_tab" }).state;
     expect(state.activeTab).toBe("statusbar");
   });
 
@@ -258,10 +272,14 @@ describe("dashboard transitions", () => {
   it("cycles tabs while preserving independent navigation", () => {
     let state = initDashboardState(config(), ["alpha"], true);
     state.navigation.statusbar.selectedIndex = 3;
-    // Default is statusbar; one next_tab reaches statuses.
+    // Default is statusbar; two next_tabs reach statuses (sidebar first now).
+    state = dispatch(state, { type: "next_tab" });
+    expect(state.activeTab).toBe("sidebar");
     state = dispatch(state, { type: "next_tab" });
     expect(state.activeTab).toBe("statuses");
     state = dispatch(state, { type: "type_char", char: "q" });
+    state = dispatch(state, { type: "previous_tab" });
+    expect(state.activeTab).toBe("sidebar");
     state = dispatch(state, { type: "previous_tab" });
     expect(state.activeTab).toBe("statusbar");
     expect(state.navigation.statusbar.selectedIndex).toBe(3);

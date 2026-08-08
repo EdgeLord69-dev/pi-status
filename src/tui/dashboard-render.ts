@@ -271,8 +271,8 @@ function dialogBody(dialog: DashboardDialog, width: number, theme: StatusLineThe
   const body = compact
     ? "Pi will summarize older context."
     : save
-      ? "Apply draft Layout, Statuses, Sidebar, and Settings changes."
-      : "Unsaved Layout, Statuses, or Settings changes will be lost.";
+      ? "Apply draft Statusbar, Statuses, Sidebar, and Settings changes."
+      : "Unsaved Statusbar, Statuses, or Settings changes will be lost.";
   return {
     lines: [
       heading,

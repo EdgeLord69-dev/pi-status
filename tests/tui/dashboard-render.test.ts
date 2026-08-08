@@ -14,7 +14,7 @@ import {
   initDashboardState,
   selectableRows,
 } from "../../src/tui/dashboard-state.ts";
-import { renderDashboard } from "../../src/tui/dashboard-render.ts";
+import { renderDashboard, type DashboardDialog } from "../../src/tui/dashboard-render.ts";
 import { noTheme } from "../../src/tui/theme.ts";
 
 function zones(overrides: Partial<StatusLineZones> = {}): StatusLineZones {
@@ -575,5 +575,19 @@ describe("dashboard Session and Tools rendering", () => {
     expect(renderDashboard(filtered, preview, noTheme, 100, 40).lines.join("\n")).toContain(
       "No matching tools.",
     );
+  });
+});
+
+describe("save confirm dialog body", () => {
+  it("uses 'Statusbar' (not 'Layout') in the affected surfaces list", () => {
+    const state = initDashboardState(config(), [], true);
+    const dialog: DashboardDialog = {
+      type: "confirm",
+      kind: "save",
+      selectedIndex: 0,
+    };
+    const output = renderDashboard(state, preview, noTheme, 100, 40, dialog).lines.join("\n");
+    expect(output).toContain("Statusbar");
+    expect(output).not.toMatch(/Layout/);
   });
 });

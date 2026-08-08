@@ -17,10 +17,10 @@ import { DISPLAY_PRESET_NAMES, displayPreset } from "./preset-actions.ts";
 
 export const DASHBOARD_TABS = [
   { id: "statusbar", label: "Statusbar" },
+  { id: "sidebar", label: "Sidebar" },
   { id: "statuses", label: "Statuses" },
   { id: "session", label: "Session" },
   { id: "tools", label: "Tools" },
-  { id: "sidebar", label: "Sidebar" },
   { id: "settings", label: "Settings" },
 ] as const;
 
