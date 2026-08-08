@@ -535,7 +535,7 @@ function todosRows(snap: SidebarSnapshot, palette: Palette): string[] {
 
 function workspaceRows(
   snap: SidebarSnapshot,
-  contentWidth: number,
+  panelContentWidth: number,
   palette: Palette,
 ): {
   identity: string[];
@@ -561,17 +561,15 @@ function workspaceRows(
         ? "warning"
         : "ready";
   const gitState = branch && symbol ? palette.paint(role, symbol) : "";
-  // ponytail: contentWidth < 38 mirrors the original `safeWidth <= 39` threshold
-  // (contentWidth = safeWidth - 2). The pulseCore/pulseDetails compact labels
-  // (e.g. "?3" vs "3 untracked") must keep the same cutover to avoid drift in
-  // existing width-matrix tests. Upgrade to a shared constant if more sites
-  // need the threshold.
-  const compact = contentWidth < 38;
-  const inline = branch
-    ? `${project} ${palette.paint("dim", "·")} ${branch} ${gitState}`
-    : project;
+  // ponytail: panelContentWidth < 34 mirrors the original `safeWidth <= 39` threshold
+  // (panelContentWidth = safeWidth - 6, the inner width of panelRows). The
+  // pulseCore/pulseDetails compact labels (e.g. "?3" vs "3 untracked") must
+  // keep the same cutover to avoid drift in existing width-matrix tests.
+  // Upgrade to a shared constant if more sites need the threshold.
+  const compact = panelContentWidth < 34;
+  const inline = branch ? `${project} ${palette.paint("dim", "·")} ${branch} ${gitState}` : project;
   const identityRows = branch
-    ? visibleWidth(inline) <= contentWidth
+    ? visibleWidth(inline) <= panelContentWidth
       ? [inline]
       : [project, `${branch} ${gitState}`]
     : [project];

@@ -429,6 +429,55 @@ describe("workspace identity overflow", () => {
       expect(text).toContain(branchName);
     }
   });
+
+  it("keeps the original compact-label cutover at the safeWidth=39 boundary", () => {
+    // The pulseDetails compact labels (e.g. "?3" vs "3 untracked") must keep
+    // the same cutover as before the workspace overflow refactor: compact when
+    // safeWidth <= 39, non-compact at safeWidth >= 40. The refactor moved
+    // threshold derivation into workspaceRows using panelContentWidth (=
+    // safeWidth - 6), so the predicate is panelContentWidth < 34.
+    // The untracked detail is the longest one, so checking it alone locks in
+    // the cutover without depending on the panel's own width truncation of
+    // the joined detailParts string.
+    const footer = withDefaults({
+      cwd: "/home/user/repo",
+      thinkingLevel: "off",
+      gitBranch: "main",
+      runState: "idle",
+      contextUsage: { tokens: 0, contextWindow: 1, percent: 0 },
+      sessionId: "abc",
+      extensionStatuses: new Map(),
+      workspacePulse: {
+        status: "changed",
+        directory: "/home/user/repo",
+        root: "/home/user/repo",
+        branch: "main",
+        ahead: 0,
+        behind: 0,
+        counts: { staged: 0, unstaged: 0, untracked: 3, conflicts: 0 },
+        trackedFiles: 0,
+        linesAdded: 0,
+        linesRemoved: 0,
+        binaryFiles: 0,
+        submodules: 0,
+      },
+    });
+    const input = makeInput({ footer });
+    const snap = buildSidebarSnapshot(input);
+    for (const width of [39, 40, 43, 44]) {
+      const lines = renderSidebarLines(snap, input.config, noTheme, width, 36, {
+        colorEnabled: false,
+      });
+      const text = lines.join("\n");
+      if (width <= 39) {
+        expect(text).toContain("?3");
+        expect(text).not.toContain("3 untracked");
+      } else {
+        expect(text).toContain("3 untracked");
+        expect(text).not.toContain("?3");
+      }
+    }
+  });
 });
 
 describe("renderSidebarLines width matrix", () => {
