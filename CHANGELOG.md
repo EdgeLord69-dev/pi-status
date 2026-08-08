@@ -41,6 +41,21 @@ All notable changes to `@pi-vault/pi-status` are documented in this file.
 - Routed session actions through Pi's public command-context APIs and reused Pi's public live tool APIs without adding persistence.
 - Consolidated dashboard state and retained only dashboard-owned preset, tool, and session helpers.
 
+### Sidebar
+
+- Added a right-edge, non-capturing sidebar that runs only in TUI sessions and exposes the same live data the footer tracks, plus optional panels contributed by other extensions.
+- Nine built-in panels ship in this default order: `agent`, `activity`, `alerts`, `statuses`, `todos`, `context`, `workspace`, `usage`, `tools`. `statuses` is a pi-status split of the combined STATUSES: text matching `error|failed?|failure|offline|unavailable` or `warn|warning|degraded|blocked` routes to `alerts`; everything else lands in `statuses`.
+- Public contribution channel `pi-status:sidebar-panels` (protocol version `1`) accepts panels over Pi's `pi.events` bus. Registry limits: 64 panels, 24 rows, 160 row chars, 48 title chars, 128 source chars, 128 id chars, 64 tracked sources. Panel IDs must be namespaced (`vendor:name`). Title and row text are sanitized for ANSI/OSC escapes, C0/C1 controls, Unicode bidi overrides, and surrogate validity.
+- Contributions are hidden by default: `normalizeSidebarPanelLayout` only seeds built-ins into the default layout, so a newly registered contribution does not appear until the user adds it via the Sidebar dashboard tab.
+- TODOS panel renders `done/total`, then one row per task with `✓`/`◐`/`○` indicator, `#id`, and task text. pi-status consumes a pre-normalized `NormalizedTodo[]` snapshot; format parsing belongs to the producer that populates the snapshot.
+- Width breakpoints: 39-column compact layout (`COMPACT_SIDEBAR_MAX_WIDTH = 39`); 92-column auto-hide (`MIN_MAIN_WIDTH(64) + MIN_SIDEBAR_WIDTH(28)`).
+- Resize shortcut `Ctrl+Shift+R` enters temporary Resize mode; keys adjust width (`Shift+Left`/`Shift+Right` ±4, `Left`/`Right` ±1, `Enter` accept, `Escape` restore); SGR mouse drag from the divider column adjusts width continuously. Mouse reporting is enabled only while in Resize mode.
+- Dashboard overlay centering beside the sidebar: `openStatusLineDashboard` anchors the dashboard at `center` and applies `offsetX: -Math.floor(effectiveSidebarWidth / 2)` when the sidebar is effectively visible, landing the dashboard in the main column. With the sidebar hidden, no offset is applied.
+- Alt-screen fullscreen (`--ui-mode fullscreen`) is detected via `Symbol.for("@earendil-works/pi-tui/viewport")`; the sidebar refuses to install and `SidebarController.isSupported()` returns false. No warning is emitted — the absence of the sidebar is the signal. The footer and `/statusline` continue to work.
+- `NO_COLOR` is honored by presence for the sidebar (in addition to the footer and dashboard documented above).
+- Idempotent `session_shutdown` cleanup: the sidebar controller, sidebar panel registry, workspace-pulse runtime, activity runtime, usage runtime, notifications, dashboard overlay, and footer are all disposed; each dispose is guarded by `if (disposed) return`.
+- Reference SHAs: Atelier `d78f1d1`, Pi `583f153d5`.
+
 ## 0.3.0 - 2026-06-23
 
 ### Added
