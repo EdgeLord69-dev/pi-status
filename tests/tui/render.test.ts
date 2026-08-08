@@ -8,6 +8,7 @@ import {
   buildFooterRowsFromResolved,
   findProjectRootLabel,
   formatCompactNumber,
+  formatExtensionStatuses,
   formatModelWithReasoning,
   formatSegment,
   type FooterRenderInput,
@@ -990,12 +991,58 @@ describe("buildFooterRows", () => {
     expect(visibleWidth(extensionRow)).toBe(200);
   });
 
+  it("formatExtensionStatuses returns one ResolvedSegment per visible entry", () => {
+    const segments = formatExtensionStatuses(
+      segmentInput({
+        zones: { topLeft: [], topRight: [], bottomLeft: [], bottomRight: [] },
+        extensionStatuses: new Map([
+          ["alpha", "ready"],
+          ["beta", "warn"],
+        ]),
+      }),
+      identityTheme,
+    );
+    expect(segments).toEqual([
+      { key: "alpha", text: "ready", color: null },
+      { key: "beta", text: "warn", color: null },
+    ]);
+  });
+
+  it("formatExtensionStatuses honors the hidden list", () => {
+    const segments = formatExtensionStatuses(
+      segmentInput({
+        zones: { topLeft: [], topRight: [], bottomLeft: [], bottomRight: [] },
+        extensionSegments: { hidden: ["alpha"] },
+        extensionStatuses: new Map([
+          ["alpha", "ready"],
+          ["beta", "warn"],
+        ]),
+      }),
+      identityTheme,
+    );
+    expect(segments).toEqual([{ key: "beta", text: "warn", color: null }]);
+  });
+
+  it("formatExtensionStatuses drops whitespace-only values", () => {
+    const segments = formatExtensionStatuses(
+      segmentInput({
+        zones: { topLeft: [], topRight: [], bottomLeft: [], bottomRight: [] },
+        extensionStatuses: new Map([
+          ["alpha", "   "],
+          ["beta", "ok"],
+        ]),
+      }),
+      identityTheme,
+    );
+    expect(segments).toEqual([{ key: "beta", text: "ok", color: null }]);
+  });
+
   it("renders top and bottom rows independently with right alignment", () => {
     const zones: ResolvedFooterZones = {
       topLeft: [{ key: "model", text: "left", color: "accent" as const }],
       topRight: [{ key: "git-branch", text: "right", color: "warning" as const }],
       bottomLeft: [],
-      bottomRight: [{ key: "extension-status", text: "status", color: null }],
+      bottomRight: [{ key: "model", text: "status", color: null }],
     };
     expect(buildFooterRowsFromResolved(zones, identityTheme, 10)).toEqual([
       "left right",

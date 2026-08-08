@@ -182,7 +182,7 @@ export function buildSidebarSnapshot(input: SidebarSnapshotInput): SidebarSnapsh
   const { projectName, pulse } = deriveProjectName(footer);
   const { alerts, statuses } = splitStatuses(
     footer.extensionStatuses ?? new Map<string, string>(),
-    config.extensionSegments.hidden,
+    config.sidebarExtensionSegments.hidden,
   );
   const activeNames = Array.from(new Set(input.activeToolNames ?? []));
   const activity = footer.activity;

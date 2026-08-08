@@ -16,9 +16,15 @@ import {
   type DashboardState,
   type DashboardTabId,
   findSegmentAssignment,
+  includesFuzzy,
   SEGMENT_METADATA,
   selectableRows,
 } from "./dashboard-state.ts";
+import {
+  buildFooterRowsFromResolved,
+  type FooterRenderColor,
+  type FooterRenderInput,
+} from "./render.ts";
 import {
   frame,
   frameContentWidth,
@@ -26,8 +32,6 @@ import {
   renderTabBar,
   renderTooSmall,
 } from "./overlay-render.ts";
-import type { FooterRenderInput } from "./render.ts";
-import { buildFooterRowsFromResolved } from "./render.ts";
 import type { StatusLineTheme } from "./theme.ts";
 
 export interface DashboardRenderResult {
@@ -37,7 +41,7 @@ export interface DashboardRenderResult {
 
 export type DashboardDialog =
   | { type: "rename"; input: Input }
-  | { type: "confirm"; kind: "discard" | "compact"; selectedIndex: 0 | 1 };
+  | { type: "confirm"; kind: "discard" | "compact" | "save"; selectedIndex: 0 | 1 };
 
 type LogicalBody = {
   lines: string[];
@@ -59,7 +63,7 @@ const PRESET_LABELS = {
 } as const;
 
 const FOOTERS: Record<DashboardTabId, string> = {
-  layout: "↑/↓ Select  •  ←/→ Adjust  •  Space/Enter Apply  •  Tab Switch  •  q/Esc Close",
+  statusbar: "↑/↓ Select  •  ←/→ Adjust  •  Space/Enter Apply  •  Tab Switch  •  q/Esc Close",
   statuses: "Type Search  •  ↑/↓ Select  •  Space/Enter Toggle  •  Esc Clear/Close",
   session: "↑/↓ Select  •  Space/Enter Open  •  Tab Switch  •  q/Esc Close",
   tools: "Type Search  •  ↑/↓ Select  •  Space/Enter Toggle  •  Esc Clear/Close",
@@ -68,10 +72,6 @@ const FOOTERS: Record<DashboardTabId, string> = {
   settings: "↑/↓ Select  •  Space/Enter Toggle/Save  •  Tab Switch  •  q/Esc Close",
 };
 
-/**
- * Default available-panels snapshot used when the caller does not supply one.
- * Phase 7 replaces this seam with a registry-backed snapshot in `src/index.ts`.
- */
 const DEFAULT_BUILTIN_SIDEBAR_PANELS: readonly { id: SidebarPanelId; title: string }[] =
   BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, title: id }));
 
@@ -89,6 +89,14 @@ function selectableLine(
   const text = description ? `${label} - ${theme.dim(description)}` : label;
   return truncateToWidth(`${prefix}${truncateToWidth(text, remaining, "")}`, width, "");
 }
+
+// ponytail: fixed 4-color zone mapping; per-user override deferred until requested.
+const ZONE_ROW_COLORS: Record<StatusLineZone, FooterRenderColor> = {
+  topLeft: "accent",
+  topRight: "success",
+  bottomLeft: "warning",
+  bottomRight: "dim",
+};
 
 function stateForNaturalHeight(
   state: DashboardState,
@@ -130,21 +138,24 @@ function logicalBody(
     interactiveIndex += 1;
   };
 
-  if (tab === "layout") {
+  if (tab === "statusbar") {
     for (const row of rows) {
       if (row.type === "save") continue;
       if (row.type === "preset") {
         pushSelectable("↔", "Preset", PRESET_LABELS[state.preset]);
       } else if (row.type === "zone") {
         pushSelectable("↔", "Active zone", ZONE_LABELS[state.activeZone]);
+      } else if (row.type === "extension_status_zone") {
+        pushSelectable("↔", "Extension statuses", ZONE_LABELS[state.draft.extensionStatusZone]);
       } else if (row.type === "segment") {
         const metadata = SEGMENT_METADATA.get(row.id);
         const assignment = findSegmentAssignment(state.draft.zones, row.id);
         const position = assignment
           ? `${ZONE_LABELS[assignment.zone]} ${assignment.index + 1}`
           : "Disabled";
+        const checkbox = assignment ? theme.fg(ZONE_ROW_COLORS[assignment.zone], "[•]") : "[ ]";
         pushSelectable(
-          assignment ? "[•]" : "[ ]",
+          checkbox,
           `${metadata?.label ?? row.id} (${position})`,
           metadata?.description ?? "",
         );
@@ -156,11 +167,15 @@ function logicalBody(
     );
   } else if (tab === "statuses") {
     lines.push(`Search: ${renderState.navigation.statuses.query}`);
-    const statuses = rows.filter((row) => row.type === "status");
-    if (statuses.length === 0) lines.push(theme.dim("No matching statuses."));
-    for (const row of statuses) {
-      const shown = !state.draft.extensionSegments.hidden.includes(row.key);
-      pushSelectable(shown ? "[•]" : "[ ]", row.key, "Show in the status line");
+    const statusKeys = state.discoveredStatuses.filter((key) =>
+      includesFuzzy(key, renderState.navigation.statuses.query),
+    );
+    if (statusKeys.length === 0) lines.push(theme.dim("No matching statuses."));
+    for (const key of statusKeys) {
+      const statusBarShown = !state.draft.extensionSegments.hidden.includes(key);
+      const sidebarShown = !state.draft.sidebarExtensionSegments.hidden.includes(key);
+      pushSelectable(statusBarShown ? "[•]" : "[ ]", "Statusbar", key);
+      pushSelectable(sidebarShown ? "[•]" : "[ ]", "Sidebar", key);
     }
   } else if (tab === "session") {
     if (!state.session) {
@@ -202,11 +217,6 @@ function logicalBody(
         `${String(index + 1).padStart(2)}  ${title}${suffix}`,
       );
     });
-    pushSelectable(
-      state.draft.showSidebarToolNames ? "[•]" : "[ ]",
-      "Show tool names",
-      "Reveal active tool names in the Sidebar (when not compact)",
-    );
     pushSelectable(" ", "Restore default", "Reset Sidebar to the built-in visible layout");
     const visibleIds = state.draft.sidebarPanelLayout
       .filter((entry) => entry.visible)
@@ -227,6 +237,11 @@ function logicalBody(
         "Completion notifications",
         "Notify when Pi finishes a response",
       );
+      pushSelectable(
+        state.draft.showSidebarToolNames ? "[•]" : "[ ]",
+        "Show tool names",
+        "Reveal active tool names in the Sidebar (when not compact)",
+      );
     }
   }
   if (rows.at(-1)?.type === "save") pushSelectable(" ", "Save changes");
@@ -246,13 +261,22 @@ function dialogBody(dialog: DashboardDialog, width: number, theme: StatusLineThe
   }
 
   const compact = dialog.kind === "compact";
-  const action = compact ? "Compact session" : "Discard changes";
+  const save = dialog.kind === "save";
+  const action = compact ? "Compact session" : save ? "Save" : "Discard changes";
+  const heading = compact
+    ? "Compact session?"
+    : save
+      ? "Save changes?"
+      : "Discard unsaved changes?";
+  const body = compact
+    ? "Pi will summarize older context."
+    : save
+      ? "Apply draft Layout, Statuses, Sidebar, and Settings changes."
+      : "Unsaved Layout, Statuses, or Settings changes will be lost.";
   return {
     lines: [
-      compact ? "Compact session?" : "Discard unsaved changes?",
-      compact
-        ? "Pi will summarize older context."
-        : "Unsaved Layout, Statuses, or Settings changes will be lost.",
+      heading,
+      body,
       selectableLine(dialog.selectedIndex === 0, "", "Cancel", "", width, theme),
       selectableLine(dialog.selectedIndex === 1, "", action, "", width, theme),
     ],

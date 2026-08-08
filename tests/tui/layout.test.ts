@@ -81,14 +81,20 @@ describe("fitFooterRow", () => {
   });
 
   it("drops extension status before configured segments", () => {
+    const result = fitFooterRow([item("model")], [item("model", "ext")], 5, " · ", visibleWidth);
+    expect(result).toEqual({ left: [item("model")], right: [] });
+  });
+
+  it("treats unknown keys as tier 0 (drop first)", () => {
+    // Extension key not in DROP_TIER must drop before a known tier-3 segment.
     const result = fitFooterRow(
-      [item("model")],
-      [item("extension-status", "ext")],
-      5,
+      [item("session-id", "sid")],
+      [item("custom-tool-status", "ext")],
+      6,
       " · ",
       visibleWidth,
     );
-    expect(result).toEqual({ left: [item("model")], right: [] });
+    expect(result).toEqual({ left: [item("session-id", "sid")], right: [] });
   });
 
   it("drops telemetry before the existing model anchor", () => {

@@ -16,7 +16,7 @@ import type { DashboardTool } from "./tool-controls.ts";
 import { DISPLAY_PRESET_NAMES, displayPreset } from "./preset-actions.ts";
 
 export const DASHBOARD_TABS = [
-  { id: "layout", label: "Layout" },
+  { id: "statusbar", label: "Statusbar" },
   { id: "statuses", label: "Statuses" },
   { id: "session", label: "Session" },
   { id: "tools", label: "Tools" },
@@ -49,8 +49,9 @@ export interface DashboardState {
 export type DashboardSelectableRow =
   | { type: "preset" }
   | { type: "zone" }
+  | { type: "extension_status_zone" }
   | { type: "segment"; id: StatusLineSegmentId }
-  | { type: "status"; key: string }
+  | { type: "status_visibility"; key: string; surface: "statusbar" | "sidebar" }
   | { type: "tool"; name: string }
   | { type: "rename_session" }
   | { type: "compact_session" }
@@ -190,6 +191,8 @@ export function configsEqual(left: PiStatusConfig, right: PiStatusConfig): boole
   return (
     STATUS_LINE_ZONE_ORDER.every((zone) => sameArray(left.zones[zone], right.zones[zone])) &&
     sameArray(left.extensionSegments.hidden, right.extensionSegments.hidden) &&
+    sameArray(left.sidebarExtensionSegments.hidden, right.sidebarExtensionSegments.hidden) &&
+    left.extensionStatusZone === right.extensionStatusZone &&
     sameSidebarPanelLayout(left, right) &&
     left.completionNotifications === right.completionNotifications &&
     left.showSidebarToolNames === right.showSidebarToolNames
@@ -200,7 +203,7 @@ export function isDashboardDirty(state: DashboardState): boolean {
   return !configsEqual(state.baseline, state.draft);
 }
 
-function includesFuzzy(haystack: string, needle: string): boolean {
+export function includesFuzzy(haystack: string, needle: string): boolean {
   if (!needle) return true;
   let queryIndex = 0;
   const source = haystack.toLowerCase();
@@ -252,7 +255,7 @@ export function initDashboardState(
   const tools = structuredClone(options.tools ?? []);
   const session = options.session ? structuredClone(options.session) : undefined;
   return {
-    activeTab: "sidebar",
+    activeTab: "statusbar",
     baseline,
     draft: structuredClone(config),
     activeZone: "topLeft",
@@ -260,7 +263,7 @@ export function initDashboardState(
     discoveredStatuses: [...new Set(discoveredStatuses)].sort((a, b) => a.localeCompare(b)),
     visibleSegmentIds,
     navigation: {
-      layout: emptyNavigation(),
+      statusbar: emptyNavigation(),
       statuses: emptyNavigation(),
       session: emptyNavigation(),
       tools: emptyNavigation(),
@@ -276,7 +279,7 @@ export function selectableRows(
   state: DashboardState,
   tab: DashboardTabId = state.activeTab,
 ): DashboardSelectableRow[] {
-  if (tab === "layout") {
+  if (tab === "statusbar") {
     const assigned = STATUS_LINE_ZONE_ORDER.flatMap((zone) =>
       state.draft.zones[zone].filter((id) => state.visibleSegmentIds.includes(id)),
     );
@@ -286,6 +289,7 @@ export function selectableRows(
     return [
       { type: "preset" },
       { type: "zone" },
+      { type: "extension_status_zone" },
       ...[...assigned, ...unassigned].map((id) => ({ type: "segment" as const, id })),
       { type: "save" },
     ];
@@ -295,7 +299,10 @@ export function selectableRows(
     return [
       ...state.discoveredStatuses
         .filter((key) => includesFuzzy(key, query))
-        .map((key) => ({ type: "status" as const, key })),
+        .flatMap((key) => [
+          { type: "status_visibility" as const, key, surface: "statusbar" as const },
+          { type: "status_visibility" as const, key, surface: "sidebar" as const },
+        ]),
       { type: "save" },
     ];
   }
@@ -316,12 +323,12 @@ export function selectableRows(
         type: "sidebar_panel" as const,
         id: entry.id,
       })),
-      { type: "sidebar_tool_names" },
       { type: "sidebar_default" },
       { type: "save" },
     ];
   }
-  if (tab === "settings") return [{ type: "notifications" }, { type: "save" }];
+  if (tab === "settings")
+    return [{ type: "notifications" }, { type: "sidebar_tool_names" }, { type: "save" }];
   return [];
 }
 
@@ -428,8 +435,10 @@ function reconcileStatusSelection(
   previous: DashboardSelectableRow | undefined,
 ): DashboardState {
   const index =
-    previous?.type === "status"
-      ? selectableRows(state).findIndex((row) => row.type === "status" && row.key === previous.key)
+    previous?.type === "status_visibility"
+      ? selectableRows(state).findIndex(
+          (row) => row.type === "status_visibility" && row.key === previous.key,
+        )
       : -1;
   activeNavigation(state).selectedIndex = index >= 0 ? index : 0;
   return clampSelection(state);
@@ -506,6 +515,14 @@ export function reduceDashboardState(
       if (index >= 0) state.navigation.sidebar.selectedIndex = index;
       return { state: clampSelection(state) };
     }
+    if (row.type === "extension_status_zone") {
+      const index = STATUS_LINE_ZONE_ORDER.indexOf(state.draft.extensionStatusZone);
+      state.draft.extensionStatusZone =
+        STATUS_LINE_ZONE_ORDER[
+          (index + action.delta + STATUS_LINE_ZONE_ORDER.length) % STATUS_LINE_ZONE_ORDER.length
+        ];
+      return { state: clampSelection(state) };
+    }
     if (row.type === "preset") {
       const index =
         state.preset === "custom"
@@ -569,11 +586,14 @@ export function reduceDashboardState(
       id,
       visible: true,
     }));
-  } else if (row.type === "status") {
-    const hidden = state.draft.extensionSegments.hidden;
-    state.draft.extensionSegments.hidden = hidden.includes(row.key)
-      ? hidden.filter((key) => key !== row.key)
-      : [...hidden, row.key];
+  } else if (row.type === "status_visibility") {
+    const field = row.surface === "statusbar" ? "extensionSegments" : "sidebarExtensionSegments";
+    const hidden = state.draft[field].hidden;
+    state.draft[field] = {
+      hidden: hidden.includes(row.key)
+        ? hidden.filter((key) => key !== row.key)
+        : [...hidden, row.key],
+    };
   } else if (row.type === "tool") {
     const tool = state.tools.find(({ name }) => name === row.name);
     return tool

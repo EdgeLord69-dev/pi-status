@@ -1,6 +1,7 @@
 import { Input, visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it } from "vitest";
 import { buildSnapshot } from "../../src/core/resolve-footer.ts";
+import { fromPiTheme } from "../../src/tui/theme.ts";
 import {
   BUILTIN_SIDEBAR_PANEL_IDS,
   type PiStatusConfig,
@@ -30,6 +31,8 @@ function config(overrides: Partial<PiStatusConfig> = {}): PiStatusConfig {
   return {
     zones: zones(),
     extensionSegments: { hidden: [] },
+    sidebarExtensionSegments: { hidden: [] },
+    extensionStatusZone: "bottomRight",
     completionNotifications: false,
     showSidebarToolNames: false,
     sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
@@ -59,15 +62,15 @@ const preview = buildSnapshot(snapshotInput);
 describe("dashboard render", () => {
   it("renders the pi-usage shell and draft preview", () => {
     const state = initDashboardState(config(), ["alpha"], true);
-    state.activeTab = "layout";
+    state.activeTab = "statusbar";
     const result = renderDashboard(state, preview, noTheme, 100, 60);
     const output = result.lines.join("\n");
     expect(output).toContain("┏");
-    expect(output).toContain("Layout");
+    expect(output).toContain("Statusbar");
     expect(output).toContain("Preset");
     expect(output).toContain("Save changes");
     expect(output).toContain("GPT-5");
-    expect(result.lines).toHaveLength(36);
+    expect(result.lines).toHaveLength(37);
     expect(result.lines.every((line) => visibleWidth(line) === 100)).toBe(true);
   });
 
@@ -79,7 +82,7 @@ describe("dashboard render", () => {
       bottomLeft: [],
       bottomRight: [],
     };
-    const flat = renderDashboard(state, preview, noTheme, 100, 40)
+    const flat = renderDashboard(state, preview, noTheme, 100, 60)
       .lines.join(" ")
       .replace(/\s+/g, " ");
     expect(flat).toMatch(/sid abcdef12/);
@@ -158,9 +161,9 @@ describe("dashboard render", () => {
     expect(state.navigation.tools.query).toBe("no-match");
   });
 
-  it("keeps the selected Layout row visible when capped", () => {
+  it("keeps the selected Statusbar row visible when capped", () => {
     const state = initDashboardState(config(), [], true);
-    state.activeTab = "layout";
+    state.activeTab = "statusbar";
     const result = renderDashboard(state, preview, noTheme, 100, 24);
 
     expect(result.lines.find((line) => line.includes("Preset"))).toContain("▸");
@@ -175,7 +178,67 @@ describe("dashboard render", () => {
     expect(output).toContain("Save changes");
   });
 
-  it.each(["layout", "statuses"] as const)(
+  it("renders the Settings tab with Show tool names", () => {
+    const state = initDashboardState(config(), [], true);
+    state.activeTab = "settings";
+    const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
+    expect(output).toContain("Completion notifications");
+    expect(output).toContain("Show tool names");
+  });
+
+  it("does not render Show tool names on the Sidebar tab", () => {
+    const state = initDashboardState(config(), [], true);
+    state.activeTab = "sidebar";
+    const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
+    expect(output).not.toContain("Show tool names");
+  });
+
+  it("renders the extension status zone row on the Statusbar tab", () => {
+    const state = initDashboardState(config({ extensionStatusZone: "topLeft" }), [], true);
+    state.activeTab = "statusbar";
+    const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
+    expect(output).toContain("Extension statuses");
+    expect(output).toContain("Top Left");
+  });
+
+  it("Statuses tab renders two checkboxes per status", () => {
+    const state = initDashboardState(config(), ["alpha", "beta"], true);
+    state.activeTab = "statuses";
+    const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
+    expect(output).toContain("alpha");
+    expect(output).toContain("beta");
+    expect(output).toContain("Statusbar");
+    expect(output).toContain("Sidebar");
+  });
+
+  it("Statusbar tab colors segment rows by their zone", () => {
+    const state = initDashboardState(
+      config({
+        zones: {
+          topLeft: ["model"],
+          topRight: ["git-branch"],
+          bottomLeft: ["current-dir"],
+          bottomRight: ["run-state"],
+        },
+      }),
+      [],
+      true,
+    );
+    state.activeTab = "statusbar";
+    const piTheme = {
+      fg: (color: string, text: string) => `[${color}:${text}]`,
+      bold: (text: string) => `[bold:${text}]`,
+      rainbow: (text: string) => `[rainbow:${text}]`,
+    };
+    const result = renderDashboard(state, preview, fromPiTheme(piTheme), 100, 60);
+    const lines = result.lines.join("\n");
+    expect(lines).toMatch(/\[accent:\[•\]\]/);
+    expect(lines).toMatch(/\[success:\[•\]\]/);
+    expect(lines).toMatch(/\[warning:\[•\]\]/);
+    expect(lines).toMatch(/\[dim:\[•\]\]/);
+  });
+
+  it.each(["statusbar", "statuses"] as const)(
     "scrolls the %s Save row into view without losing footer or border",
     (tab) => {
       const state = initDashboardState(
@@ -378,7 +441,7 @@ describe("dashboard Sidebar render", () => {
     expect(output).toContain("Activity");
     expect(output).toContain("TODOS");
     expect(output).toContain("Restore default");
-    expect(output).toContain("Show tool names");
+    expect(output).not.toContain("Show tool names");
   });
 
   it("marks unavailable configured panels with unavailable suffix", () => {
@@ -424,10 +487,10 @@ describe("dashboard Sidebar render", () => {
     expect(saveIndex).toBeGreaterThan(defaultIndex);
   });
 
-  it("shows sidebar_tool_names checked state from draft", () => {
+  it("shows sidebar_tool_names checked state on Settings tab", () => {
     const state = initDashboardState(config({ showSidebarToolNames: true }), [], true);
-    state.activeTab = "sidebar";
-    state.navigation.sidebar.selectedIndex = BUILTIN_SIDEBAR_PANEL_IDS.length;
+    state.activeTab = "settings";
+    state.navigation.settings.selectedIndex = 1;
     const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
     expect(output).toContain("[•] Show tool names");
   });

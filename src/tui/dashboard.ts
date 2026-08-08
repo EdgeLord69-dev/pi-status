@@ -184,12 +184,7 @@ export class StatusLineDashboardComponent implements Component, Focusable {
       return;
     }
     if (effect.type === "save") {
-      try {
-        this.options.save(effect.config);
-        this.dispatch({ type: "saved", config: effect.config });
-      } catch {
-        this.warn("Failed to save statusline config");
-      }
+      this.openConfirmDialog("save");
       return;
     }
     if (effect.type === "toggle_tool") {
@@ -240,7 +235,7 @@ export class StatusLineDashboardComponent implements Component, Focusable {
     this.options.tui.requestRender();
   }
 
-  private openConfirmDialog(kind: "discard" | "compact"): void {
+  private openConfirmDialog(kind: "discard" | "compact" | "save"): void {
     this.dialog = { type: "confirm", kind, selectedIndex: 0 };
     this.options.tui.requestRender();
   }
@@ -273,6 +268,17 @@ export class StatusLineDashboardComponent implements Component, Focusable {
         this.dismissDialog();
       } else if (dialog.kind === "discard") {
         this.close();
+      } else if (dialog.kind === "save") {
+        const draft = structuredClone(this.state.draft);
+        try {
+          this.options.save(draft);
+          this.state.baseline = structuredClone(draft);
+        } catch {
+          this.warn("Failed to save statusline config");
+          this.dismissDialog();
+          return;
+        }
+        this.dismissDialog();
       } else {
         this.close();
         try {

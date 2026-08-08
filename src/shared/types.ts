@@ -90,6 +90,8 @@ export interface StatusLineZones {
 export type PiStatusConfig = {
   zones: StatusLineZones;
   extensionSegments: ExtensionSegments;
+  sidebarExtensionSegments: ExtensionSegments;
+  extensionStatusZone: StatusLineZone;
   completionNotifications: boolean;
   showSidebarToolNames: boolean;
   sidebarPanelLayout: SidebarPanelLayout;

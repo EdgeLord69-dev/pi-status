@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildSnapshot, resolveFooter, type SnapshotInput } from "../../src/core/resolve-footer.ts";
-import { BUILTIN_SIDEBAR_PANEL_IDS } from "../../src/shared/types.ts";
+import { BUILTIN_SIDEBAR_PANEL_IDS, type PiStatusConfig } from "../../src/shared/types.ts";
 import type { ThemeLike } from "../../src/tui/render.ts";
 
 function makeInput(overrides?: Partial<SnapshotInput>): SnapshotInput {
@@ -270,9 +270,11 @@ describe("buildSnapshot", () => {
 describe("resolveFooter", () => {
   it("resolves configured zones into keyed text/color pairs", () => {
     const snapshot = buildSnapshot(makeInput());
-    const config = {
+    const config: PiStatusConfig = {
       zones: { topLeft: ["run-state" as const], topRight: [], bottomLeft: [], bottomRight: [] },
       extensionSegments: { hidden: [] },
+      sidebarExtensionSegments: { hidden: [] },
+      extensionStatusZone: "bottomRight",
       completionNotifications: false,
       showSidebarToolNames: false,
       sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
@@ -286,7 +288,7 @@ describe("resolveFooter", () => {
 
   it("drops null segments (model undefined)", () => {
     const snapshot = buildSnapshot(makeInput({ model: undefined }));
-    const config = {
+    const config: PiStatusConfig = {
       zones: {
         topLeft: ["model" as const, "run-state" as const],
         topRight: [],
@@ -294,6 +296,8 @@ describe("resolveFooter", () => {
         bottomRight: [],
       },
       extensionSegments: { hidden: [] },
+      sidebarExtensionSegments: { hidden: [] },
+      extensionStatusZone: "bottomRight",
       completionNotifications: false,
       showSidebarToolNames: false,
       sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
@@ -304,7 +308,7 @@ describe("resolveFooter", () => {
 
   it("preserves identity and order within each configured zone", () => {
     const snapshot = buildSnapshot(makeInput({ gitBranch: "main" }));
-    const config = {
+    const config: PiStatusConfig = {
       zones: {
         topLeft: ["git-branch" as const, "run-state" as const],
         topRight: [],
@@ -312,6 +316,8 @@ describe("resolveFooter", () => {
         bottomRight: [],
       },
       extensionSegments: { hidden: [] },
+      sidebarExtensionSegments: { hidden: [] },
+      extensionStatusZone: "bottomRight",
       completionNotifications: false,
       showSidebarToolNames: false,
       sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
@@ -326,7 +332,7 @@ describe("resolveFooter", () => {
 
   it("returns empty segments when all resolve to null", () => {
     const snapshot = buildSnapshot(makeInput({ model: undefined, gitBranch: null }));
-    const config = {
+    const config: PiStatusConfig = {
       zones: {
         topLeft: ["model" as const, "git-branch" as const],
         topRight: [],
@@ -334,6 +340,8 @@ describe("resolveFooter", () => {
         bottomRight: [],
       },
       extensionSegments: { hidden: [] },
+      sidebarExtensionSegments: { hidden: [] },
+      extensionStatusZone: "bottomRight",
       completionNotifications: false,
       showSidebarToolNames: false,
       sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
@@ -344,9 +352,11 @@ describe("resolveFooter", () => {
 
   it("handles empty zones", () => {
     const snapshot = buildSnapshot(makeInput());
-    const config = {
+    const config: PiStatusConfig = {
       zones: { topLeft: [], topRight: [], bottomLeft: [], bottomRight: [] },
       extensionSegments: { hidden: [] },
+      sidebarExtensionSegments: { hidden: [] },
+      extensionStatusZone: "bottomRight",
       completionNotifications: false,
       showSidebarToolNames: false,
       sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
@@ -359,15 +369,17 @@ describe("resolveFooter", () => {
     const snapshot = buildSnapshot(
       makeInput({ extensionStatuses: new Map([["pi-usage", "5h: 60%"]]) }),
     );
-    const config = {
+    const config: PiStatusConfig = {
       zones: { topLeft: ["run-state" as const], topRight: [], bottomLeft: [], bottomRight: [] },
       extensionSegments: { hidden: [] },
+      sidebarExtensionSegments: { hidden: [] },
+      extensionStatusZone: "bottomRight",
       completionNotifications: false,
       showSidebarToolNames: false,
       sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
     };
     const result = resolveFooter(snapshot, config, identityTheme);
-    expect(result.bottomRight).toEqual([{ key: "extension-status", text: "5h: 60%", color: null }]);
+    expect(result.bottomRight).toEqual([{ key: "pi-usage", text: "5h: 60%", color: null }]);
   });
 
   it("filters hidden extension statuses", () => {
@@ -379,22 +391,26 @@ describe("resolveFooter", () => {
         ]),
       }),
     );
-    const config = {
+    const config: PiStatusConfig = {
       zones: { topLeft: ["run-state" as const], topRight: [], bottomLeft: [], bottomRight: [] },
       extensionSegments: { hidden: ["pi-usage"] },
+      sidebarExtensionSegments: { hidden: [] },
+      extensionStatusZone: "bottomRight",
       completionNotifications: false,
       showSidebarToolNames: false,
       sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
     };
     const result = resolveFooter(snapshot, config, identityTheme);
-    expect(result.bottomRight).toEqual([{ key: "extension-status", text: "ok", color: null }]);
+    expect(result.bottomRight).toEqual([{ key: "other-ext", text: "ok", color: null }]);
   });
 
   it("omits extension status when no extension statuses", () => {
     const snapshot = buildSnapshot(makeInput());
-    const config = {
+    const config: PiStatusConfig = {
       zones: { topLeft: ["run-state" as const], topRight: [], bottomLeft: [], bottomRight: [] },
       extensionSegments: { hidden: [] },
+      sidebarExtensionSegments: { hidden: [] },
+      extensionStatusZone: "bottomRight",
       completionNotifications: false,
       showSidebarToolNames: false,
       sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
@@ -423,7 +439,7 @@ describe("resolveFooter", () => {
         },
       }),
     );
-    const config = {
+    const config: PiStatusConfig = {
       zones: {
         topLeft: ["workspace-pulse" as const],
         topRight: [],
@@ -431,6 +447,8 @@ describe("resolveFooter", () => {
         bottomRight: [],
       },
       extensionSegments: { hidden: [] },
+      sidebarExtensionSegments: { hidden: [] },
+      extensionStatusZone: "bottomRight",
       completionNotifications: false,
       showSidebarToolNames: false,
       sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
@@ -439,5 +457,26 @@ describe("resolveFooter", () => {
     expect(result.topLeft).toEqual([
       { key: "workspace-pulse", text: "Git ✓ main", color: "success" },
     ]);
+  });
+
+  it("routes extension statuses through extensionStatusZone", () => {
+    const config: PiStatusConfig = {
+      zones: { topLeft: [], topRight: [], bottomLeft: [], bottomRight: [] },
+      extensionSegments: { hidden: [] },
+      sidebarExtensionSegments: { hidden: [] },
+      extensionStatusZone: "topRight",
+      completionNotifications: false,
+      showSidebarToolNames: false,
+      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
+    };
+    const snapshot = makeInput();
+    const withStatuses = {
+      ...snapshot,
+      runState: "idle" as const,
+      extensionStatuses: new Map([["alpha", "ready"]]),
+    };
+    const result = resolveFooter(withStatuses, config, identityTheme);
+    expect(result.topRight.map(({ key }) => key)).toContain("alpha");
+    expect(result.bottomRight.map(({ key }) => key)).not.toContain("alpha");
   });
 });

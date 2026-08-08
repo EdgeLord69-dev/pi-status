@@ -26,6 +26,8 @@ function config(): PiStatusConfig {
       bottomRight: [],
     },
     extensionSegments: { hidden: [] },
+    sidebarExtensionSegments: { hidden: [] },
+    extensionStatusZone: "bottomRight",
     completionNotifications: false,
     showSidebarToolNames: false,
     sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
@@ -64,6 +66,8 @@ describe("/statusline persistence", () => {
     const initial: PiStatusConfig = {
       zones: { topLeft: ["model"], topRight: [], bottomLeft: ["current-dir"], bottomRight: [] },
       extensionSegments: { hidden: [] },
+      sidebarExtensionSegments: { hidden: [] },
+      extensionStatusZone: "bottomRight",
       completionNotifications: false,
       showSidebarToolNames: false,
       sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
@@ -94,11 +98,18 @@ describe("/statusline persistence", () => {
     await new Promise((resolve) => setImmediate(resolve));
     const component = host.component();
 
-    // Settings tab: new default is sidebar, forward reaches settings.
+    // Settings tab: default is statusbar; five forward cycles reach settings.
     component.handleInput("\t");
-    component.handleInput("\r"); // toggle notifications
-    component.handleInput("\x1b[B"); // Save
-    component.handleInput("\r");
+    component.handleInput("\t");
+    component.handleInput("\t");
+    component.handleInput("\t");
+    component.handleInput("\t");
+    component.handleInput("\r"); // toggle notifications (row 0)
+    component.handleInput("\x1b[B"); // → sidebar_tool_names (row 1)
+    component.handleInput("\x1b[B"); // → Save (row 2)
+    component.handleInput("\r"); // open dialog
+    component.handleInput("\x1b[B"); // → Save
+    component.handleInput("\r"); // confirm Save
 
     expect(saveConfig).toHaveBeenCalledWith(
       expect.objectContaining({ completionNotifications: true }),
@@ -140,11 +151,18 @@ describe("/statusline persistence", () => {
 
     await new Promise((resolve) => setImmediate(resolve));
     const component = host.component();
-    // Settings tab: new default is sidebar, forward tab reaches settings.
+    // Settings tab: default is statusbar; five forward cycles reach settings.
     component.handleInput("\t");
-    component.handleInput("\r");
-    component.handleInput("\x1b[B");
-    component.handleInput("\r");
+    component.handleInput("\t");
+    component.handleInput("\t");
+    component.handleInput("\t");
+    component.handleInput("\t");
+    component.handleInput("\r"); // toggle notifications (row 0)
+    component.handleInput("\x1b[B"); // → sidebar_tool_names (row 1)
+    component.handleInput("\x1b[B"); // → Save (row 2)
+    component.handleInput("\r"); // open dialog
+    component.handleInput("\x1b[B"); // → Save
+    component.handleInput("\r"); // confirm Save
     expect(ctx.ui.notify).toHaveBeenCalledWith("Failed to save statusline config", "warning");
     expect(ctx.ui.notify).toHaveBeenCalledTimes(1);
     expect(isDashboardDirty(component.getState())).toBe(true);

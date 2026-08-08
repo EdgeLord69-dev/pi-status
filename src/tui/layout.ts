@@ -1,6 +1,7 @@
-import type { FooterLayoutItem, FooterLayoutKey } from "./render.ts";
+import type { FooterLayoutItem } from "./render.ts";
+import type { StatusLineSegmentId } from "../shared/types.ts";
 
-const DROP_TIER = {
+const DROP_TIER: Readonly<Partial<Record<StatusLineSegmentId, 0 | 1 | 2 | 3>>> = {
   "run-state": 0,
   "context-remaining": 0,
   "context-used": 0,
@@ -23,8 +24,10 @@ const DROP_TIER = {
   "cache-hit": 3,
   "session-cost": 3,
   "access-type": 3,
-  "extension-status": 3,
-} as const satisfies Readonly<Record<FooterLayoutKey, 0 | 1 | 2 | 3>>;
+};
+
+// ponytail: unknown keys (e.g. extension statuses) default to tier 3 so they drop first when truncating.
+const UNKNOWN_TIER: 0 | 1 | 2 | 3 = 3;
 
 export function fitFooterRow<T extends FooterLayoutItem>(
   left: readonly T[],
@@ -42,6 +45,8 @@ export function fitFooterRow<T extends FooterLayoutItem>(
     visibleWidth(fittedRight.map((item) => item.text).join(separator)) +
     (fittedLeft.length && fittedRight.length ? 1 : 0);
 
+  const tierOf = (key: T["key"]) => DROP_TIER[key as StatusLineSegmentId] ?? UNKNOWN_TIER;
+
   while (rowWidth() > width && fittedLeft.length + fittedRight.length > 1) {
     let dropSide: "left" | "right" = "left";
     let dropIndex = -1;
@@ -51,10 +56,11 @@ export function fitFooterRow<T extends FooterLayoutItem>(
       ["right", fittedRight],
     ] as const) {
       for (const [index, item] of items.entries()) {
-        if (DROP_TIER[item.key] < dropTier) continue;
+        const tier = tierOf(item.key);
+        if (tier < dropTier) continue;
         dropSide = side;
         dropIndex = index;
-        dropTier = DROP_TIER[item.key];
+        dropTier = tier;
       }
     }
     (dropSide === "left" ? fittedLeft : fittedRight).splice(dropIndex, 1);
