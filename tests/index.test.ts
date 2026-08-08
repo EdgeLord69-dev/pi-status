@@ -311,7 +311,8 @@ describe("extension wiring", () => {
           handleInput: (data: string) => void;
         }
       )({ terminal: { columns: 80, rows: 30 }, requestRender: () => {} }, null, {}, () => {});
-      // Default tab is statusbar; one forward cycle reaches the statuses tab.
+      // Default tab is statusbar; two forward cycles reach the statuses tab.
+      component.handleInput("\t");
       component.handleInput("\t");
       preview = component.render(200).join("\n");
       return customPromise;
@@ -723,11 +724,18 @@ describe("extension wiring", () => {
       const component = (
         factory as (...args: unknown[]) => { handleInput: (data: string) => void }
       )({ terminal: { columns: 80, rows: 30 }, requestRender: () => {} }, null, {}, () => {});
-      // New default tab is sidebar; one forward tab reaches the settings tab.
+      // Navigate to the Settings tab (5 forward tabs from statusbar), open the
+      // Save dialog, and confirm. Matches the old 2-step "open then confirm" flow.
       component.handleInput("\t");
-      component.handleInput("\r");
+      component.handleInput("\t");
+      component.handleInput("\t");
+      component.handleInput("\t");
+      component.handleInput("\t");
       component.handleInput("\x1b[B");
-      component.handleInput("\r");
+      component.handleInput("\x1b[B");
+      component.handleInput("\r"); // activate Save → opens dialog
+      component.handleInput("\x1b[B"); // → Save button in dialog
+      component.handleInput("\r"); // confirm Save
       return customPromise;
     });
 

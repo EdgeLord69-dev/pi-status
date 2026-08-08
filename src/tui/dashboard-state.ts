@@ -17,10 +17,10 @@ import { DISPLAY_PRESET_NAMES, displayPreset } from "./preset-actions.ts";
 
 export const DASHBOARD_TABS = [
   { id: "statusbar", label: "Statusbar" },
+  { id: "sidebar", label: "Sidebar" },
   { id: "statuses", label: "Statuses" },
   { id: "session", label: "Session" },
   { id: "tools", label: "Tools" },
-  { id: "sidebar", label: "Sidebar" },
   { id: "settings", label: "Settings" },
 ] as const;
 
@@ -31,6 +31,7 @@ export interface TabNavigation {
   selectedIndex: number;
   query: string;
   offset: number;
+  surface: "statusbar" | "sidebar";
 }
 
 export interface DashboardState {
@@ -50,6 +51,7 @@ export type DashboardSelectableRow =
   | { type: "preset" }
   | { type: "zone" }
   | { type: "extension_status_zone" }
+  | { type: "surface_picker"; surface: "statusbar" | "sidebar" }
   | { type: "segment"; id: StatusLineSegmentId }
   | { type: "status_visibility"; key: string; surface: "statusbar" | "sidebar" }
   | { type: "tool"; name: string }
@@ -240,7 +242,12 @@ function presetForZones(
   return "custom";
 }
 
-const emptyNavigation = (): TabNavigation => ({ selectedIndex: 0, query: "", offset: 0 });
+const emptyNavigation = (): TabNavigation => ({
+  selectedIndex: 0,
+  query: "",
+  offset: 0,
+  surface: "statusbar",
+});
 
 export function initDashboardState(
   config: PiStatusConfig,
@@ -296,13 +303,12 @@ export function selectableRows(
   }
   if (tab === "statuses") {
     const query = state.navigation.statuses.query;
+    const surface = state.navigation.statuses.surface;
     return [
+      { type: "surface_picker", surface },
       ...state.discoveredStatuses
         .filter((key) => includesFuzzy(key, query))
-        .flatMap((key) => [
-          { type: "status_visibility" as const, key, surface: "statusbar" as const },
-          { type: "status_visibility" as const, key, surface: "sidebar" as const },
-        ]),
+        .map((key) => ({ type: "status_visibility" as const, key, surface })),
       { type: "save" },
     ];
   }
@@ -424,6 +430,12 @@ function moveSidebarPanel(
   return next;
 }
 
+function flipStatusesSurface(state: DashboardState): void {
+  state.navigation.statuses.surface =
+    state.navigation.statuses.surface === "statusbar" ? "sidebar" : "statusbar";
+  state.navigation.statuses.selectedIndex = 0;
+}
+
 function keepSegmentSelected(state: DashboardState, id: StatusLineSegmentId): DashboardState {
   const index = selectableRows(state).findIndex((row) => row.type === "segment" && row.id === id);
   if (index >= 0) activeNavigation(state).selectedIndex = index;
@@ -523,6 +535,10 @@ export function reduceDashboardState(
         ];
       return { state: clampSelection(state) };
     }
+    if (row.type === "surface_picker") {
+      flipStatusesSurface(state);
+      return { state: clampSelection(state) };
+    }
     if (row.type === "preset") {
       const index =
         state.preset === "custom"
@@ -574,6 +590,10 @@ export function reduceDashboardState(
       };
     }
     return { state, effect: { type: "save", config: structuredClone(state.draft) } };
+  }
+  if (row.type === "surface_picker") {
+    flipStatusesSurface(state);
+    return { state: clampSelection(state) };
   }
   if (row.type === "notifications") {
     state.draft.completionNotifications = !state.draft.completionNotifications;

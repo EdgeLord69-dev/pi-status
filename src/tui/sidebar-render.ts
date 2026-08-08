@@ -535,7 +535,7 @@ function todosRows(snap: SidebarSnapshot, palette: Palette): string[] {
 
 function workspaceRows(
   snap: SidebarSnapshot,
-  compact: boolean,
+  panelContentWidth: number,
   palette: Palette,
 ): {
   identity: string[];
@@ -561,12 +561,18 @@ function workspaceRows(
         ? "warning"
         : "ready";
   const gitState = branch && symbol ? palette.paint(role, symbol) : "";
-  const identity = branch
-    ? `${project} ${palette.paint("dim", "·")} ${branch} ${gitState}`
-    : project;
-  const identityRows = compact
-    ? [project, ...(branch ? [`${branch} ${gitState}`] : [])]
-    : [identity];
+  // ponytail: panelContentWidth < 34 mirrors the original `safeWidth <= 39` threshold
+  // (panelContentWidth = safeWidth - 6, the inner width of panelRows). The
+  // pulseCore/pulseDetails compact labels (e.g. "?3" vs "3 untracked") must
+  // keep the same cutover to avoid drift in existing width-matrix tests.
+  // Upgrade to a shared constant if more sites need the threshold.
+  const compact = panelContentWidth < 34;
+  const inline = branch ? `${project} ${palette.paint("dim", "·")} ${branch} ${gitState}` : project;
+  const identityRows = branch
+    ? visibleWidth(inline) <= panelContentWidth
+      ? [inline]
+      : [project, `${branch} ${gitState}`]
+    : [project];
   const pulseCore: string[] = [];
   const pulseDetails: string[] = [];
   if (snap.pulse) {
@@ -725,7 +731,7 @@ function renderSidebarLinesInner(
   const toolNameRows = showToolNames
     ? activeToolNameRows(snapshot, panelContentWidth, palette)
     : [];
-  const workspace = workspaceRows(snapshot, compact, palette);
+  const workspace = workspaceRows(snapshot, panelContentWidth, palette);
 
   const groups: SidebarGroup[] = [
     ...(options?.resizing

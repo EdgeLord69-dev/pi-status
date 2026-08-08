@@ -16,7 +16,6 @@ import {
   type DashboardState,
   type DashboardTabId,
   findSegmentAssignment,
-  includesFuzzy,
   SEGMENT_METADATA,
   selectableRows,
 } from "./dashboard-state.ts";
@@ -166,17 +165,24 @@ function logicalBody(
       ...buildFooterRowsFromResolved(resolveFooter(previewInput, state.draft, theme), theme, width),
     );
   } else if (tab === "statuses") {
+    const rows = selectableRows(state, "statuses");
+    const surface = renderState.navigation.statuses.surface;
+    const surfaceLabel = surface === "statusbar" ? "Statusbar" : "Sidebar";
     lines.push(`Search: ${renderState.navigation.statuses.query}`);
-    const statusKeys = state.discoveredStatuses.filter((key) =>
-      includesFuzzy(key, renderState.navigation.statuses.query),
-    );
-    if (statusKeys.length === 0) lines.push(theme.dim("No matching statuses."));
-    for (const key of statusKeys) {
-      const statusBarShown = !state.draft.extensionSegments.hidden.includes(key);
-      const sidebarShown = !state.draft.sidebarExtensionSegments.hidden.includes(key);
-      pushSelectable(statusBarShown ? "[•]" : "[ ]", "Statusbar", key);
-      pushSelectable(sidebarShown ? "[•]" : "[ ]", "Sidebar", key);
+    let visibilityCount = 0;
+    for (const row of rows) {
+      if (row.type === "surface_picker") {
+        pushSelectable(" ", "Surface", surfaceLabel);
+      } else if (row.type === "status_visibility") {
+        const hidden =
+          surface === "statusbar"
+            ? state.draft.extensionSegments.hidden
+            : state.draft.sidebarExtensionSegments.hidden;
+        pushSelectable(hidden.includes(row.key) ? "[ ]" : "[•]", "", row.key);
+        visibilityCount += 1;
+      }
     }
+    if (visibilityCount === 0) lines.push(theme.dim("No matching statuses."));
   } else if (tab === "session") {
     if (!state.session) {
       lines.push(theme.dim("Session details unavailable."));
@@ -271,8 +277,8 @@ function dialogBody(dialog: DashboardDialog, width: number, theme: StatusLineThe
   const body = compact
     ? "Pi will summarize older context."
     : save
-      ? "Apply draft Layout, Statuses, Sidebar, and Settings changes."
-      : "Unsaved Layout, Statuses, or Settings changes will be lost.";
+      ? "Apply draft Statusbar, Statuses, Sidebar, and Settings changes."
+      : "Unsaved Statusbar, Statuses, or Settings changes will be lost.";
   return {
     lines: [
       heading,

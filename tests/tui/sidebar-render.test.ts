@@ -290,6 +290,196 @@ describe("renderSidebarLines built-ins", () => {
   });
 });
 
+describe("workspace identity overflow", () => {
+  it("keeps project and branch on one row when the combined line fits", () => {
+    const footer = withDefaults({
+      cwd: "/home/user/repo",
+      thinkingLevel: "off",
+      gitBranch: "main",
+      runState: "idle",
+      contextUsage: { tokens: 0, contextWindow: 1, percent: 0 },
+      sessionId: "abc",
+      extensionStatuses: new Map(),
+      workspacePulse: {
+        status: "clean",
+        directory: "/home/user/repo",
+        root: "/home/user/repo",
+        branch: "main",
+        ahead: 0,
+        behind: 0,
+        counts: { staged: 0, unstaged: 0, untracked: 0, conflicts: 0 },
+        trackedFiles: 0,
+        linesAdded: 0,
+        linesRemoved: 0,
+        binaryFiles: 0,
+        submodules: 0,
+      },
+    });
+    const input = makeInput({ footer });
+    const snap = buildSidebarSnapshot(input);
+    const lines = renderSidebarLines(snap, input.config, noTheme, 72, 36, {
+      colorEnabled: false,
+    });
+    const text = lines.join("\n");
+    // Project name and branch appear on the same line.
+    expect(text).toMatch(/repo.*main/);
+    // No second standalone "main" line.
+    expect(text).not.toMatch(/^main\s*$/m);
+  });
+
+  it("splits branch onto its own line when the combined line would overflow", () => {
+    // ponytail: branch must fit on its own line at the test width (44 → inner 38).
+    // The implementation splits onto a second row but does not wrap; longer
+    // names still get truncated by panelRows. Upgrade to a wrapping branch row
+    // if real branches need to exceed panel width.
+    const longBranch = "feature/very-long-branch-name";
+    const footer = withDefaults({
+      cwd: "/home/user/repo",
+      thinkingLevel: "off",
+      gitBranch: "main",
+      runState: "idle",
+      contextUsage: { tokens: 0, contextWindow: 1, percent: 0 },
+      sessionId: "abc",
+      extensionStatuses: new Map(),
+      workspacePulse: {
+        status: "clean",
+        directory: "/home/user/repo",
+        root: "/home/user/repo",
+        branch: longBranch,
+        ahead: 0,
+        behind: 0,
+        counts: { staged: 0, unstaged: 0, untracked: 0, conflicts: 0 },
+        trackedFiles: 0,
+        linesAdded: 0,
+        linesRemoved: 0,
+        binaryFiles: 0,
+        submodules: 0,
+      },
+    });
+    const input = makeInput({ footer });
+    const snap = buildSidebarSnapshot(input);
+    const lines = renderSidebarLines(snap, input.config, noTheme, 44, 36, {
+      colorEnabled: false,
+    });
+    const text = lines.join("\n");
+    // Full branch name is visible (no truncation marker).
+    expect(text).toContain(longBranch);
+    expect(text).not.toMatch(/…/);
+  });
+
+  it("renders only the project name when no branch is available", () => {
+    const footer = withDefaults({
+      cwd: "/home/user/repo",
+      thinkingLevel: "off",
+      gitBranch: null,
+      runState: "idle",
+      contextUsage: { tokens: 0, contextWindow: 1, percent: 0 },
+      sessionId: "abc",
+      extensionStatuses: new Map(),
+    });
+    const input = makeInput({ footer });
+    const snap = buildSidebarSnapshot(input);
+    const lines = renderSidebarLines(snap, input.config, noTheme, 72, 36, {
+      colorEnabled: false,
+    });
+    // The workspace identity row is just the project name — no branch separator.
+    const workspaceLines = lines
+      .join("\n")
+      .split("\n")
+      .filter((line) => line.includes("│") && line.includes("repo"));
+    expect(workspaceLines.length).toBeGreaterThan(0);
+    for (const line of workspaceLines) {
+      expect(line).not.toMatch(/·/);
+    }
+  });
+
+  it("never truncates the branch at the width matrix", () => {
+    // ponytail: branch must fit on its own line at the narrowest width (28 → inner 22).
+    const branchName = "feature/long-branch";
+    const footer = withDefaults({
+      cwd: "/home/user/repo",
+      thinkingLevel: "off",
+      gitBranch: "main",
+      runState: "idle",
+      contextUsage: { tokens: 0, contextWindow: 1, percent: 0 },
+      sessionId: "abc",
+      extensionStatuses: new Map(),
+      workspacePulse: {
+        status: "clean",
+        directory: "/home/user/repo",
+        root: "/home/user/repo",
+        branch: branchName,
+        ahead: 0,
+        behind: 0,
+        counts: { staged: 0, unstaged: 0, untracked: 0, conflicts: 0 },
+        trackedFiles: 0,
+        linesAdded: 0,
+        linesRemoved: 0,
+        binaryFiles: 0,
+        submodules: 0,
+      },
+    });
+    const input = makeInput({ footer });
+    const snap = buildSidebarSnapshot(input);
+    for (const width of [28, 39, 40, 44, 72]) {
+      const lines = renderSidebarLines(snap, input.config, noTheme, width, 36, {
+        colorEnabled: false,
+      });
+      const text = lines.join("\n");
+      expect(text).toContain(branchName);
+    }
+  });
+
+  it("keeps the original compact-label cutover at the safeWidth=39 boundary", () => {
+    // The pulseDetails compact labels (e.g. "?3" vs "3 untracked") must keep
+    // the same cutover as before the workspace overflow refactor: compact when
+    // safeWidth <= 39, non-compact at safeWidth >= 40. The refactor moved
+    // threshold derivation into workspaceRows using panelContentWidth (=
+    // safeWidth - 6), so the predicate is panelContentWidth < 34.
+    // The untracked detail is the longest one, so checking it alone locks in
+    // the cutover without depending on the panel's own width truncation of
+    // the joined detailParts string.
+    const footer = withDefaults({
+      cwd: "/home/user/repo",
+      thinkingLevel: "off",
+      gitBranch: "main",
+      runState: "idle",
+      contextUsage: { tokens: 0, contextWindow: 1, percent: 0 },
+      sessionId: "abc",
+      extensionStatuses: new Map(),
+      workspacePulse: {
+        status: "changed",
+        directory: "/home/user/repo",
+        root: "/home/user/repo",
+        branch: "main",
+        ahead: 0,
+        behind: 0,
+        counts: { staged: 0, unstaged: 0, untracked: 3, conflicts: 0 },
+        trackedFiles: 0,
+        linesAdded: 0,
+        linesRemoved: 0,
+        binaryFiles: 0,
+        submodules: 0,
+      },
+    });
+    const input = makeInput({ footer });
+    const snap = buildSidebarSnapshot(input);
+    for (const width of [39, 40, 43, 44]) {
+      const lines = renderSidebarLines(snap, input.config, noTheme, width, 36, {
+        colorEnabled: false,
+      });
+      const text = lines.join("\n");
+      if (width <= 39) {
+        expect(text).toContain("?3");
+        expect(text).not.toContain("3 untracked");
+      } else {
+        expect(text).toContain("3 untracked");
+        expect(text).not.toContain("?3");
+      }
+    }
+  });
+});
+
 describe("renderSidebarLines width matrix", () => {
   for (const width of [28, 39, 40, 44, 72]) {
     for (const height of [12, 24, 36]) {

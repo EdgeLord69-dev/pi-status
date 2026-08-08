@@ -14,7 +14,7 @@ import {
   initDashboardState,
   selectableRows,
 } from "../../src/tui/dashboard-state.ts";
-import { renderDashboard } from "../../src/tui/dashboard-render.ts";
+import { renderDashboard, type DashboardDialog } from "../../src/tui/dashboard-render.ts";
 import { noTheme } from "../../src/tui/theme.ts";
 
 function zones(overrides: Partial<StatusLineZones> = {}): StatusLineZones {
@@ -201,14 +201,14 @@ describe("dashboard render", () => {
     expect(output).toContain("Top Left");
   });
 
-  it("Statuses tab renders two checkboxes per status", () => {
+  it("Statuses tab renders the surface picker and per-status checkboxes", () => {
     const state = initDashboardState(config(), ["alpha", "beta"], true);
     state.activeTab = "statuses";
     const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
+    expect(output).toContain("Surface");
+    expect(output).toContain("Statusbar"); // default surface label
     expect(output).toContain("alpha");
     expect(output).toContain("beta");
-    expect(output).toContain("Statusbar");
-    expect(output).toContain("Sidebar");
   });
 
   it("Statusbar tab colors segment rows by their zone", () => {
@@ -575,5 +575,38 @@ describe("dashboard Session and Tools rendering", () => {
     expect(renderDashboard(filtered, preview, noTheme, 100, 40).lines.join("\n")).toContain(
       "No matching tools.",
     );
+  });
+});
+
+describe("save confirm dialog body", () => {
+  it("uses 'Statusbar' (not 'Layout') in the affected surfaces list", () => {
+    const state = initDashboardState(config(), [], true);
+    const dialog: DashboardDialog = {
+      type: "confirm",
+      kind: "save",
+      selectedIndex: 0,
+    };
+    const output = renderDashboard(state, preview, noTheme, 100, 40, dialog).lines.join("\n");
+    expect(output).toContain("Statusbar");
+    expect(output).not.toMatch(/Layout/);
+  });
+});
+
+describe("statuses surface picker render", () => {
+  it("renders 'Surface: Statusbar' by default", () => {
+    const state = initDashboardState(config(), [], true);
+    state.activeTab = "statuses";
+    const output = renderDashboard(state, preview, noTheme, 100, 40).lines.join("\n");
+    expect(output).toContain("Surface");
+    expect(output).toContain("Statusbar");
+  });
+
+  it("renders 'Surface: Sidebar' after the picker is flipped", () => {
+    let state = initDashboardState(config(), [], true);
+    state.activeTab = "statuses";
+    state.navigation.statuses.surface = "sidebar";
+    const output = renderDashboard(state, preview, noTheme, 100, 40).lines.join("\n");
+    expect(output).toContain("Sidebar");
+    expect(output).not.toMatch(/Surface:\s*Statusbar/);
   });
 });
