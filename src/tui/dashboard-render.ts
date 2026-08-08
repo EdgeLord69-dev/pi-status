@@ -16,7 +16,6 @@ import {
   type DashboardState,
   type DashboardTabId,
   findSegmentAssignment,
-  includesFuzzy,
   SEGMENT_METADATA,
   selectableRows,
 } from "./dashboard-state.ts";
@@ -170,20 +169,20 @@ function logicalBody(
     const surface = renderState.navigation.statuses.surface;
     const surfaceLabel = surface === "statusbar" ? "Statusbar" : "Sidebar";
     lines.push(`Search: ${renderState.navigation.statuses.query}`);
-    if (rows[0]?.type === "surface_picker") {
-      pushSelectable(" ", "Surface", surfaceLabel);
+    let visibilityCount = 0;
+    for (const row of rows) {
+      if (row.type === "surface_picker") {
+        pushSelectable(" ", "Surface", surfaceLabel);
+      } else if (row.type === "status_visibility") {
+        const hidden =
+          surface === "statusbar"
+            ? state.draft.extensionSegments.hidden
+            : state.draft.sidebarExtensionSegments.hidden;
+        pushSelectable(hidden.includes(row.key) ? "[ ]" : "[•]", "", row.key);
+        visibilityCount += 1;
+      }
     }
-    const statusKeys = state.discoveredStatuses.filter((key) =>
-      includesFuzzy(key, renderState.navigation.statuses.query),
-    );
-    if (statusKeys.length === 0) lines.push(theme.dim("No matching statuses."));
-    for (const key of statusKeys) {
-      const hidden = surface === "statusbar"
-        ? state.draft.extensionSegments.hidden
-        : state.draft.sidebarExtensionSegments.hidden;
-      const shown = !hidden.includes(key);
-      pushSelectable(shown ? "[•]" : "[ ]", "", key);
-    }
+    if (visibilityCount === 0) lines.push(theme.dim("No matching statuses."));
   } else if (tab === "session") {
     if (!state.session) {
       lines.push(theme.dim("Session details unavailable."));

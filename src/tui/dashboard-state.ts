@@ -430,6 +430,12 @@ function moveSidebarPanel(
   return next;
 }
 
+function flipStatusesSurface(state: DashboardState): void {
+  state.navigation.statuses.surface =
+    state.navigation.statuses.surface === "statusbar" ? "sidebar" : "statusbar";
+  state.navigation.statuses.selectedIndex = 0;
+}
+
 function keepSegmentSelected(state: DashboardState, id: StatusLineSegmentId): DashboardState {
   const index = selectableRows(state).findIndex((row) => row.type === "segment" && row.id === id);
   if (index >= 0) activeNavigation(state).selectedIndex = index;
@@ -530,10 +536,7 @@ export function reduceDashboardState(
       return { state: clampSelection(state) };
     }
     if (row.type === "surface_picker") {
-      const next: "statusbar" | "sidebar" =
-        state.navigation.statuses.surface === "statusbar" ? "sidebar" : "statusbar";
-      state.navigation.statuses.surface = next;
-      state.navigation.statuses.selectedIndex = 0;
+      flipStatusesSurface(state);
       return { state: clampSelection(state) };
     }
     if (row.type === "preset") {
@@ -589,10 +592,7 @@ export function reduceDashboardState(
     return { state, effect: { type: "save", config: structuredClone(state.draft) } };
   }
   if (row.type === "surface_picker") {
-    const next: "statusbar" | "sidebar" =
-      state.navigation.statuses.surface === "statusbar" ? "sidebar" : "statusbar";
-    state.navigation.statuses.surface = next;
-    state.navigation.statuses.selectedIndex = 0;
+    flipStatusesSurface(state);
     return { state: clampSelection(state) };
   }
   if (row.type === "notifications") {
