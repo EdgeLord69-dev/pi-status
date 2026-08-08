@@ -51,6 +51,7 @@ export type DashboardSelectableRow =
   | { type: "preset" }
   | { type: "zone" }
   | { type: "extension_status_zone" }
+  | { type: "surface_picker"; surface: "statusbar" | "sidebar" }
   | { type: "segment"; id: StatusLineSegmentId }
   | { type: "status_visibility"; key: string; surface: "statusbar" | "sidebar" }
   | { type: "tool"; name: string }
@@ -302,13 +303,12 @@ export function selectableRows(
   }
   if (tab === "statuses") {
     const query = state.navigation.statuses.query;
+    const surface = state.navigation.statuses.surface;
     return [
+      { type: "surface_picker", surface },
       ...state.discoveredStatuses
         .filter((key) => includesFuzzy(key, query))
-        .flatMap((key) => [
-          { type: "status_visibility" as const, key, surface: "statusbar" as const },
-          { type: "status_visibility" as const, key, surface: "sidebar" as const },
-        ]),
+        .map((key) => ({ type: "status_visibility" as const, key, surface })),
       { type: "save" },
     ];
   }

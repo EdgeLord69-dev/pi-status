@@ -167,7 +167,10 @@ describe("dashboard draft initialization", () => {
     const state = initDashboardState(config(), ["alpha"], true);
     state.activeTab = "statuses";
     state.navigation.statuses.query = "zzz";
-    expect(selectableRows(state)).toEqual([{ type: "save" }]);
+    expect(selectableRows(state)).toEqual([
+      { type: "surface_picker", surface: "statusbar" },
+      { type: "save" },
+    ]);
   });
 });
 
@@ -282,6 +285,31 @@ import {
 function dispatch(state: DashboardState, action: DashboardAction): DashboardState {
   return reduceDashboardState(state, action).state;
 }
+
+describe("statuses surface picker", () => {
+  it("emits picker first followed by per-surface status_visibility rows", () => {
+    const state = initDashboardState(config(), ["alpha", "beta"], true);
+    const rows = selectableRows(state, "statuses");
+    expect(rows).toEqual([
+      { type: "surface_picker", surface: "statusbar" },
+      { type: "status_visibility", key: "alpha", surface: "statusbar" },
+      { type: "status_visibility", key: "beta", surface: "statusbar" },
+      { type: "save" },
+    ]);
+  });
+
+  it("search filter narrows the discovered statuses regardless of surface", () => {
+    let state = initDashboardState(config(), ["alpha", "beta"], true);
+    state.navigation.statuses.query = "alp";
+    state.navigation.statuses.surface = "sidebar";
+    const rows = selectableRows(state, "statuses");
+    expect(rows).toEqual([
+      { type: "surface_picker", surface: "sidebar" },
+      { type: "status_visibility", key: "alpha", surface: "sidebar" },
+      { type: "save" },
+    ]);
+  });
+});
 
 describe("dashboard transitions", () => {
   it("cycles tabs while preserving independent navigation", () => {
