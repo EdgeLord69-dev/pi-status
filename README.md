@@ -237,6 +237,85 @@ If you are upgrading from `0.2.x`, note these compatibility changes:
 - The extension requires Node.js `>=24.15.0`.
 - The tested Pi host baseline is now `@earendil-works/pi-coding-agent@0.83.0` and `@earendil-works/pi-tui@0.83.0`.
 
+## Sidebar
+
+`@pi-vault/pi-status` installs a right-edge, non-capturing sidebar that surfaces the same live data the footer tracks — session, run, turn, tools, workspace pulse, extension statuses — alongside optional contributions from other extensions. The sidebar is on by default, runs only in TUI sessions, and never leaves the runtime: nothing is persisted from sidebar activity and nothing it observes leaves the host.
+
+### Built-in panels and order
+
+Nine built-in panels ship in this default order:
+
+1. `agent` — current model, provider, thinking level, and access type
+2. `activity` — run, turn, tool count, and live TTFT / tokens-per-second
+3. `alerts` — extension statuses whose text matches an exception keyword
+4. `statuses` — every other discovered extension status
+5. `todos` — pending / in-progress / completed task list
+6. `context` — used tokens, context window, percentage, and meter
+7. `workspace` — project name, branch, workspace pulse summary
+8. `usage` — session input/output/cache tokens and cost
+9. `tools` — active vs available tool count, optionally expanded to names
+
+`statuses` is a pi-status split of Atelier's combined STATUSES panel: text matching `error`, `failed`, `failure`, `offline`, or `unavailable` routes to `alerts`; text matching `warn`, `warning`, `degraded`, or `blocked` also routes to `alerts` with a `▲` indicator; everything else lands in `statuses` with a `•` indicator. The split lets users hide noisy alerts while keeping normal status text visible.
+
+### Sidebar dashboard tab
+
+`/statusline` exposes a `Sidebar` tab at index 1, immediately after `Statusbar` and before `Statuses`. The tab lets you reorder panels, toggle visibility per panel, and restore the built-in default layout. Layout changes live as a draft and apply only when you Save.
+
+### Contribution channel and protocol
+
+Other extensions can publish structured panels into the sidebar over the public contribution channel `pi-status:sidebar-panels` (protocol version `1`). Limits enforced by the registry:
+
+- 64 panels maximum per host
+- 24 rows maximum per panel
+- 160 visible characters per row (8× raw code units inspected before sanitization)
+- 48 visible characters per panel title (8× raw code units inspected before sanitization)
+- 128 characters per panel source name
+- 128 characters per panel ID
+- 64 distinct event sources tracked
+
+Panel IDs must be namespaced (`vendor:name`, lowercase alphanumerics, hyphens, underscores). Registration emits `register`, `unregister`, and `discover` events over Pi's public `pi.events` bus. Title and row text are sanitized for ANSI / OSC escapes, C0 / C1 controls, Unicode bidi overrides, and surrogate validity before display. Use `sanitizeSidebarPanelText` from the public API to pre-clean text you intend to ship.
+
+### Hidden-by-default contributions
+
+Newly registered contributions are hidden by default. `normalizeSidebarPanelLayout` only seeds built-ins into the default layout; a contribution must be added explicitly via the Sidebar tab to appear. This keeps sidebar behavior deterministic across hosts and prevents surprise panels.
+
+### TODO rendering
+
+The TODOS panel accepts a `NormalizedTodo[]` snapshot with `status: "pending" | "in_progress" | "completed"`. pi-status does not parse TODO formats itself; the producer that populates the sidebar snapshot owns format parsing. Rendering shows a `done/total` summary, then one row per task with a `✓` (completed), `�` (in progress), or `○` (pending) indicator, the `#id`, and the task text.
+
+### Width breakpoints
+
+- **39-column compact breakpoint** (`COMPACT_SIDEBAR_MAX_WIDTH = 39` in `src/tui/sidebar-render.ts`). Sidebar widths ≤ 39 collapse to the compact layout; tool names collapse behind the count regardless of `showSidebarToolNames`.
+- **92-column auto-hide threshold** (`MIN_MAIN_WIDTH(64) + MIN_SIDEBAR_WIDTH(28)` in `src/tui/split-pane.ts`). Terminal widths < 92 hide the sidebar to preserve the main viewport.
+
+### Resize shortcut and controls
+
+`Ctrl+Shift+R` enters temporary Resize mode. While in Resize mode:
+
+- `Shift+Left` / `Shift+Right` adjust width by ±4 columns
+- `Left` / `Right` adjust width by ±1 column
+- `Enter` accepts the new width
+- `Escape` restores the pre-resize width
+- SGR mouse drag from the divider column or its neighbors adjusts width continuously
+
+Mouse reporting is enabled only while in Resize mode; the rest of the host's `onTerminalInput` listeners are not polluted with mouse sequences outside this window.
+
+### Fullscreen / alt-screen behavior
+
+When Pi runs in alt-screen fullscreen mode (`--ui-mode fullscreen`), the host TUI is a viewport instance flagged via `Symbol.for("@earendil-works/pi-tui/viewport")`. The sidebar detects this and refuses to install; `SidebarController.isSupported()` returns false. No warning is emitted — the absence of the sidebar is the signal. The footer and `/statusline` continue to work.
+
+### Dashboard centering beside the sidebar
+
+When `/statusline` opens its dashboard overlay, it anchors the overlay at `center`, then applies `offsetX: -Math.floor(effectiveSidebarWidth / 2)` whenever the sidebar is effectively visible. This shifts the dashboard left by half the sidebar's width so it lands in the main (left-of-sidebar) column instead of overlapping the sidebar. When the sidebar is hidden, no offset is applied and the dashboard centers in the full terminal.
+
+### `NO_COLOR`
+
+`NO_COLOR` is honored by presence, not by value. Set it (even to an empty string) to disable color in both the footer and `/statusline`; both surfaces strip ANSI codes when the environment contains a `NO_COLOR` key.
+
+### Cleanup guarantees
+
+On `session_shutdown`, the sidebar controller, sidebar panel registry, workspace-pulse runtime, activity runtime, usage runtime, completion-notification wiring, and dashboard overlay are all disposed; the footer is cleared. Every dispose is idempotent — each guards with `if (disposed) return`, so a second shutdown call (session replacement, double event delivery) succeeds silently without throwing or double-freeing.
+
 ## Development And Verification
 
 ```bash
