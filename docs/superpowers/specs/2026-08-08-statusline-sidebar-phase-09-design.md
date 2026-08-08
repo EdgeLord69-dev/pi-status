@@ -1,11 +1,11 @@
-# Statusline Sidebar Phase 10 Design
+# Statusline Sidebar Phase 9 Design
 
 **Date:** 2026-08-08
 **Status:** Draft
 
 ## Goal
 
-After Phase 8 decoupled the Statusbar and Sidebar hidden lists, three small UI improvements remain: the Workspace panel collapses the git branch into the project name (truncating long branches), the Sidebar tab sits at the end of the dashboard tab order away from the Statusbar tab it configures, and the Statuses tab shows a two-column layout that needs a surface picker. Phase 10 fixes all three.
+After Phase 8 decoupled the Statusbar and Sidebar hidden lists, three small UI improvements remain: the Workspace panel collapses the git branch into the project name (truncating long branches), the Sidebar tab sits at the end of the dashboard tab order away from the Statusbar tab it configures, and the Statuses tab shows a two-column layout that needs a surface picker. Phase 9 fixes all three.
 
 ## Scope
 
@@ -23,7 +23,7 @@ After Phase 8 decoupled the Statusbar and Sidebar hidden lists, three small UI i
 - Any new config field. The picker is UI state on `TabNavigation`, not a persisted config.
 - Touching the `STATUSES` / `ALERTS` sidebar panels.
 - Renaming other dashboard tabs.
-- Removing the Phase 9 release verification work.
+- Removing the Phase 10 release verification work.
 - Migrating persisted `state.navigation.layout` to `state.navigation.statusbar` (Phase 8 already did this; there is no analog here since tab navigation is not persisted).
 - Per-extension zone assignments (extension statuses still all land in a single `extensionStatusZone`).
 

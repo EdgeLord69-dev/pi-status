@@ -1,4 +1,4 @@
-# Statusline Sidebar Phase 10 Implementation Plan
+# Statusline Sidebar Phase 9 Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -13,6 +13,7 @@
 ## Task 1: Workspace panel — branch on new line when overflow
 
 **Files:**
+
 - Modify: `src/tui/sidebar-render.ts:536-624` (`workspaceRows`), and call site at `src/tui/sidebar-render.ts:728`
 - Test: `tests/tui/sidebar-render.test.ts`
 
@@ -25,7 +26,9 @@ describe("workspace identity overflow", () => {
   it("keeps project and branch on one row when the combined line fits", () => {
     const input = makeInput();
     const snap = buildSidebarSnapshot(input);
-    const lines = renderSidebarLines(snap, input.config, noTheme, 72, 36, { colorEnabled: false });
+    const lines = renderSidebarLines(snap, input.config, noTheme, 72, 36, {
+      colorEnabled: false,
+    });
     const text = lines.join("\n");
     // Project name and branch appear on the same line.
     expect(text).toMatch(/repo.*main/);
@@ -46,7 +49,8 @@ describe("workspace identity overflow", () => {
         status: "clean",
         directory: "/home/user/repo",
         root: "/home/user/repo",
-        branch: "feature/this-is-a-very-long-branch-name-that-definitely-overflows",
+        branch:
+          "feature/this-is-a-very-long-branch-name-that-definitely-overflows",
         ahead: 0,
         behind: 0,
         counts: { staged: 0, unstaged: 0, untracked: 0, conflicts: 0 },
@@ -59,10 +63,14 @@ describe("workspace identity overflow", () => {
     });
     const input = makeInput({ footer });
     const snap = buildSidebarSnapshot(input);
-    const lines = renderSidebarLines(snap, input.config, noTheme, 44, 36, { colorEnabled: false });
+    const lines = renderSidebarLines(snap, input.config, noTheme, 44, 36, {
+      colorEnabled: false,
+    });
     const text = lines.join("\n");
     // Full branch name is visible (no truncation marker).
-    expect(text).toContain("feature/this-is-a-very-long-branch-name-that-definitely-overflows");
+    expect(text).toContain(
+      "feature/this-is-a-very-long-branch-name-that-definitely-overflows",
+    );
     expect(text).not.toMatch(/…/);
   });
 
@@ -78,14 +86,17 @@ describe("workspace identity overflow", () => {
     });
     const input = makeInput({ footer });
     const snap = buildSidebarSnapshot(input);
-    const lines = renderSidebarLines(snap, input.config, noTheme, 72, 36, { colorEnabled: false });
+    const lines = renderSidebarLines(snap, input.config, noTheme, 72, 36, {
+      colorEnabled: false,
+    });
     const text = lines.join("\n");
     expect(text).toContain("repo");
     expect(text).not.toMatch(/·/);
   });
 
   it("never truncates the branch at the width matrix", () => {
-    const branchName = "feature/very-long-branch-name-that-overflows-most-widths";
+    const branchName =
+      "feature/very-long-branch-name-that-overflows-most-widths";
     const footer = withDefaults({
       cwd: "/home/user/repo",
       thinkingLevel: "off",
@@ -112,7 +123,9 @@ describe("workspace identity overflow", () => {
     const input = makeInput({ footer });
     const snap = buildSidebarSnapshot(input);
     for (const width of [28, 39, 40, 44, 72]) {
-      const lines = renderSidebarLines(snap, input.config, noTheme, width, 36, { colorEnabled: false });
+      const lines = renderSidebarLines(snap, input.config, noTheme, width, 36, {
+        colorEnabled: false,
+      });
       const text = lines.join("\n");
       expect(text).toContain(branchName);
     }
@@ -171,7 +184,7 @@ function workspaceRows(
 Then update the `pulseCore`/`pulseDetails` blocks that used `compact` — the `compact` parameter is now gone. Replace `compact ? "?${finiteCount(...)}" : "${finiteCount(...)} untracked"` patterns with the same expressions (keep the existing ternaries; they reference `compact` which is no longer in scope). Solve this by deriving `compact` from `contentWidth` inside the function:
 
 ```ts
-  const compact = contentWidth < 40;
+const compact = contentWidth < 40;
 ```
 
 Place this line right after the `gitState` block. The existing `compact` ternaries in `pulseCore`/`pulseDetails` (lines 590, 597, 604) continue to compile.
@@ -179,13 +192,13 @@ Place this line right after the `gitState` block. The existing `compact` ternari
 Then update the call site at `src/tui/sidebar-render.ts:728` from:
 
 ```ts
-  const workspace = workspaceRows(snapshot, compact, palette);
+const workspace = workspaceRows(snapshot, compact, palette);
 ```
 
 to:
 
 ```ts
-  const workspace = workspaceRows(snapshot, panelContentWidth, palette);
+const workspace = workspaceRows(snapshot, panelContentWidth, palette);
 ```
 
 `panelContentWidth` is already computed at line 722 and is the same value passed to `panelRows` (line 649 onward), which is the truncator.
@@ -212,6 +225,7 @@ git commit -m "feat(sidebar): split workspace branch onto its own line when it w
 ## Task 2: Dashboard tab reorder + save dialog copy fix
 
 **Files:**
+
 - Modify: `src/tui/dashboard-state.ts:18-25` (`DASHBOARD_TABS`)
 - Modify: `src/tui/dashboard-render.ts:274-275` (save dialog body)
 - Test: `tests/tui/dashboard-state.test.ts` (tab order test)
@@ -222,16 +236,16 @@ git commit -m "feat(sidebar): split workspace branch onto its own line when it w
 In `tests/tui/dashboard-state.test.ts`, find the test at line 175-184 titled "exposes six tabs with Statusbar first and Sidebar between Tools and Settings". Replace the expected array with:
 
 ```ts
-  it("exposes six tabs with Statusbar first and Sidebar between Statusbar and Statuses", () => {
-    expect(DASHBOARD_TABS.map(({ id }) => id)).toEqual([
-      "statusbar",
-      "sidebar",
-      "statuses",
-      "session",
-      "tools",
-      "settings",
-    ]);
-  });
+it("exposes six tabs with Statusbar first and Sidebar between Statusbar and Statuses", () => {
+  expect(DASHBOARD_TABS.map(({ id }) => id)).toEqual([
+    "statusbar",
+    "sidebar",
+    "statuses",
+    "session",
+    "tools",
+    "settings",
+  ]);
+});
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -264,19 +278,19 @@ Expected: PASS.
 In `tests/tui/dashboard-state.test.ts`, add the following test inside the existing `describe("dashboard Statusbar tab initialization")` block (after the "selects the Statusbar tab by default" test at line 187):
 
 ```ts
-  it("next_tab from Statusbar lands on Sidebar", () => {
-    let state = initDashboardState(config(), [], true);
-    state.activeTab = "statusbar";
-    state = reduceDashboardState(state, { type: "next_tab" }).state;
-    expect(state.activeTab).toBe("sidebar");
-  });
+it("next_tab from Statusbar lands on Sidebar", () => {
+  let state = initDashboardState(config(), [], true);
+  state.activeTab = "statusbar";
+  state = reduceDashboardState(state, { type: "next_tab" }).state;
+  expect(state.activeTab).toBe("sidebar");
+});
 
-  it("previous_tab from Sidebar lands on Statusbar", () => {
-    let state = initDashboardState(config(), [], true);
-    state.activeTab = "sidebar";
-    state = reduceDashboardState(state, { type: "previous_tab" }).state;
-    expect(state.activeTab).toBe("statusbar");
-  });
+it("previous_tab from Sidebar lands on Statusbar", () => {
+  let state = initDashboardState(config(), [], true);
+  state.activeTab = "sidebar";
+  state = reduceDashboardState(state, { type: "previous_tab" }).state;
+  expect(state.activeTab).toBe("statusbar");
+});
 ```
 
 - [ ] **Step 6: Run tests to verify they pass**
@@ -295,7 +309,11 @@ describe("save confirm dialog body", () => {
   it("uses 'Statusbar' (not 'Layout') in the affected surfaces list", () => {
     // Construct a state with a save dialog open and verify the rendered body.
     const state = initDashboardState(config(), [], true);
-    const dialog: DashboardDialog = { type: "confirm", kind: "save", selectedIndex: 0 };
+    const dialog: DashboardDialog = {
+      type: "confirm",
+      kind: "save",
+      selectedIndex: 0,
+    };
     const lines = renderDashboardLines(state, noTheme, 80, 24, { dialog });
     const body = lines.join("\n");
     expect(body).toContain("Statusbar");
@@ -349,6 +367,7 @@ git commit -m "feat(dashboard): reorder tabs (Sidebar next to Statusbar) and fix
 ## Task 3: Statuses tab — surface picker
 
 **Files:**
+
 - Modify: `src/tui/dashboard-state.ts` (`TabNavigation`, `DashboardSelectableRow`, `selectableRows`, reducer)
 - Modify: `src/tui/dashboard-render.ts` (`logicalBody` Statuses branch)
 - Test: `tests/tui/dashboard-state.test.ts`
@@ -384,7 +403,11 @@ export interface TabNavigation {
 In `src/tui/dashboard-state.ts:243`, replace:
 
 ```ts
-const emptyNavigation = (): TabNavigation => ({ selectedIndex: 0, query: "", offset: 0 });
+const emptyNavigation = (): TabNavigation => ({
+  selectedIndex: 0,
+  query: "",
+  offset: 0,
+});
 ```
 
 with:
@@ -408,15 +431,15 @@ Expected: pass. `emptyNavigation` is the only literal initializer; everything el
 In `tests/tui/dashboard-state.test.ts`, add inside the `describe("dashboard Statusbar tab initialization")` block:
 
 ```ts
-  it("initializes Statuses navigation with surface='statusbar' by default", () => {
-    const state = initDashboardState(config(), [], true);
-    expect(state.navigation.statuses).toEqual({
-      selectedIndex: 0,
-      query: "",
-      offset: 0,
-      surface: "statusbar",
-    });
+it("initializes Statuses navigation with surface='statusbar' by default", () => {
+  const state = initDashboardState(config(), [], true);
+  expect(state.navigation.statuses).toEqual({
+    selectedIndex: 0,
+    query: "",
+    offset: 0,
+    surface: "statusbar",
   });
+});
 ```
 
 - [ ] **Step 5: Run the test to verify it passes**
@@ -460,17 +483,17 @@ export type DashboardSelectableRow =
 In `src/tui/dashboard-state.ts:297-308`, replace the `if (tab === "statuses") { ... }` block with:
 
 ```ts
-  if (tab === "statuses") {
-    const query = state.navigation.statuses.query;
-    const surface = state.navigation.statuses.surface;
-    return [
-      { type: "surface_picker", surface },
-      ...state.discoveredStatuses
-        .filter((key) => includesFuzzy(key, query))
-        .map((key) => ({ type: "status_visibility" as const, key, surface })),
-      { type: "save" },
-    ];
-  }
+if (tab === "statuses") {
+  const query = state.navigation.statuses.query;
+  const surface = state.navigation.statuses.surface;
+  return [
+    { type: "surface_picker", surface },
+    ...state.discoveredStatuses
+      .filter((key) => includesFuzzy(key, query))
+      .map((key) => ({ type: "status_visibility" as const, key, surface })),
+    { type: "save" },
+  ];
+}
 ```
 
 Note: each discovered status now emits a single `status_visibility` row (using the picker's surface), not two. The previous behavior showed both columns inline.
@@ -525,21 +548,22 @@ git commit -m "feat(dashboard): emit surface_picker row from statuses tab"
 In `src/tui/dashboard-state.ts:518-525`, replace the `if (row.type === "extension_status_zone")` block with:
 
 ```ts
-    if (row.type === "extension_status_zone") {
-      const index = STATUS_LINE_ZONE_ORDER.indexOf(state.draft.extensionStatusZone);
-      state.draft.extensionStatusZone =
-        STATUS_LINE_ZONE_ORDER[
-          (index + action.delta + STATUS_LINE_ZONE_ORDER.length) % STATUS_LINE_ZONE_ORDER.length
-        ];
-      return { state: clampSelection(state) };
-    }
-    if (row.type === "surface_picker") {
-      const next: "statusbar" | "sidebar" =
-        state.navigation.statuses.surface === "statusbar" ? "sidebar" : "statusbar";
-      state.navigation.statuses.surface = next;
-      state.navigation.statuses.selectedIndex = 0;
-      return { state: clampSelection(state) };
-    }
+if (row.type === "extension_status_zone") {
+  const index = STATUS_LINE_ZONE_ORDER.indexOf(state.draft.extensionStatusZone);
+  state.draft.extensionStatusZone =
+    STATUS_LINE_ZONE_ORDER[
+      (index + action.delta + STATUS_LINE_ZONE_ORDER.length) %
+        STATUS_LINE_ZONE_ORDER.length
+    ];
+  return { state: clampSelection(state) };
+}
+if (row.type === "surface_picker") {
+  const next: "statusbar" | "sidebar" =
+    state.navigation.statuses.surface === "statusbar" ? "sidebar" : "statusbar";
+  state.navigation.statuses.surface = next;
+  state.navigation.statuses.selectedIndex = 0;
+  return { state: clampSelection(state) };
+}
 ```
 
 - [ ] **Step 13: Add `activate` handler for `surface_picker`**
@@ -562,48 +586,51 @@ In the `activate` branch of `dashboard-state.ts` (the `if (action.type !== "acti
 In `tests/tui/dashboard-state.test.ts`, inside the `describe("statuses surface picker")` block, add:
 
 ```ts
-  it("adjust flips the surface and resets selectedIndex", () => {
-    let state = initDashboardState(config(), ["alpha"], true);
-    state.activeTab = "statuses";
-    state.navigation.statuses.selectedIndex = 2;
-    state.navigation.statuses.surface = "statusbar";
-    expect(state.navigation.statuses.selectedIndex).toBe(2);
-    state = reduceDashboardState(state, { type: "adjust", delta: 1 }).state;
-    expect(state.navigation.statuses.surface).toBe("sidebar");
-    expect(state.navigation.statuses.selectedIndex).toBe(0);
-  });
+it("adjust flips the surface and resets selectedIndex", () => {
+  let state = initDashboardState(config(), ["alpha"], true);
+  state.activeTab = "statuses";
+  state.navigation.statuses.selectedIndex = 2;
+  state.navigation.statuses.surface = "statusbar";
+  expect(state.navigation.statuses.selectedIndex).toBe(2);
+  state = reduceDashboardState(state, { type: "adjust", delta: 1 }).state;
+  expect(state.navigation.statuses.surface).toBe("sidebar");
+  expect(state.navigation.statuses.selectedIndex).toBe(0);
+});
 
-  it("activate flips the surface and resets selectedIndex", () => {
-    let state = initDashboardState(config(), ["alpha"], true);
-    state.activeTab = "statuses";
-    state.navigation.statuses.selectedIndex = 3;
-    state.navigation.statuses.surface = "statusbar";
-    state = reduceDashboardState(state, { type: "activate" }).state;
-    expect(state.navigation.statuses.surface).toBe("sidebar");
-    expect(state.navigation.statuses.selectedIndex).toBe(0);
-  });
+it("activate flips the surface and resets selectedIndex", () => {
+  let state = initDashboardState(config(), ["alpha"], true);
+  state.activeTab = "statuses";
+  state.navigation.statuses.selectedIndex = 3;
+  state.navigation.statuses.surface = "statusbar";
+  state = reduceDashboardState(state, { type: "activate" }).state;
+  expect(state.navigation.statuses.surface).toBe("sidebar");
+  expect(state.navigation.statuses.selectedIndex).toBe(0);
+});
 
-  it("activate on a status_visibility row toggles the matching hidden list", () => {
-    let state = initDashboardState(config(), ["alpha"], true);
-    state.activeTab = "statuses";
-    state.navigation.statuses.surface = "sidebar";
-    state.navigation.statuses.selectedIndex = 1; // alpha row
-    const before = state.draft.sidebarExtensionSegments.hidden;
-    state = reduceDashboardState(state, { type: "activate" }).state;
-    expect(state.draft.sidebarExtensionSegments.hidden).toEqual([...before, "alpha"]);
-    state = reduceDashboardState(state, { type: "activate" }).state;
-    expect(state.draft.sidebarExtensionSegments.hidden).toEqual(before);
-  });
+it("activate on a status_visibility row toggles the matching hidden list", () => {
+  let state = initDashboardState(config(), ["alpha"], true);
+  state.activeTab = "statuses";
+  state.navigation.statuses.surface = "sidebar";
+  state.navigation.statuses.selectedIndex = 1; // alpha row
+  const before = state.draft.sidebarExtensionSegments.hidden;
+  state = reduceDashboardState(state, { type: "activate" }).state;
+  expect(state.draft.sidebarExtensionSegments.hidden).toEqual([
+    ...before,
+    "alpha",
+  ]);
+  state = reduceDashboardState(state, { type: "activate" }).state;
+  expect(state.draft.sidebarExtensionSegments.hidden).toEqual(before);
+});
 
-  it("activate on status_visibility uses the correct list per surface", () => {
-    let state = initDashboardState(config(), ["alpha"], true);
-    state.activeTab = "statuses";
-    state.navigation.statuses.surface = "statusbar";
-    state.navigation.statuses.selectedIndex = 1;
-    state = reduceDashboardState(state, { type: "activate" }).state;
-    expect(state.draft.extensionSegments.hidden).toContain("alpha");
-    expect(state.draft.sidebarExtensionSegments.hidden).not.toContain("alpha");
-  });
+it("activate on status_visibility uses the correct list per surface", () => {
+  let state = initDashboardState(config(), ["alpha"], true);
+  state.activeTab = "statuses";
+  state.navigation.statuses.surface = "statusbar";
+  state.navigation.statuses.selectedIndex = 1;
+  state = reduceDashboardState(state, { type: "activate" }).state;
+  expect(state.draft.extensionSegments.hidden).toContain("alpha");
+  expect(state.draft.sidebarExtensionSegments.hidden).not.toContain("alpha");
+});
 ```
 
 - [ ] **Step 15: Run tests to verify they pass**
