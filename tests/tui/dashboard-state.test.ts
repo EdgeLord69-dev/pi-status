@@ -309,6 +309,48 @@ describe("statuses surface picker", () => {
       { type: "save" },
     ]);
   });
+
+  it("adjust flips the surface and resets selectedIndex", () => {
+    let state = initDashboardState(config(), ["alpha"], true);
+    state.activeTab = "statuses";
+    state.navigation.statuses.selectedIndex = 0; // surface_picker row
+    expect(state.navigation.statuses.surface).toBe("statusbar");
+    state = reduceDashboardState(state, { type: "adjust", delta: 1 }).state;
+    expect(state.navigation.statuses.surface).toBe("sidebar");
+    expect(state.navigation.statuses.selectedIndex).toBe(0);
+  });
+
+  it("activate flips the surface and resets selectedIndex", () => {
+    let state = initDashboardState(config(), ["alpha"], true);
+    state.activeTab = "statuses";
+    state.navigation.statuses.selectedIndex = 0; // surface_picker row
+    expect(state.navigation.statuses.surface).toBe("statusbar");
+    state = reduceDashboardState(state, { type: "activate" }).state;
+    expect(state.navigation.statuses.surface).toBe("sidebar");
+    expect(state.navigation.statuses.selectedIndex).toBe(0);
+  });
+
+  it("activate on a status_visibility row toggles the matching hidden list", () => {
+    let state = initDashboardState(config(), ["alpha"], true);
+    state.activeTab = "statuses";
+    state.navigation.statuses.surface = "sidebar";
+    state.navigation.statuses.selectedIndex = 1; // alpha row
+    const before = state.draft.sidebarExtensionSegments.hidden;
+    state = reduceDashboardState(state, { type: "activate" }).state;
+    expect(state.draft.sidebarExtensionSegments.hidden).toEqual([...before, "alpha"]);
+    state = reduceDashboardState(state, { type: "activate" }).state;
+    expect(state.draft.sidebarExtensionSegments.hidden).toEqual(before);
+  });
+
+  it("activate on status_visibility uses the correct list per surface", () => {
+    let state = initDashboardState(config(), ["alpha"], true);
+    state.activeTab = "statuses";
+    state.navigation.statuses.surface = "statusbar";
+    state.navigation.statuses.selectedIndex = 1;
+    state = reduceDashboardState(state, { type: "activate" }).state;
+    expect(state.draft.extensionSegments.hidden).toContain("alpha");
+    expect(state.draft.sidebarExtensionSegments.hidden).not.toContain("alpha");
+  });
 });
 
 describe("dashboard transitions", () => {
@@ -404,7 +446,8 @@ describe("dashboard transitions", () => {
   it("keeps or resets status selection safely when filtering", () => {
     let state = initDashboardState(config(), ["alpha", "beta"], true);
     state.activeTab = "statuses";
-    state.navigation.statuses.selectedIndex = 1;
+    // After the surface_picker was added, beta lives at index 2 (picker(0), alpha(1), beta(2)).
+    state.navigation.statuses.selectedIndex = 2;
 
     state = dispatch(state, { type: "type_char", char: "b" });
     expect(selectableRows(state)[state.navigation.statuses.selectedIndex]).toEqual({
@@ -414,8 +457,10 @@ describe("dashboard transitions", () => {
     });
 
     state = dispatch(state, { type: "type_char", char: "z" });
+    // After filter "bz" the list is [picker, save]; reconcile moves selection to 0.
     expect(selectableRows(state)[state.navigation.statuses.selectedIndex]).toEqual({
-      type: "save",
+      type: "surface_picker",
+      surface: "statusbar",
     });
     expect(state.navigation.statuses.selectedIndex).toBe(0);
   });
@@ -443,9 +488,11 @@ describe("dashboard transitions", () => {
     );
     state.activeTab = "statuses";
     state.navigation.statuses.query = "ab";
+    // After the picker, statuses emit one row per key. selectedIndex=1 is the alpha-build row.
+    state.navigation.statuses.selectedIndex = 1;
     expect(selectableRows(state)).toEqual([
+      { type: "surface_picker", surface: "statusbar" },
       { type: "status_visibility", key: "alpha-build", surface: "statusbar" },
-      { type: "status_visibility", key: "alpha-build", surface: "sidebar" },
       { type: "save" },
     ]);
     state = dispatch(state, { type: "activate" });
@@ -453,14 +500,16 @@ describe("dashboard transitions", () => {
   });
 
   it("Statuses tab rows expose both statusbar and sidebar visibility toggles", () => {
-    const state = initDashboardState(config(), ["alpha"], true);
-    const rows = selectableRows(state, "statuses");
-    expect(rows).toContainEqual({
+    // Each surface produces its own status_visibility row; the picker selects which one is active.
+    const stateStatusbar = initDashboardState(config(), ["alpha"], true);
+    const stateSidebar = initDashboardState(config(), ["alpha"], true);
+    stateSidebar.navigation.statuses.surface = "sidebar";
+    expect(selectableRows(stateStatusbar, "statuses")).toContainEqual({
       type: "status_visibility",
       key: "alpha",
       surface: "statusbar",
     });
-    expect(rows).toContainEqual({
+    expect(selectableRows(stateSidebar, "statuses")).toContainEqual({
       type: "status_visibility",
       key: "alpha",
       surface: "sidebar",
@@ -470,6 +519,8 @@ describe("dashboard transitions", () => {
   it("activating status_visibility (statusbar) toggles extensionSegments.hidden", () => {
     let state = initDashboardState(config(), ["alpha"], true);
     state.activeTab = "statuses";
+    // picker(0), status_visibility(1) — activate the alpha row.
+    state.navigation.statuses.selectedIndex = 1;
     state = reduceDashboardState(state, { type: "activate" }).state;
     expect(state.draft.extensionSegments.hidden).toEqual(["alpha"]);
     state = reduceDashboardState(state, { type: "activate" }).state;
@@ -479,7 +530,9 @@ describe("dashboard transitions", () => {
   it("activating status_visibility (sidebar) toggles sidebarExtensionSegments.hidden", () => {
     let state = initDashboardState(config(), ["alpha"], true);
     state.activeTab = "statuses";
-    state.navigation.statuses.selectedIndex = 1; // second row (sidebar column)
+    state.navigation.statuses.surface = "sidebar";
+    // picker(0), status_visibility(1) — activate the alpha row on the sidebar surface.
+    state.navigation.statuses.selectedIndex = 1;
     state = reduceDashboardState(state, { type: "activate" }).state;
     expect(state.draft.sidebarExtensionSegments.hidden).toEqual(["alpha"]);
   });

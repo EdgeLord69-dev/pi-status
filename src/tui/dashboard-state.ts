@@ -529,6 +529,13 @@ export function reduceDashboardState(
         ];
       return { state: clampSelection(state) };
     }
+    if (row.type === "surface_picker") {
+      const next: "statusbar" | "sidebar" =
+        state.navigation.statuses.surface === "statusbar" ? "sidebar" : "statusbar";
+      state.navigation.statuses.surface = next;
+      state.navigation.statuses.selectedIndex = 0;
+      return { state: clampSelection(state) };
+    }
     if (row.type === "preset") {
       const index =
         state.preset === "custom"
@@ -580,6 +587,13 @@ export function reduceDashboardState(
       };
     }
     return { state, effect: { type: "save", config: structuredClone(state.draft) } };
+  }
+  if (row.type === "surface_picker") {
+    const next: "statusbar" | "sidebar" =
+      state.navigation.statuses.surface === "statusbar" ? "sidebar" : "statusbar";
+    state.navigation.statuses.surface = next;
+    state.navigation.statuses.selectedIndex = 0;
+    return { state: clampSelection(state) };
   }
   if (row.type === "notifications") {
     state.draft.completionNotifications = !state.draft.completionNotifications;
