@@ -290,6 +290,147 @@ describe("renderSidebarLines built-ins", () => {
   });
 });
 
+describe("workspace identity overflow", () => {
+  it("keeps project and branch on one row when the combined line fits", () => {
+    const footer = withDefaults({
+      cwd: "/home/user/repo",
+      thinkingLevel: "off",
+      gitBranch: "main",
+      runState: "idle",
+      contextUsage: { tokens: 0, contextWindow: 1, percent: 0 },
+      sessionId: "abc",
+      extensionStatuses: new Map(),
+      workspacePulse: {
+        status: "clean",
+        directory: "/home/user/repo",
+        root: "/home/user/repo",
+        branch: "main",
+        ahead: 0,
+        behind: 0,
+        counts: { staged: 0, unstaged: 0, untracked: 0, conflicts: 0 },
+        trackedFiles: 0,
+        linesAdded: 0,
+        linesRemoved: 0,
+        binaryFiles: 0,
+        submodules: 0,
+      },
+    });
+    const input = makeInput({ footer });
+    const snap = buildSidebarSnapshot(input);
+    const lines = renderSidebarLines(snap, input.config, noTheme, 72, 36, {
+      colorEnabled: false,
+    });
+    const text = lines.join("\n");
+    // Project name and branch appear on the same line.
+    expect(text).toMatch(/repo.*main/);
+    // No second standalone "main" line.
+    expect(text).not.toMatch(/^main\s*$/m);
+  });
+
+  it("splits branch onto its own line when the combined line would overflow", () => {
+    // ponytail: branch must fit on its own line at the test width (44 → inner 38).
+    // The implementation splits onto a second row but does not wrap; longer
+    // names still get truncated by panelRows. Upgrade to a wrapping branch row
+    // if real branches need to exceed panel width.
+    const longBranch = "feature/very-long-branch-name";
+    const footer = withDefaults({
+      cwd: "/home/user/repo",
+      thinkingLevel: "off",
+      gitBranch: "main",
+      runState: "idle",
+      contextUsage: { tokens: 0, contextWindow: 1, percent: 0 },
+      sessionId: "abc",
+      extensionStatuses: new Map(),
+      workspacePulse: {
+        status: "clean",
+        directory: "/home/user/repo",
+        root: "/home/user/repo",
+        branch: longBranch,
+        ahead: 0,
+        behind: 0,
+        counts: { staged: 0, unstaged: 0, untracked: 0, conflicts: 0 },
+        trackedFiles: 0,
+        linesAdded: 0,
+        linesRemoved: 0,
+        binaryFiles: 0,
+        submodules: 0,
+      },
+    });
+    const input = makeInput({ footer });
+    const snap = buildSidebarSnapshot(input);
+    const lines = renderSidebarLines(snap, input.config, noTheme, 44, 36, {
+      colorEnabled: false,
+    });
+    const text = lines.join("\n");
+    // Full branch name is visible (no truncation marker).
+    expect(text).toContain(longBranch);
+    expect(text).not.toMatch(/…/);
+  });
+
+  it("renders only the project name when no branch is available", () => {
+    const footer = withDefaults({
+      cwd: "/home/user/repo",
+      thinkingLevel: "off",
+      gitBranch: null,
+      runState: "idle",
+      contextUsage: { tokens: 0, contextWindow: 1, percent: 0 },
+      sessionId: "abc",
+      extensionStatuses: new Map(),
+    });
+    const input = makeInput({ footer });
+    const snap = buildSidebarSnapshot(input);
+    const lines = renderSidebarLines(snap, input.config, noTheme, 72, 36, {
+      colorEnabled: false,
+    });
+    // The workspace identity row is just the project name — no branch separator.
+    const workspaceLines = lines
+      .join("\n")
+      .split("\n")
+      .filter((line) => line.includes("│") && line.includes("repo"));
+    expect(workspaceLines.length).toBeGreaterThan(0);
+    for (const line of workspaceLines) {
+      expect(line).not.toMatch(/·/);
+    }
+  });
+
+  it("never truncates the branch at the width matrix", () => {
+    // ponytail: branch must fit on its own line at the narrowest width (28 → inner 22).
+    const branchName = "feature/long-branch";
+    const footer = withDefaults({
+      cwd: "/home/user/repo",
+      thinkingLevel: "off",
+      gitBranch: "main",
+      runState: "idle",
+      contextUsage: { tokens: 0, contextWindow: 1, percent: 0 },
+      sessionId: "abc",
+      extensionStatuses: new Map(),
+      workspacePulse: {
+        status: "clean",
+        directory: "/home/user/repo",
+        root: "/home/user/repo",
+        branch: branchName,
+        ahead: 0,
+        behind: 0,
+        counts: { staged: 0, unstaged: 0, untracked: 0, conflicts: 0 },
+        trackedFiles: 0,
+        linesAdded: 0,
+        linesRemoved: 0,
+        binaryFiles: 0,
+        submodules: 0,
+      },
+    });
+    const input = makeInput({ footer });
+    const snap = buildSidebarSnapshot(input);
+    for (const width of [28, 39, 40, 44, 72]) {
+      const lines = renderSidebarLines(snap, input.config, noTheme, width, 36, {
+        colorEnabled: false,
+      });
+      const text = lines.join("\n");
+      expect(text).toContain(branchName);
+    }
+  });
+});
+
 describe("renderSidebarLines width matrix", () => {
   for (const width of [28, 39, 40, 44, 72]) {
     for (const height of [12, 24, 36]) {
