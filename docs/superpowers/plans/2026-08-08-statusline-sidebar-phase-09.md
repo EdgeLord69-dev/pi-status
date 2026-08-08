@@ -1,4 +1,4 @@
-# Statusline Sidebar Phase 9 Implementation Plan
+# Statusline Sidebar Phase 9: Dashboard Polish — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -171,6 +171,12 @@ function workspaceRows(
         ? "warning"
         : "ready";
   const gitState = branch && symbol ? palette.paint(role, symbol) : "";
+  // ponytail: contentWidth < 38 mirrors the original `safeWidth <= 39` threshold
+  // (contentWidth = safeWidth - 2). The pulseCore/pulseDetails compact labels
+  // (e.g. "?3" vs "3 untracked") must keep the same cutover to avoid drift in
+  // existing width-matrix tests. Upgrade to a shared constant if more sites
+  // need the threshold.
+  const compact = contentWidth < 38;
   const inline = branch
     ? `${project} ${palette.paint("dim", "·")} ${branch} ${gitState}`
     : project;
@@ -181,13 +187,7 @@ function workspaceRows(
     : [project];
 ```
 
-Then update the `pulseCore`/`pulseDetails` blocks that used `compact` — the `compact` parameter is now gone. Replace `compact ? "?${finiteCount(...)}" : "${finiteCount(...)} untracked"` patterns with the same expressions (keep the existing ternaries; they reference `compact` which is no longer in scope). Solve this by deriving `compact` from `contentWidth` inside the function:
-
-```ts
-const compact = contentWidth < 40;
-```
-
-Place this line right after the `gitState` block. The existing `compact` ternaries in `pulseCore`/`pulseDetails` (lines 590, 597, 604) continue to compile.
+The existing `compact` ternaries in `pulseCore`/`pulseDetails` (lines 590, 597, 604) now reference the locally-derived `compact` and continue to compile.
 
 Then update the call site at `src/tui/sidebar-render.ts:728` from:
 
@@ -228,8 +228,8 @@ git commit -m "feat(sidebar): split workspace branch onto its own line when it w
 
 - Modify: `src/tui/dashboard-state.ts:18-25` (`DASHBOARD_TABS`)
 - Modify: `src/tui/dashboard-render.ts:274-275` (save dialog body)
-- Test: `tests/tui/dashboard-state.test.ts` (tab order test)
-- Test: `tests/tui/dashboard-render.test.ts` (save dialog copy)
+- Test: `tests/tui/dashboard-state.test.ts` (tab order test, lines 175-184)
+- Test: `tests/tui/dashboard-render.test.ts` (save dialog copy, new describe block)
 
 - [ ] **Step 1: Update the existing tab order test to expect the new order**
 
@@ -275,7 +275,7 @@ Expected: PASS.
 
 - [ ] **Step 5: Add a test for next_tab / previous_tab crossing the new boundary**
 
-In `tests/tui/dashboard-state.test.ts`, add the following test inside the existing `describe("dashboard Statusbar tab initialization")` block (after the "selects the Statusbar tab by default" test at line 187):
+In `tests/tui/dashboard-state.test.ts`, add the following tests inside the existing `describe("dashboard Statusbar tab initialization")` block (after the "selects the Statusbar tab by default" test at line 186):
 
 ```ts
 it("next_tab from Statusbar lands on Sidebar", () => {
@@ -298,31 +298,33 @@ it("previous_tab from Sidebar lands on Statusbar", () => {
 Run: `pnpm test tests/tui/dashboard-state.test.ts -t "next_tab|previous_tab"`
 Expected: PASS.
 
-- [ ] **Step 7: Find the existing save dialog tests**
+- [ ] **Step 7: Add a test for the save dialog body copy**
 
-In `tests/tui/dashboard-render.test.ts`, search for tests that exercise the save confirm dialog body. Look for any assertion on the literal string `"Layout"` or on the dialog body string `"Apply draft"`. If a test exists, the assertion will be checking the current incorrect wording. Update the test to expect the new wording. The most common pattern in this file is a test that calls the render with a `kind: "save"` dialog and inspects the body. If the test does not exist, add a new one in a `describe("save confirm dialog body")` block.
+In `tests/tui/dashboard-render.test.ts`, add a new `describe("save confirm dialog body")` block. The test file already imports `renderDashboard` from `../../src/tui/dashboard-render.ts`; add a `DashboardDialog` import to the same line so the dialog literal is typed:
 
-In `tests/tui/dashboard-render.test.ts`, add (or update) the following test:
+```ts
+import { renderDashboard, type DashboardDialog } from "../../src/tui/dashboard-render.ts";
+```
+
+Add the new describe block at the end of the file (or after the existing `describe("dashboard Sidebar render")` block):
 
 ```ts
 describe("save confirm dialog body", () => {
   it("uses 'Statusbar' (not 'Layout') in the affected surfaces list", () => {
-    // Construct a state with a save dialog open and verify the rendered body.
     const state = initDashboardState(config(), [], true);
     const dialog: DashboardDialog = {
       type: "confirm",
       kind: "save",
       selectedIndex: 0,
     };
-    const lines = renderDashboardLines(state, noTheme, 80, 24, { dialog });
-    const body = lines.join("\n");
-    expect(body).toContain("Statusbar");
-    expect(body).not.toMatch(/Layout/);
+    const output = renderDashboard(state, preview, noTheme, 100, 40, dialog).lines.join("\n");
+    expect(output).toContain("Statusbar");
+    expect(output).not.toMatch(/Layout/);
   });
 });
 ```
 
-If the existing test fixture in this file uses different imports (e.g. `renderDashboardContent`, `renderDashboardBody`, or a different `state` builder), use the imports already present in the file. Mirror the most recent `describe` block that renders a dialog. The constants are already imported in the file's existing tests.
+The `preview` constant is the one already defined at the top of the file from `buildSnapshot(snapshotInput)`.
 
 - [ ] **Step 8: Run the test to verify it fails**
 
@@ -370,8 +372,8 @@ git commit -m "feat(dashboard): reorder tabs (Sidebar next to Statusbar) and fix
 
 - Modify: `src/tui/dashboard-state.ts` (`TabNavigation`, `DashboardSelectableRow`, `selectableRows`, reducer)
 - Modify: `src/tui/dashboard-render.ts` (`logicalBody` Statuses branch)
-- Test: `tests/tui/dashboard-state.test.ts`
-- Test: `tests/tui/dashboard-render.test.ts`
+- Modify: `tests/tui/dashboard-state.test.ts` (update existing "keeps Save reachable" test, add new "statuses surface picker" block)
+- Modify: `tests/tui/dashboard-render.test.ts` (replace the "renders two checkboxes per status" test, add new "statuses surface picker render" block)
 
 ### 3.1: Add `surface` field to `TabNavigation`
 
@@ -403,11 +405,7 @@ export interface TabNavigation {
 In `src/tui/dashboard-state.ts:243`, replace:
 
 ```ts
-const emptyNavigation = (): TabNavigation => ({
-  selectedIndex: 0,
-  query: "",
-  offset: 0,
-});
+const emptyNavigation = (): TabNavigation => ({ selectedIndex: 0, query: "", offset: 0 });
 ```
 
 with:
@@ -421,12 +419,28 @@ const emptyNavigation = (): TabNavigation => ({
 });
 ```
 
-- [ ] **Step 3: Run typecheck to verify the field is propagated**
+- [ ] **Step 3: Update the existing "initializes Sidebar navigation" test for the new field**
+
+In `tests/tui/dashboard-state.test.ts`, the existing test at line 239-242 asserts the exact shape of `state.navigation.sidebar`. Add the `surface` field:
+
+```ts
+it("initializes Sidebar navigation with selectedIndex 0 and empty query", () => {
+  const state = initDashboardState(config(), [], true);
+  expect(state.navigation.sidebar).toEqual({
+    selectedIndex: 0,
+    query: "",
+    offset: 0,
+    surface: "statusbar",
+  });
+});
+```
+
+- [ ] **Step 4: Run typecheck to verify the field is propagated**
 
 Run: `pnpm typecheck`
 Expected: pass. `emptyNavigation` is the only literal initializer; everything else reads from existing state.
 
-- [ ] **Step 4: Add a test asserting the default `surface` value**
+- [ ] **Step 5: Add a test asserting the default `surface` value on Statuses**
 
 In `tests/tui/dashboard-state.test.ts`, add inside the `describe("dashboard Statusbar tab initialization")` block:
 
@@ -442,12 +456,12 @@ it("initializes Statuses navigation with surface='statusbar' by default", () => 
 });
 ```
 
-- [ ] **Step 5: Run the test to verify it passes**
+- [ ] **Step 6: Run the test to verify it passes**
 
 Run: `pnpm test tests/tui/dashboard-state.test.ts -t "initializes Statuses navigation"`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add src/tui/dashboard-state.ts tests/tui/dashboard-state.test.ts
@@ -456,7 +470,7 @@ git commit -m "feat(dashboard): add surface selector to TabNavigation"
 
 ### 3.2: Add `surface_picker` row type and emit it from `selectableRows`
 
-- [ ] **Step 7: Add `surface_picker` to `DashboardSelectableRow`**
+- [ ] **Step 8: Add `surface_picker` to `DashboardSelectableRow`**
 
 In `src/tui/dashboard-state.ts:49-62`, add the new variant to the union:
 
@@ -478,7 +492,7 @@ export type DashboardSelectableRow =
   | { type: "save" };
 ```
 
-- [ ] **Step 8: Update `selectableRows` for the statuses tab**
+- [ ] **Step 9: Update `selectableRows` for the statuses tab**
 
 In `src/tui/dashboard-state.ts:297-308`, replace the `if (tab === "statuses") { ... }` block with:
 
@@ -498,7 +512,23 @@ if (tab === "statuses") {
 
 Note: each discovered status now emits a single `status_visibility` row (using the picker's surface), not two. The previous behavior showed both columns inline.
 
-- [ ] **Step 9: Add a test for the new row layout**
+- [ ] **Step 10: Update the existing "keeps Save reachable" test for the new row layout**
+
+In `tests/tui/dashboard-state.test.ts`, the existing test at line 166-171 expects `[{ type: "save" }]`. After this step, the empty-search path also emits the picker first. Update it to:
+
+```ts
+it("keeps Save reachable when status search has no matches", () => {
+  const state = initDashboardState(config(), ["alpha"], true);
+  state.activeTab = "statuses";
+  state.navigation.statuses.query = "zzz";
+  expect(selectableRows(state)).toEqual([
+    { type: "surface_picker", surface: "statusbar" },
+    { type: "save" },
+  ]);
+});
+```
+
+- [ ] **Step 11: Add tests for the new row layout**
 
 In `tests/tui/dashboard-state.test.ts`, add a new `describe("statuses surface picker")` block:
 
@@ -529,12 +559,12 @@ describe("statuses surface picker", () => {
 });
 ```
 
-- [ ] **Step 10: Run tests to verify they pass**
+- [ ] **Step 12: Run tests to verify they pass**
 
-Run: `pnpm test tests/tui/dashboard-state.test.ts -t "surface picker"`
+Run: `pnpm test tests/tui/dashboard-state.test.ts -t "surface picker|keeps Save"`
 Expected: PASS.
 
-- [ ] **Step 11: Commit**
+- [ ] **Step 13: Commit**
 
 ```bash
 git add src/tui/dashboard-state.ts tests/tui/dashboard-state.test.ts
@@ -543,7 +573,7 @@ git commit -m "feat(dashboard): emit surface_picker row from statuses tab"
 
 ### 3.3: Add reducer handlers for `surface_picker` `adjust` and `activate`
 
-- [ ] **Step 12: Update the existing `extension_status_zone` adjust branch to also handle `surface_picker`**
+- [ ] **Step 14: Update the `extension_status_zone` adjust branch to also handle `surface_picker`**
 
 In `src/tui/dashboard-state.ts:518-525`, replace the `if (row.type === "extension_status_zone")` block with:
 
@@ -566,9 +596,9 @@ if (row.type === "surface_picker") {
 }
 ```
 
-- [ ] **Step 13: Add `activate` handler for `surface_picker`**
+- [ ] **Step 15: Add `activate` handler for `surface_picker`**
 
-In the `activate` branch of `dashboard-state.ts` (the `if (action.type !== "activate") return { state };` block at line 560), add a new branch right after the `if (row.type === "save")` block (around line 577), before `if (row.type === "notifications")`:
+In the `activate` branch of `dashboard-state.ts` (the `if (action.type !== "activate") return { state };` block at line 560), add a new branch right after the `if (row.type === "save")` block (which closes at line 577), before `if (row.type === "notifications")` (line 578):
 
 ```ts
   if (row.type === "surface_picker") {
@@ -581,7 +611,7 @@ In the `activate` branch of `dashboard-state.ts` (the `if (action.type !== "acti
   if (row.type === "notifications") {
 ```
 
-- [ ] **Step 14: Add tests for adjust and activate on the picker**
+- [ ] **Step 16: Add tests for adjust and activate on the picker**
 
 In `tests/tui/dashboard-state.test.ts`, inside the `describe("statuses surface picker")` block, add:
 
@@ -589,9 +619,8 @@ In `tests/tui/dashboard-state.test.ts`, inside the `describe("statuses surface p
 it("adjust flips the surface and resets selectedIndex", () => {
   let state = initDashboardState(config(), ["alpha"], true);
   state.activeTab = "statuses";
-  state.navigation.statuses.selectedIndex = 2;
-  state.navigation.statuses.surface = "statusbar";
-  expect(state.navigation.statuses.selectedIndex).toBe(2);
+  state.navigation.statuses.selectedIndex = 0; // surface_picker row
+  expect(state.navigation.statuses.surface).toBe("statusbar");
   state = reduceDashboardState(state, { type: "adjust", delta: 1 }).state;
   expect(state.navigation.statuses.surface).toBe("sidebar");
   expect(state.navigation.statuses.selectedIndex).toBe(0);
@@ -600,8 +629,8 @@ it("adjust flips the surface and resets selectedIndex", () => {
 it("activate flips the surface and resets selectedIndex", () => {
   let state = initDashboardState(config(), ["alpha"], true);
   state.activeTab = "statuses";
-  state.navigation.statuses.selectedIndex = 3;
-  state.navigation.statuses.surface = "statusbar";
+  state.navigation.statuses.selectedIndex = 0; // surface_picker row
+  expect(state.navigation.statuses.surface).toBe("statusbar");
   state = reduceDashboardState(state, { type: "activate" }).state;
   expect(state.navigation.statuses.surface).toBe("sidebar");
   expect(state.navigation.statuses.selectedIndex).toBe(0);
@@ -633,12 +662,12 @@ it("activate on status_visibility uses the correct list per surface", () => {
 });
 ```
 
-- [ ] **Step 15: Run tests to verify they pass**
+- [ ] **Step 17: Run tests to verify they pass**
 
 Run: `pnpm test tests/tui/dashboard-state.test.ts -t "surface picker"`
 Expected: PASS, including the new tests.
 
-- [ ] **Step 16: Commit**
+- [ ] **Step 18: Commit**
 
 ```bash
 git add src/tui/dashboard-state.ts tests/tui/dashboard-state.test.ts
@@ -647,9 +676,9 @@ git commit -m "feat(dashboard): handle surface_picker adjust and activate"
 
 ### 3.4: Render the picker row
 
-- [ ] **Step 17: Add `surface_picker` rendering in `logicalBody`**
+- [ ] **Step 19: Add `surface_picker` rendering in `logicalBody`**
 
-In `src/tui/dashboard-render.ts:168`, replace the Statuses branch:
+In `src/tui/dashboard-render.ts:168-179`, replace the Statuses branch:
 
 ```ts
   } else if (tab === "statuses") {
@@ -672,7 +701,6 @@ with:
 ```ts
   } else if (tab === "statuses") {
     const rows = selectableRows(state, "statuses");
-    const activeIndex = renderState.navigation.statuses.selectedIndex;
     const surface = renderState.navigation.statuses.surface;
     const surfaceLabel = surface === "statusbar" ? "Statusbar" : "Sidebar";
     lines.push(`Search: ${renderState.navigation.statuses.query}`);
@@ -683,63 +711,70 @@ with:
       includesFuzzy(key, renderState.navigation.statuses.query),
     );
     if (statusKeys.length === 0) lines.push(theme.dim("No matching statuses."));
-    for (let index = 0; index < statusKeys.length; index += 1) {
-      const key = statusKeys[index];
+    for (const key of statusKeys) {
       const hidden = surface === "statusbar"
         ? state.draft.extensionSegments.hidden
         : state.draft.sidebarExtensionSegments.hidden;
       const shown = !hidden.includes(key);
-      pushSelectable(
-        shown ? "[•]" : "[ ]",
-        "",
-        key,
-      );
+      pushSelectable(shown ? "[•]" : "[ ]", "", key);
     }
   } else if (tab === "session") {
 ```
 
 The `pushSelectable` signature is the same one used by the `extension_status_zone` row at line 149 (`(checkbox, label, value)`). The picker row uses `(" ", "Surface", surfaceLabel)` to match the visual style of the zone row.
 
-- [ ] **Step 18: Add a render test for the picker**
+- [ ] **Step 20: Replace the "renders two checkboxes per status" test for the new layout**
 
-In `tests/tui/dashboard-render.test.ts`, add a new `describe("statuses surface picker render")` block:
+In `tests/tui/dashboard-render.test.ts`, the existing test at line 204-212 asserts that "Statusbar" and "Sidebar" appear as inline labels per status. The new render drops those per-row labels in favor of a single Surface picker label. Replace the test with:
+
+```ts
+it("Statuses tab renders the surface picker and per-status checkboxes", () => {
+  const state = initDashboardState(config(), ["alpha", "beta"], true);
+  state.activeTab = "statuses";
+  const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
+  expect(output).toContain("Surface");
+  expect(output).toContain("Statusbar"); // default surface label
+  expect(output).toContain("alpha");
+  expect(output).toContain("beta");
+});
+```
+
+- [ ] **Step 21: Add a render test for the picker after the surface flips**
+
+In `tests/tui/dashboard-render.test.ts`, add a new `describe("statuses surface picker render")` block at the end of the file:
 
 ```ts
 describe("statuses surface picker render", () => {
   it("renders 'Surface: Statusbar' by default", () => {
     const state = initDashboardState(config(), [], true);
     state.activeTab = "statuses";
-    const lines = renderDashboardLines(state, noTheme, 80, 24);
-    const text = lines.join("\n");
-    expect(text).toContain("Surface");
-    expect(text).toContain("Statusbar");
+    const output = renderDashboard(state, preview, noTheme, 100, 40).lines.join("\n");
+    expect(output).toContain("Surface");
+    expect(output).toContain("Statusbar");
   });
 
   it("renders 'Surface: Sidebar' after the picker is flipped", () => {
     let state = initDashboardState(config(), [], true);
     state.activeTab = "statuses";
     state.navigation.statuses.surface = "sidebar";
-    const lines = renderDashboardLines(state, noTheme, 80, 24);
-    const text = lines.join("\n");
-    expect(text).toContain("Sidebar");
-    expect(text).not.toContain("Surface: Statusbar");
+    const output = renderDashboard(state, preview, noTheme, 100, 40).lines.join("\n");
+    expect(output).toContain("Sidebar");
+    expect(output).not.toMatch(/Surface:\s*Statusbar/);
   });
 });
 ```
 
-If the existing render test fixture uses a different `renderDashboardLines` import or a different builder, match the patterns already in the file.
+- [ ] **Step 22: Run tests to verify they pass**
 
-- [ ] **Step 19: Run tests to verify they pass**
-
-Run: `pnpm test tests/tui/dashboard-render.test.ts -t "surface picker render"`
+Run: `pnpm test tests/tui/dashboard-render.test.ts -t "surface picker"`
 Expected: PASS.
 
-- [ ] **Step 20: Run full test suite and typecheck**
+- [ ] **Step 23: Run full test suite and typecheck**
 
 Run: `pnpm test && pnpm typecheck`
 Expected: All tests pass, typecheck exits 0.
 
-- [ ] **Step 21: Commit**
+- [ ] **Step 24: Commit**
 
 ```bash
 git add src/tui/dashboard-render.ts tests/tui/dashboard-render.test.ts
