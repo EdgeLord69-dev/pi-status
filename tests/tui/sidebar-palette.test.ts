@@ -1,67 +1,80 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createPalette, type PaletteRole } from "../../src/tui/sidebar-palette.ts";
 
-const ROLES: readonly PaletteRole[] = [
-  "accent",
-  "primary",
-  "muted",
-  "dim",
-  "ready",
-  "working",
-  "input",
-  "output",
-  "cache",
-  "cost",
-  "context",
-  "menu",
-  "warning",
-  "error",
-];
+const SEMANTIC_TOKENS = {
+  accent: "accent",
+  primary: "text",
+  muted: "muted",
+  dim: "dim",
+  ready: "thinkingLow",
+  working: "mdHeading",
+  input: "thinkingLow",
+  output: "thinkingHigh",
+  cache: "syntaxType",
+  cost: "mdHeading",
+  context: "thinkingLow",
+  menu: "thinkingHigh",
+  warning: "warning",
+  error: "error",
+} as const satisfies Readonly<Record<PaletteRole, string>>;
 
-function makeTheme(overrides: { name?: string; fg: (color: string, text: string) => string }) {
-  return overrides;
+const NO_COLOR_TOKENS = {
+  accent: "accent",
+  primary: "text",
+  muted: "muted",
+  dim: "dim",
+  ready: "text",
+  working: "text",
+  input: "text",
+  output: "text",
+  cache: "text",
+  cost: "text",
+  context: "text",
+  menu: "text",
+  warning: "warning",
+  error: "error",
+} as const satisfies Readonly<Record<PaletteRole, string>>;
+
+function assertRoleMap(name: string | undefined, expected: Readonly<Record<PaletteRole, string>>) {
+  const fg = vi.fn((color: string, text: string) => `[${color}:${text}]`);
+  const palette = createPalette({ ...(name === undefined ? {} : { name }), fg }, true);
+
+  for (const role of Object.keys(expected) as PaletteRole[]) {
+    expect(palette.paint(role, role)).toBe(`[${expected[role]}:${role}]`);
+  }
+  expect(fg).toHaveBeenCalledTimes(Object.keys(expected).length);
 }
 
 describe("createPalette", () => {
-  it("emits fixed Midnight RGB for named themes on every role", () => {
-    const theme = makeTheme({ name: "dark", fg: (color, text) => `[${color}:${text}]` });
-    const palette = createPalette(theme, true);
-    for (const role of ROLES) {
-      const painted = palette.paint(role, "x");
-      expect(painted.startsWith("\x1b[38;2;")).toBe(true);
-      expect(painted.endsWith("\x1b[39m")).toBe(true);
+  it("routes every named-theme role through Pi semantic tokens", () => {
+    assertRoleMap("dark", SEMANTIC_TOKENS);
+  });
+
+  it("routes every unnamed-theme role through the same Pi semantic tokens", () => {
+    assertRoleMap(undefined, SEMANTIC_TOKENS);
+  });
+
+  it("keeps the established no-color role mapping for named themes", () => {
+    const fg = vi.fn((color: string, text: string) => `[${color}:${text}]`);
+    const palette = createPalette({ name: "dark", fg }, false);
+
+    for (const role of Object.keys(NO_COLOR_TOKENS) as PaletteRole[]) {
+      expect(palette.paint(role, role)).toBe(`[${NO_COLOR_TOKENS[role]}:${role}]`);
     }
   });
 
-  it("falls through to semantic tokens for unnamed themes", () => {
-    const seen: string[] = [];
-    const theme = makeTheme({
-      fg: (color, text) => {
-        seen.push(color);
-        return text;
+  it("resolves the live theme method on every paint", () => {
+    let revision = 1;
+    const theme = {
+      get fg() {
+        const current = revision;
+        return (color: string, text: string) => `[${current}:${color}:${text}]`;
       },
-    });
+    };
     const palette = createPalette(theme, true);
-    palette.paint("cache", "x");
-    palette.paint("cost", "x");
-    expect(seen).toEqual(expect.arrayContaining(["syntaxType", "mdHeading"]));
-    expect(seen).not.toContain("\x1b[38;2;");
-  });
 
-  it("drops to text for non-warning, non-error roles when color is disabled", () => {
-    const seen: string[] = [];
-    const theme = makeTheme({
-      name: "dark",
-      fg: (color, text) => {
-        seen.push(color);
-        return text;
-      },
-    });
-    const palette = createPalette(theme, false);
-    palette.paint("ready", "x");
-    palette.paint("working", "x");
-    palette.paint("warning", "x");
-    palette.paint("error", "x");
-    expect(seen).toEqual(expect.arrayContaining(["text", "warning", "error"]));
+    expect(palette.paint("accent", "x")).toBe("[1:accent:x]");
+    revision = 2;
+    expect(palette.paint("accent", "x")).toBe("[2:accent:x]");
   });
 });

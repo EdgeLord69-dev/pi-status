@@ -303,6 +303,44 @@ describe("sidebar controller", () => {
     expect(lines.some((l) => l.includes("Sidebar unavailable"))).toBe(false);
   });
 
+  it("uses a named host theme's live semantic colors on every render", async () => {
+    const { host, tui } = makeFakeHost();
+    let revision: "first" | "second" = "first";
+    const painters = {
+      first: vi.fn((_color: string, text: string) => text),
+      second: vi.fn((_color: string, text: string) => text),
+    };
+    const liveTheme = new Proxy(
+      { ...noTheme, name: "dark" } as StatusLineTheme & { name: string },
+      {
+        get(target, property, receiver) {
+          if (property === "fg") return painters[revision];
+          return Reflect.get(target, property, receiver);
+        },
+      },
+    );
+    const controller = createSidebarController({
+      ctx: makeCtx(host, tui, liveTheme),
+      getSnapshot: () => FIXED_SNAPSHOT,
+      getConfig: () => FIXED_CONFIG,
+    });
+
+    controller.show();
+    await Promise.resolve();
+    const component = host.factories.at(-1);
+    if (!component) throw new Error("expected overlay component");
+
+    const first = component(tui, noTheme).render(44).join("\n");
+    expect(first).toContain("gpt-5.6");
+    expect(first).not.toContain("\x1b[38;2;");
+
+    revision = "second";
+    const second = component(tui, noTheme).render(44).join("\n");
+    expect(second).toContain("gpt-5.6");
+    expect(painters.first).toHaveBeenCalledWith("text", "gpt-5.6");
+    expect(painters.second).toHaveBeenCalledWith("text", "gpt-5.6");
+  });
+
   it("beginResize() returns true and wires ctx.ui.onTerminalInput", async () => {
     const { host, tui } = makeFakeHost();
     const ctx = makeCtx(host, tui);
