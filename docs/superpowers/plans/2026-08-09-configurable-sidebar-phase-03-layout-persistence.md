@@ -6,7 +6,7 @@
 
 **Architecture:** Extend Phase 2's `src/core/sidebar-layout.ts`, `src/tui/sidebar-segments.ts`, cloneable catalog entries, and `SidebarEffectiveLayout`; do not create competing types or rename those APIs. Configuration stores only stable IDs. A small layout runtime owns stable plus volatile IDs, expands one load-only legacy tool sentinel after catalog discovery, reconciles catalog churn, projects stable IDs before persistence, and changes live state only after the write succeeds. `src/index.ts` owns that runtime and Workspace Pulse demand. Dashboard assignment/search/editing remains entirely Phase 4.
 
-**Tech Stack:** TypeScript 6, Node `>=24.15.0`, Pi public extension/event APIs, `@earendil-works/pi-tui`, Vitest 4, Biome 2, pnpm 11.
+**Tech Stack:** TypeScript 6, Node 24.15.0, Pi public extension/event APIs, `@earendil-works/pi-tui`, Vitest 4, Biome 2, pnpm 11, mise.
 
 ---
 
@@ -15,8 +15,8 @@
 - Frozen parent: `docs/superpowers/plans/2026-08-09-configurable-sidebar-phased-implementation.md`
 - Required parent SHA-256: `eb53718f040e21a0d123a5266be04d581a914dd22842baea7c1fe26ee49962d2`
 - Approved design: `docs/superpowers/specs/2026-08-09-configurable-theme-aware-sidebar-design.md`
-- Begin from the committed Phase 2 result, not from the pre-Phase-1 branch used to author this plan.
-- Phase 2 already owns `src/core/sidebar-layout.ts`, `src/tui/sidebar-segments.ts`, cloneable catalog entries, `SidebarEffectiveLayout`, the adaptive renderer, and all built-in/dynamic catalog construction. Extend them in place.
+- Begin from the committed Phase 2 result produced by `docs/superpowers/plans/2026-08-09-configurable-sidebar-phase-02-catalog-rendering.md`.
+- Phase 2 owns final bounded dynamic IDs, `src/core/sidebar-layout.ts`, `src/tui/sidebar-segments.ts`, cloneable catalog entries, `SidebarEffectiveLayout`, the adaptive renderer, and all built-in/dynamic catalog construction. Extend those APIs in place; do not redefine their identity helpers.
 - Do not add Active-panel controls, search, segment movement keys, restore-default activation, status-surface integration, transactional dashboard draft state, README, or changelog work. Those are Phase 4.
 - Do not modify footer zones or footer formatting.
 - Do not add a dependency, watcher, poller, private Pi API, or terminal-notification change.
@@ -27,8 +27,8 @@ Before editing:
 export PHASE_BASE=$(git rev-parse HEAD)
 test "$(shasum -a 256 docs/superpowers/plans/2026-08-09-configurable-sidebar-phased-implementation.md | awk '{print $1}')" = "eb53718f040e21a0d123a5266be04d581a914dd22842baea7c1fe26ee49962d2"
 test -z "$(git status --short)"
-node -e 'const [major, minor] = process.versions.node.split(".").map(Number); if (major < 24 || (major === 24 && minor < 15)) process.exit(1); console.log(process.version)'
-pnpm test -- tests/core/config.test.ts tests/core/sidebar-layout.test.ts tests/tui/sidebar-segments.test.ts tests/tui/sidebar-render.test.ts tests/tui/sidebar.test.ts tests/tui/sidebar-panels.test.ts tests/index-save.test.ts tests/index-workspace-pulse.test.ts tests/index.test.ts
+mise exec node@24.15.0 -- node -e 'const [major, minor] = process.versions.node.split(".").map(Number); if (major < 24 || (major === 24 && minor < 15)) process.exit(1); console.log(process.version)'
+mise exec node@24.15.0 -- pnpm vitest run tests/core/config.test.ts tests/core/sidebar-layout.test.ts tests/tui/sidebar-segments.test.ts tests/tui/sidebar-render.test.ts tests/tui/sidebar.test.ts tests/tui/sidebar-panels.test.ts tests/index-save.test.ts tests/index-workspace-pulse.test.ts tests/index.test.ts
 ```
 
 Expected: parent checksum matches exactly; worktree is clean; Node is 24.15.0 or newer; the Phase 2 affected suites pass.
@@ -47,16 +47,18 @@ export interface SidebarCatalogEntry {
   defaultEnabled: boolean;
   available: boolean;
   requiresWorkspacePulse: boolean;
+  priority: "required" | "important" | "normal" | "optional";
+  dropOrder: number;
+  content: SidebarSegmentContent | null;
 }
 
 export interface SidebarEffectiveLayout {
   panels: SidebarEffectivePanelLayoutEntry[];
   hiddenSegments: string[];
 }
-
 ```
 
-Phase 3 adds `SidebarView` at the controller boundary in Task 4 after `SidebarSnapshot` is available; do not put the TUI snapshot type in `src/shared/types.ts`. Catalog entries must remain plain cloneable data. Render callbacks/resolvers stay in the Phase 2 catalog/renderer structures and must not be copied into config or effective layout.
+Phase 3 consumes Phase 2's `SidebarSnapshot`, `SidebarCatalogEntry`, `SidebarEffectiveLayout`, and final bounded identity helpers. Do not create aliases or a second layout model. Catalog entries remain plain cloneable data; no catalog content, activity object, callback, resolver, theme, registry, or TUI object may enter config or effective layout.
 
 ## Persisted JSON after this phase
 
@@ -75,7 +77,12 @@ Phase 3 adds `SidebarView` at the controller boundary in Task 4 after `SidebarSn
     {
       "id": "agent",
       "visible": true,
-      "segments": ["builtin:model", "builtin:thinking", "builtin:provider", "builtin:access"]
+      "segments": [
+        "builtin:model",
+        "builtin:thinking",
+        "builtin:provider",
+        "builtin:access"
+      ]
     }
   ],
   "sidebarHiddenSegments": ["tool:bash"]
@@ -86,191 +93,68 @@ The complete file contains every normalized panel entry; the abbreviated example
 
 ---
 
-## Task 1: Finish durable and volatile dynamic identity
+## Task 1: Consume Phase 2 identities and establish persistence-only bounds
 
 **Files:**
 
-- Modify: `src/shared/types.ts`
-- Modify: `src/tui/sidebar-panels.ts`
 - Modify: `src/core/sidebar-layout.ts`
-- Modify: `src/tui/sidebar-segments.ts`
-- Test: `tests/tui/sidebar-panels.test.ts`
-- Test: `tests/tui/sidebar-segments.test.ts`
-- Test: `tests/core/sidebar-layout.test.ts`
+- Create or modify: `tests/index-sidebar-layout.test.ts`
 
-- [ ] **Step 1: Add red tests for row IDs, contribution generations, and namespaced IDs**
+Phase 2 already owns row-ID validation, contribution generations, final escaping, stable dynamic-ID helpers, the 256-character bound, and catalog identity construction. Do not redeclare or move those rules in Phase 3.
 
-Add these cases to the existing Phase 2 identity describes. Use the existing catalog fixture builder; the assertions below are complete and must not be weakened to snapshots:
+- [ ] **Step 1: Add the Phase 2 boundary tests**
 
-```ts
-it("retains only valid optional contributed row IDs", () => {
-  const registry = createSidebarPanelRegistry();
-  expect(
-    registry.register({
-      id: "acme:queue",
-      title: "Queue",
-      rows: [
-        { id: "ready_1", text: "ready", role: "ready" },
-        { id: "UPPER", text: "upper" },
-        { id: "1bad", text: "digit" },
-        { id: "x".repeat(65), text: "long" },
-        "anonymous",
-      ],
-    }),
-  ).toBe(true);
-
-  expect(registry.get("acme:queue")?.rows).toEqual([
-    { id: "ready_1", text: "ready", role: "ready" },
-    { text: "upper" },
-    { text: "digit" },
-    { text: "long" },
-    { text: "anonymous" },
-  ]);
-});
-
-it("increments contribution generation only when sanitized content changes", () => {
-  const registry = createSidebarPanelRegistry();
-  const panel = { id: "acme:queue" as const, title: "Queue", rows: ["one"] };
-  expect(registry.register(panel)).toBe(true);
-  const first = registry.get(panel.id);
-  expect(first?.generation).toBe(1);
-
-  expect(registry.register(panel)).toBe(false);
-  expect(registry.get(panel.id)?.generation).toBe(first?.generation);
-
-  expect(registry.register({ ...panel, rows: ["two"] })).toBe(true);
-  expect(registry.get(panel.id)?.generation).toBe(2);
-});
-
-it("returns defensive copies of row IDs and generation metadata", () => {
-  const registry = createSidebarPanelRegistry();
-  registry.register({
-    id: "acme:queue",
-    title: "Queue",
-    rows: [{ id: "ready", text: "ready" }],
-  });
-  const first = registry.getAvailable()[0];
-  expect(first).toMatchObject({ generation: 1, rows: [{ id: "ready", text: "ready" }] });
-  if (!first) throw new Error("missing contributed panel fixture");
-  (first.rows[0] as { id?: string }).id = "mutated";
-  expect(registry.get(first.id)?.rows[0]).toEqual({ id: "ready", text: "ready" });
-});
-```
-
-Add catalog identity coverage:
+Assert that Phase 2 helpers are imported unchanged and that stable helpers return bounded IDs:
 
 ```ts
-it("uses durable IDs for explicit contributed row IDs and generation-scoped IDs otherwise", () => {
-  const panel = {
-    id: "acme:queue" as const,
-    title: "Queue",
-    available: true as const,
-    source: "acme",
-    generation: 7,
-    rows: [{ id: "ready", text: "ready" }, { text: "anonymous" }],
-  };
-  const entries = buildSidebarSegmentCatalog(
-    completeSnapshot({ sidebarPanels: [panel] }),
-  ).filter(({ id }) => id.includes("acme%3Aqueue"));
-  expect(entries.map(({ id, persistence }) => ({ id, persistence }))).toEqual([
-    { id: sidebarContributionSegmentId("acme:queue", "ready"), persistence: "stable" },
-    { id: sidebarAnonymousContributionSegmentId("acme:queue", 7, 1), persistence: "session" },
-  ]);
-});
-
-it("keeps status and tool IDs stable while TODO IDs are session-only", () => {
-  expect(sidebarStatusSegmentId("usage")).toBe("status:usage");
-  expect(sidebarToolSegmentId("read file")).toBe("tool:read%20file");
-  expect(sidebarTodoSegmentId(42)).toBe("session:todo:42");
-  expect(isPersistedSidebarSegmentId(sidebarTodoSegmentId(42))).toBe(false);
-});
+expect(sidebarStatusSegmentId("usage")).toBe("status:usage");
+expect(sidebarToolSegmentId("read file")).toBe("tool:read%20file");
+expect(sidebarTodoSegmentId(42)).toBe("session:todo:42");
+expect(isPersistedSidebarSegmentId(sidebarTodoSegmentId(42))).toBe(false);
+expect(sidebarStatusSegmentId("x".repeat(300))).toBeUndefined();
 ```
 
-- [ ] **Step 2: Run the focused tests and verify red**
+Retain the existing protocol-version, contributed-row-ID, catalog cloneability, and anonymous-generation tests from Phase 2; they must pass without production changes.
 
-```bash
-pnpm test -- tests/tui/sidebar-panels.test.ts tests/tui/sidebar-segments.test.ts tests/core/sidebar-layout.test.ts
-```
+- [ ] **Step 2: Add persistence-only constants and validation**
 
-Expected: existing Phase 2 row-ID/generation assertions pass, while the new bounded stable-ID and `isPersistedSidebarSegmentId` assertions fail.
-
-- [ ] **Step 3: Preserve the additive contribution seam from Phase 2**
-
-Do not redeclare or move `SidebarPanelRow.id`, `SidebarPanelData.generation`, `SIDEBAR_PANEL_ROW_ID_PATTERN`, sanitizer logic, equality, or defensive-copy logic. Add one counter-test in `tests/tui/sidebar-panels.test.ts` asserting `SIDEBAR_PANEL_PROTOCOL_VERSION` remains `1` after a valid ID-only row update increments generation. No production change to `src/tui/sidebar-panels.ts` should be required in this task.
-
-- [ ] **Step 4: Complete the Phase 2 ID helpers in `src/core/sidebar-layout.ts`**
-
-Use these exact prefixes and encoding. Existing Phase 2 built-in IDs remain `builtin:<name>`.
+Add only the persistence concerns that do not belong to catalog construction:
 
 ```ts
-export const SIDEBAR_SEGMENT_MAX_ID_CHARS = 256;
 export const SIDEBAR_LAYOUT_MAX_ASSIGNMENTS = 2_048;
 export const SIDEBAR_LEGACY_TOOL_NAMES_SENTINEL = "$internal:legacy-tool-names";
 const SIDEBAR_SESSION_SEGMENT_PREFIX = "session:";
 const INVALID_PERSISTED_ID_CHARS = /[\x00-\x20\x7f]/;
 
-function encodeSidebarIdentityPart(value: string): string {
-  return encodeURIComponent(value).replace(/[!'()*]/g, (character) =>
-    `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
-  );
-}
-
-function boundedSidebarSegmentId(value: string): string | undefined {
-  return value.length <= SIDEBAR_SEGMENT_MAX_ID_CHARS ? value : undefined;
-}
-
 export function isPersistedSidebarSegmentId(value: unknown): value is string {
   return (
     typeof value === "string" &&
     value.length > 0 &&
-    value.length <= SIDEBAR_SEGMENT_MAX_ID_CHARS &&
+    value.length <= 256 &&
     value !== SIDEBAR_LEGACY_TOOL_NAMES_SENTINEL &&
     !value.startsWith(SIDEBAR_SESSION_SEGMENT_PREFIX) &&
     !INVALID_PERSISTED_ID_CHARS.test(value)
   );
 }
-
-export function sidebarStatusSegmentId(key: string): string | undefined {
-  return boundedSidebarSegmentId(`status:${encodeSidebarIdentityPart(key)}`);
-}
-
-export function sidebarToolSegmentId(name: string): string | undefined {
-  return boundedSidebarSegmentId(`tool:${encodeSidebarIdentityPart(name)}`);
-}
-
-export function sidebarTodoSegmentId(id: number): string {
-  return `${SIDEBAR_SESSION_SEGMENT_PREFIX}todo:${id}`;
-}
-
-export function sidebarContributionSegmentId(panelId: SidebarPanelId, rowId: string): string | undefined {
-  return boundedSidebarSegmentId(
-    `contribution:${encodeSidebarIdentityPart(panelId)}:${encodeSidebarIdentityPart(rowId)}`,
-  );
-}
-
-export function sidebarAnonymousContributionSegmentId(
-  panelId: SidebarPanelId,
-  generation: number,
-  rowIndex: number,
-): string {
-  return `${SIDEBAR_SESSION_SEGMENT_PREFIX}contribution:${encodeSidebarIdentityPart(panelId)}:${generation}:${rowIndex}`;
-}
 ```
 
-Catalog construction must skip a dynamic entry when its bounded stable helper returns `undefined`. Never truncate an ID: truncation could alias two sources. Missing/invalid contributed row IDs use the anonymous helper and `persistence: "session"`; valid explicit IDs use the stable helper and `persistence: "stable"`.
+This predicate must not re-encode, truncate, or otherwise transform IDs returned by Phase 2.
 
-- [ ] **Step 5: Run green and commit**
+- [ ] **Step 3: Verify the identity boundary**
 
 ```bash
-pnpm test -- tests/tui/sidebar-panels.test.ts tests/tui/sidebar-segments.test.ts tests/core/sidebar-layout.test.ts
-pnpm typecheck
-git add src/shared/types.ts src/core/sidebar-layout.ts src/tui/sidebar-segments.ts src/tui/sidebar-panels.ts tests/core/sidebar-layout.test.ts tests/tui/sidebar-segments.test.ts tests/tui/sidebar-panels.test.ts
-git commit -m "feat: stabilize sidebar segment identities"
+mise exec node@24.15.0 -- pnpm vitest run tests/tui/sidebar-panels.test.ts tests/tui/sidebar-segments.test.ts tests/core/sidebar-layout.test.ts tests/index-sidebar-layout.test.ts
+mise exec node@24.15.0 -- pnpm typecheck
 ```
 
-Expected: focused suites and typecheck pass; protocol version remains 1.
+Expected: Phase 2 identity suites pass and only persistence-specific assertions are new.
 
----
+- [ ] **Step 4: Commit the boundary**
+
+```bash
+git add src/core/sidebar-layout.ts tests/index-sidebar-layout.test.ts
+git commit -m "refactor(sidebar): consume phase two segment identities"
+```
 
 ## Task 2: Normalize and migrate the nested persisted schema
 
@@ -324,12 +208,12 @@ it("migrates flat panels, legacy hidden statuses, and the true tool-name flag", 
     visible: true,
     segments: curatedSidebarSegmentsForPanel("agent"),
   });
-  expect(loaded.sidebarPanelLayout.find(({ id }) => id === "tools")?.segments).toContain(
-    SIDEBAR_LEGACY_TOOL_NAMES_SENTINEL,
-  );
+  expect(
+    loaded.sidebarPanelLayout.find(({ id }) => id === "tools")?.segments,
+  ).toContain(SIDEBAR_LEGACY_TOOL_NAMES_SENTINEL);
   expect(loaded.sidebarHiddenSegments).toEqual([
-    sidebarStatusSegmentId("usage"),
-    sidebarStatusSegmentId("lint"),
+    sidebarStatusSegmentId("usage")!,
+    sidebarStatusSegmentId("lint")!,
   ]);
 });
 
@@ -341,10 +225,12 @@ it("treats an explicit empty segment array differently from a legacy missing arr
       { id: "usage", visible: true },
     ],
   });
-  expect(loaded.sidebarPanelLayout.find(({ id }) => id === "agent")?.segments).toEqual([]);
-  expect(loaded.sidebarPanelLayout.find(({ id }) => id === "usage")?.segments).toEqual(
-    curatedSidebarSegmentsForPanel("usage"),
-  );
+  expect(
+    loaded.sidebarPanelLayout.find(({ id }) => id === "agent")?.segments,
+  ).toEqual([]);
+  expect(
+    loaded.sidebarPanelLayout.find(({ id }) => id === "usage")?.segments,
+  ).toEqual(curatedSidebarSegmentsForPanel("usage"));
 });
 
 it("keeps first valid assignments, lets assignment beat hidden, and retains unknown stable IDs", () => {
@@ -354,7 +240,13 @@ it("keeps first valid assignments, lets assignment beat hidden, and retains unkn
       {
         id: "agent",
         visible: true,
-        segments: ["future:one", "builtin:model", "future:one", "session:todo:9", ""],
+        segments: [
+          "future:one",
+          "builtin:model",
+          "future:one",
+          "session:todo:9",
+          "",
+        ],
       },
       {
         id: "future:panel",
@@ -364,19 +256,27 @@ it("keeps first valid assignments, lets assignment beat hidden, and retains unkn
     ],
     sidebarHiddenSegments: ["future:one", "future:hidden", "future:hidden"],
   });
-  expect(loaded.sidebarPanelLayout[0]?.segments).toEqual(["future:one", "builtin:model"]);
+  expect(loaded.sidebarPanelLayout[0]?.segments).toEqual([
+    "future:one",
+    "builtin:model",
+  ]);
   expect(loaded.sidebarPanelLayout[1]?.segments).toEqual(["future:two"]);
   expect(loaded.sidebarHiddenSegments).toEqual(["future:hidden"]);
 });
 
 it("bounds persisted IDs and the total assignment count", () => {
-  const ids = Array.from({ length: SIDEBAR_LAYOUT_MAX_ASSIGNMENTS + 10 }, (_, i) => `future:${i}`);
+  const ids = Array.from(
+    { length: SIDEBAR_LAYOUT_MAX_ASSIGNMENTS + 10 },
+    (_, i) => `future:${i}`,
+  );
   const loaded = loadJson({
     ...legacyRequiredFields(),
     sidebarPanelLayout: [{ id: "agent", visible: true, segments: ids }],
     sidebarHiddenSegments: ["future:overflow"],
   });
-  expect(loaded.sidebarPanelLayout[0]?.segments).toHaveLength(SIDEBAR_LAYOUT_MAX_ASSIGNMENTS);
+  expect(loaded.sidebarPanelLayout[0]?.segments).toHaveLength(
+    SIDEBAR_LAYOUT_MAX_ASSIGNMENTS,
+  );
   expect(loaded.sidebarHiddenSegments).toEqual([]);
   expect(
     loadJson({
@@ -409,11 +309,15 @@ it("deep-clones nested assignments and writes only the new schema", () => {
   expect(written.sidebarHiddenSegments).toEqual(["future:hidden"]);
   expect(written).not.toHaveProperty("sidebarExtensionSegments");
   expect(written).not.toHaveProperty("showSidebarToolNames");
-  expect(JSON.stringify(written)).not.toContain(SIDEBAR_LEGACY_TOOL_NAMES_SENTINEL);
+  expect(JSON.stringify(written)).not.toContain(
+    SIDEBAR_LEGACY_TOOL_NAMES_SENTINEL,
+  );
 
   config.sidebarPanelLayout[0]?.segments.push("mutated");
   config.sidebarHiddenSegments.push("mutated");
-  expect(DEFAULT_CONFIG.sidebarPanelLayout[0]?.segments).not.toContain("mutated");
+  expect(DEFAULT_CONFIG.sidebarPanelLayout[0]?.segments).not.toContain(
+    "mutated",
+  );
   expect(DEFAULT_CONFIG.sidebarHiddenSegments).not.toContain("mutated");
 });
 ```
@@ -423,7 +327,7 @@ Also retain and update existing malformed JSON, malformed field, unknown panel, 
 - [ ] **Step 2: Run red**
 
 ```bash
-pnpm test -- tests/core/config.test.ts
+mise exec node@24.15.0 -- pnpm vitest run tests/core/config.test.ts
 ```
 
 Expected: FAIL because entries are still flat and old fields are still serialized.
@@ -455,8 +359,14 @@ Phase 4 removes the two deprecated compatibility properties together with their 
 Build `DEFAULT_SIDEBAR_PANEL_LAYOUT` from Phase 2's curated mapping and deep-clone `segments` everywhere. Do not use `structuredClone`; the explicit clone is smaller and keeps config data obvious:
 
 ```ts
-function cloneSidebarPanelLayout(layout: readonly Readonly<SidebarPanelLayoutEntry>[]): SidebarPanelLayout {
-  return layout.map(({ id, visible, segments }) => ({ id, visible, segments: [...segments] }));
+function cloneSidebarPanelLayout(
+  layout: readonly Readonly<SidebarPanelLayoutEntry>[],
+): SidebarPanelLayout {
+  return layout.map(({ id, visible, segments }) => ({
+    id,
+    visible,
+    segments: [...segments],
+  }));
 }
 ```
 
@@ -510,7 +420,9 @@ return {
       : "bottomRight",
   completionNotifications: input.completionNotifications === true,
   ...sidebar,
-  sidebarExtensionSegments: normalizeExtensionSegments(input.sidebarExtensionSegments),
+  sidebarExtensionSegments: normalizeExtensionSegments(
+    input.sidebarExtensionSegments,
+  ),
   showSidebarToolNames: input.showSidebarToolNames === true,
 };
 ```
@@ -523,11 +435,15 @@ const next = {
   extensionSegments: { hidden: [...config.extensionSegments.hidden] },
   extensionStatusZone: config.extensionStatusZone,
   completionNotifications: config.completionNotifications,
-  sidebarPanelLayout: cloneSidebarPanelLayout(config.sidebarPanelLayout).map((panel) => ({
-    ...panel,
-    segments: panel.segments.filter(isPersistedSidebarSegmentId),
-  })),
-  sidebarHiddenSegments: config.sidebarHiddenSegments.filter(isPersistedSidebarSegmentId),
+  sidebarPanelLayout: cloneSidebarPanelLayout(config.sidebarPanelLayout).map(
+    (panel) => ({
+      ...panel,
+      segments: panel.segments.filter(isPersistedSidebarSegmentId),
+    }),
+  ),
+  sidebarHiddenSegments: config.sidebarHiddenSegments.filter(
+    isPersistedSidebarSegmentId,
+  ),
 };
 store.write(path, `${JSON.stringify(next, null, 2)}\n`);
 ```
@@ -537,8 +453,8 @@ Preserve the existing refusal to overwrite malformed/non-object config and atomi
 - [ ] **Step 5: Run green and commit**
 
 ```bash
-pnpm test -- tests/core/config.test.ts tests/core/sidebar-layout.test.ts
-pnpm typecheck
+mise exec node@24.15.0 -- pnpm vitest run tests/core/config.test.ts tests/core/sidebar-layout.test.ts
+mise exec node@24.15.0 -- pnpm typecheck
 git add src/shared/types.ts src/core/config.ts tests/core/config.test.ts
 git commit -m "feat: persist nested sidebar assignments"
 ```
@@ -610,19 +526,33 @@ Add these complete behavioral assertions:
 it("seeds persisted order, expands the legacy tool sentinel, and adds catalog defaults", () => {
   const config = configWithSidebar({
     sidebarPanelLayout: [
-      { id: "tools", visible: true, segments: [SIDEBAR_LEGACY_TOOL_NAMES_SENTINEL] },
-      { id: "agent", visible: true, segments: ["future:kept", "builtin:model"] },
+      {
+        id: "tools",
+        visible: true,
+        segments: [SIDEBAR_LEGACY_TOOL_NAMES_SENTINEL],
+      },
+      {
+        id: "agent",
+        visible: true,
+        segments: ["future:kept", "builtin:model"],
+      },
     ],
     sidebarHiddenSegments: ["status:queue"],
   });
   const layout = seedSidebarEffectiveLayout(config, catalog);
-  expect(layout.panels.find(({ id }) => id === "tools")?.segments).toEqual(["tool:bash"]);
+  expect(layout.panels.find(({ id }) => id === "tools")?.segments).toEqual([
+    "tool:bash",
+  ]);
   expect(layout.panels.find(({ id }) => id === "agent")?.segments).toEqual([
     "future:kept",
     "builtin:model",
   ]);
-  expect(layout.panels.find(({ id }) => id === "todos")?.segments).toContain("session:todo:1");
-  expect(layout.panels.find(({ id }) => id === "acme:queue")).toMatchObject({ visible: false });
+  expect(layout.panels.find(({ id }) => id === "todos")?.segments).toContain(
+    "session:todo:1",
+  );
+  expect(layout.panels.find(({ id }) => id === "acme:queue")).toMatchObject({
+    visible: false,
+  });
   expect(layout.hiddenSegments).toEqual(["status:queue"]);
 });
 
@@ -632,7 +562,10 @@ it("reconciles catalog churn without disturbing surviving volatile order", () =>
     panels: initial.panels.map((panel) =>
       panel.id === "agent"
         ? { ...panel, segments: ["session:todo:1", ...panel.segments] }
-        : { ...panel, segments: panel.segments.filter((id) => id !== "session:todo:1") },
+        : {
+            ...panel,
+            segments: panel.segments.filter((id) => id !== "session:todo:1"),
+          },
     ),
     hiddenSegments: [...initial.hiddenSegments],
   };
@@ -642,10 +575,12 @@ it("reconciles catalog churn without disturbing surviving volatile order", () =>
   ];
   const reconciled = reconcileSidebarEffectiveLayout(moved, nextCatalog);
   expect(flattenSidebarSegmentIds(reconciled)).not.toContain("session:todo:1");
-  expect(reconciled.panels.find(({ id }) => id === "todos")?.segments).toContain("session:todo:2");
-  expect(reconciled.panels.find(({ id }) => id === "agent")?.segments[0]).not.toBe(
-    "session:todo:2",
-  );
+  expect(
+    reconciled.panels.find(({ id }) => id === "todos")?.segments,
+  ).toContain("session:todo:2");
+  expect(
+    reconciled.panels.find(({ id }) => id === "agent")?.segments[0],
+  ).not.toBe("session:todo:2");
 });
 
 it("projects stable IDs only and never serializes the sentinel", () => {
@@ -666,7 +601,11 @@ it("projects stable IDs only and never serializes the sentinel", () => {
   };
   expect(projectStableSidebarLayout(effective, catalog)).toEqual({
     sidebarPanelLayout: [
-      { id: "agent", visible: true, segments: ["future:kept", "builtin:model"] },
+      {
+        id: "agent",
+        visible: true,
+        segments: ["future:kept", "builtin:model"],
+      },
       { id: "tools", visible: true, segments: ["tool:bash"] },
     ],
     sidebarHiddenSegments: ["status:queue"],
@@ -683,12 +622,21 @@ it("restores curated known items while preserving dormant stable placement", () 
     hiddenSegments: ["future:hidden"],
   };
   const restored = restoreDefaultSidebarLayout(current, catalog);
-  expect(restored.panels.slice(0, BUILTIN_SIDEBAR_PANEL_IDS.length).map(({ id, visible }) => ({
-    id,
-    visible,
-  }))).toEqual(BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })));
-  expect(restored.panels.at(-1)).toMatchObject({ id: "acme:queue", visible: true });
-  expect(restored.panels.find(({ id }) => id === "usage")?.segments).toContain("future:dormant");
+  expect(
+    restored.panels
+      .slice(0, BUILTIN_SIDEBAR_PANEL_IDS.length)
+      .map(({ id, visible }) => ({
+        id,
+        visible,
+      })),
+  ).toEqual(BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })));
+  expect(restored.panels.at(-1)).toMatchObject({
+    id: "acme:queue",
+    visible: true,
+  });
+  expect(restored.panels.find(({ id }) => id === "usage")?.segments).toContain(
+    "future:dormant",
+  );
   expect(restored.hiddenSegments).toContain("future:hidden");
   expect(restored.hiddenSegments).toContain("tool:bash");
 });
@@ -703,34 +651,44 @@ it("demands Workspace Pulse by segment assignment, not destination panel name", 
     })),
     hiddenSegments: [...layout.hiddenSegments, "builtin:project"],
   };
-  expect(sidebarLayoutDemandsWorkspacePulse(movedAndHidden, catalog)).toBe(false);
+  expect(sidebarLayoutDemandsWorkspacePulse(movedAndHidden, catalog)).toBe(
+    false,
+  );
   const movedToAgent: SidebarEffectiveLayout = {
     panels: movedAndHidden.panels.map((panel) =>
       panel.id === "agent"
         ? { ...panel, segments: [...panel.segments, "builtin:project"] }
         : panel,
     ),
-    hiddenSegments: movedAndHidden.hiddenSegments.filter((id) => id !== "builtin:project"),
+    hiddenSegments: movedAndHidden.hiddenSegments.filter(
+      (id) => id !== "builtin:project",
+    ),
   };
   expect(sidebarLayoutDemandsWorkspacePulse(movedToAgent, catalog)).toBe(true);
 });
 
 it("caps effective assignments and keeps the first placement", () => {
-  const many = Array.from({ length: SIDEBAR_LAYOUT_MAX_ASSIGNMENTS + 10 }, (_, index) =>
-    entry(`future:${index}`, "agent"),
+  const many = Array.from(
+    { length: SIDEBAR_LAYOUT_MAX_ASSIGNMENTS + 10 },
+    (_, index) => entry(`future:${index}`, "agent"),
   );
   const layout = reconcileSidebarEffectiveLayout(
-    { panels: [{ id: "agent", visible: true, segments: [] }], hiddenSegments: [] },
+    {
+      panels: [{ id: "agent", visible: true, segments: [] }],
+      hiddenSegments: [],
+    },
     many,
   );
-  expect(flattenSidebarSegmentIds(layout)).toHaveLength(SIDEBAR_LAYOUT_MAX_ASSIGNMENTS);
+  expect(flattenSidebarSegmentIds(layout)).toHaveLength(
+    SIDEBAR_LAYOUT_MAX_ASSIGNMENTS,
+  );
 });
 ```
 
 - [ ] **Step 2: Run red**
 
 ```bash
-pnpm test -- tests/core/sidebar-layout.test.ts
+mise exec node@24.15.0 -- pnpm vitest run tests/core/sidebar-layout.test.ts
 ```
 
 Expected: FAIL on missing/incomplete seed, reconcile, projection, restore, demand, clone, and cap behavior.
@@ -751,8 +709,12 @@ In `src/core/sidebar-layout.ts`, use one private `normalizeEffectiveLayout` help
 Export exactly this primitive surface:
 
 ```ts
-export function cloneSidebarEffectiveLayout(layout: SidebarEffectiveLayout): SidebarEffectiveLayout;
-export function flattenSidebarSegmentIds(layout: SidebarEffectiveLayout): string[];
+export function cloneSidebarEffectiveLayout(
+  layout: SidebarEffectiveLayout,
+): SidebarEffectiveLayout;
+export function flattenSidebarSegmentIds(
+  layout: SidebarEffectiveLayout,
+): string[];
 export function seedSidebarEffectiveLayout(
   config: PiStatusConfig,
   catalog: readonly SidebarCatalogEntry[],
@@ -793,7 +755,9 @@ for (const panel of seeded.panels) {
   const expanded: string[] = [];
   for (const id of panel.segments) {
     if (id === SIDEBAR_LEGACY_TOOL_NAMES_SENTINEL) {
-      for (const tool of discoveredTools) if (!flattenSidebarSegmentIds(seeded).includes(tool.id)) expanded.push(tool.id);
+      for (const tool of discoveredTools)
+        if (!flattenSidebarSegmentIds(seeded).includes(tool.id))
+          expanded.push(tool.id);
     } else {
       expanded.push(id);
     }
@@ -824,7 +788,10 @@ Keep this runtime in `src/core/sidebar-layout.ts`, not `src/core/runtime-state.t
 export interface SidebarLayoutRuntime {
   snapshot(): SidebarEffectiveLayout;
   reconcile(catalog: readonly SidebarCatalogEntry[]): SidebarEffectiveLayout;
-  replace(layout: SidebarEffectiveLayout, catalog: readonly SidebarCatalogEntry[]): void;
+  replace(
+    layout: SidebarEffectiveLayout,
+    catalog: readonly SidebarCatalogEntry[],
+  ): void;
   reset(config: PiStatusConfig, catalog: readonly SidebarCatalogEntry[]): void;
 }
 
@@ -840,7 +807,10 @@ export function createSidebarLayoutRuntime(
       return cloneSidebarEffectiveLayout(current);
     },
     replace(layout, nextCatalog) {
-      current = reconcileSidebarEffectiveLayout(cloneSidebarEffectiveLayout(layout), nextCatalog);
+      current = reconcileSidebarEffectiveLayout(
+        cloneSidebarEffectiveLayout(layout),
+        nextCatalog,
+      );
     },
     reset(nextConfig, nextCatalog) {
       current = seedSidebarEffectiveLayout(nextConfig, nextCatalog);
@@ -859,26 +829,29 @@ it("returns deep clones and reset discards volatile moves", () => {
   const todo = "session:todo:1";
   const agent = first.panels.find(({ id }) => id === "agent");
   if (!agent) throw new Error("missing Agent panel");
-  for (const panel of first.panels) panel.segments = panel.segments.filter((id) => id !== todo);
+  for (const panel of first.panels)
+    panel.segments = panel.segments.filter((id) => id !== todo);
   agent.segments.unshift(todo);
   runtime.replace(first, catalog);
 
   const exposed = runtime.snapshot();
   exposed.panels[0]?.segments.push("mutated-copy");
-  expect(runtime.snapshot().panels.flatMap(({ segments }) => segments)).not.toContain(
-    "mutated-copy",
-  );
+  expect(
+    runtime.snapshot().panels.flatMap(({ segments }) => segments),
+  ).not.toContain("mutated-copy");
 
   runtime.reset(config, catalog);
-  expect(runtime.snapshot().panels.find(({ id }) => id === "agent")?.segments[0]).not.toBe(todo);
+  expect(
+    runtime.snapshot().panels.find(({ id }) => id === "agent")?.segments[0],
+  ).not.toBe(todo);
 });
 ```
 
 - [ ] **Step 5: Run green and commit**
 
 ```bash
-pnpm test -- tests/core/sidebar-layout.test.ts
-pnpm typecheck
+mise exec node@24.15.0 -- pnpm vitest run tests/core/sidebar-layout.test.ts
+mise exec node@24.15.0 -- pnpm typecheck
 git add src/core/sidebar-layout.ts src/shared/types.ts tests/core/sidebar-layout.test.ts
 git commit -m "feat: own effective sidebar layouts"
 ```
@@ -924,10 +897,18 @@ it("captures one coherent snapshot, catalog, and effective layout per render", a
   if (!factory) throw new Error("expected sidebar component");
   expect(factory(tui, noTheme).render(60)).toEqual(["ok"]);
   expect(getView).toHaveBeenCalledTimes(1);
-  expect(render).toHaveBeenCalledWith(view, expect.anything(), 60, 36, {
-    colorEnabled: false,
-    resizing: false,
-  });
+  expect(render).toHaveBeenCalledWith(
+    view.snapshot,
+    view.catalog,
+    view.layout,
+    expect.anything(),
+    60,
+    36,
+    {
+      colorEnabled: false,
+      resizing: false,
+    },
+  );
 });
 ```
 
@@ -951,7 +932,9 @@ it("renders every segment kind from effective assignment rather than its home pa
   if (!usage) throw new Error("missing usage panel");
   usage.segments = [ids.model, ids.status, ids.tool, ids.todo, ids.contributed];
   const text = renderSidebarLines(
-    { ...fixture.view, layout },
+    fixture.view.snapshot,
+    fixture.view.catalog,
+    layout,
     fixture.theme,
     72,
     40,
@@ -975,7 +958,7 @@ Keep Phase 2 adaptive pairing, block span, priority drop, empty-panel omission, 
 - [ ] **Step 2: Run red**
 
 ```bash
-pnpm test -- tests/tui/sidebar.test.ts tests/tui/sidebar-render.test.ts
+mise exec node@24.15.0 -- pnpm vitest run tests/tui/sidebar.test.ts tests/tui/sidebar-render.test.ts
 ```
 
 Expected: FAIL because controller/render still receive config separately or derive assignments from persisted config.
@@ -1012,25 +995,35 @@ Inside component render:
 ```ts
 const render = options.render ?? renderSidebarLines;
 const view = options.getView();
-return render(view, statusTheme, width, tui.terminal.rows, {
-  ...(options.colorEnabled === undefined ? {} : { colorEnabled: options.colorEnabled }),
-  resizing: split.isResizing(),
-});
+return render(
+  view.snapshot,
+  view.catalog,
+  view.layout,
+  statusTheme,
+  width,
+  tui.terminal.rows,
+  {
+    ...(options.colorEnabled === undefined
+      ? {}
+      : { colorEnabled: options.colorEnabled }),
+    resizing: split.isResizing(),
+  },
+);
 ```
 
 Do not cache a view in the controller. The theme remains Pi's live proxy and Phase 2's error fallback/exact-height behavior remains unchanged.
 
 - [ ] **Step 4: Render only from effective assignments**
 
-`renderSidebarLines` must accept `SidebarView`, resolve IDs through the catalog, iterate `view.layout.panels` then each panel's `segments`, and ignore `config.sidebarPanelLayout`, `sidebarExtensionSegments`, and `showSidebarToolNames`. Unknown/unavailable/faulty entries produce no output but do not suppress siblings. Preserve Phase 2's destination-panel shell, source semantic role, adaptive packing, and priority behavior.
+`renderSidebarLines` must accept `(snapshot, catalog, layout, theme, width, height, options)`, resolve IDs through the catalog, iterate `layout.panels` then each panel's `segments`, and ignore `config.sidebarPanelLayout`, `sidebarExtensionSegments`, and `showSidebarToolNames`. Unknown/unavailable/faulty entries produce no output but do not suppress siblings. Preserve Phase 2's destination-panel shell, source semantic role, adaptive packing, and priority behavior.
 
 No compatibility fallback to home panels is allowed: configuration seeding owns defaults now. This is what makes manual nested JSON work for built-ins, extension statuses, tool names, TODOs, and contributed rows without Phase 4 UI.
 
 - [ ] **Step 5: Run green and commit**
 
 ```bash
-pnpm test -- tests/tui/sidebar.test.ts tests/tui/sidebar-render.test.ts tests/tui/sidebar-segments.test.ts
-pnpm typecheck
+mise exec node@24.15.0 -- pnpm vitest run tests/tui/sidebar.test.ts tests/tui/sidebar-render.test.ts tests/tui/sidebar-segments.test.ts
+mise exec node@24.15.0 -- pnpm typecheck
 git add src/tui/sidebar.ts src/tui/sidebar-render.ts tests/tui/sidebar.test.ts tests/tui/sidebar-render.test.ts
 git commit -m "refactor: render the effective sidebar layout"
 ```
@@ -1045,7 +1038,7 @@ Expected: controller captures one coherent view; manual cross-panel assignments 
 
 - Modify: `src/core/sidebar-layout.ts`
 - Modify: `src/index.ts`
-- New: `tests/index-sidebar-layout.test.ts`
+- Create or modify: `tests/index-sidebar-layout.test.ts`
 - Modify: `tests/index-save.test.ts`
 - Modify: `tests/index-workspace-pulse.test.ts`
 - Modify: `tests/index.test.ts`
@@ -1063,7 +1056,9 @@ export interface PersistSidebarLayoutOptions {
   commit(config: PiStatusConfig, effective: SidebarEffectiveLayout): void;
 }
 
-export function persistSidebarLayout(options: PersistSidebarLayoutOptions): void {
+export function persistSidebarLayout(
+  options: PersistSidebarLayoutOptions,
+): void {
   const effective = cloneSidebarEffectiveLayout(options.effective);
   const projection = projectStableSidebarLayout(effective, options.catalog);
   const persisted: PiStatusConfig = structuredClone({
@@ -1072,7 +1067,10 @@ export function persistSidebarLayout(options: PersistSidebarLayoutOptions): void
     sidebarHiddenSegments: projection.sidebarHiddenSegments,
   });
   options.persist(structuredClone(persisted));
-  options.commit(structuredClone(persisted), cloneSidebarEffectiveLayout(effective));
+  options.commit(
+    structuredClone(persisted),
+    cloneSidebarEffectiveLayout(effective),
+  );
 }
 ```
 
@@ -1084,8 +1082,14 @@ Create `tests/index-sidebar-layout.test.ts` with the repository's real helpers (
 
 ```ts
 function customHost() {
-  const components: Array<{ render(width: number): string[]; handleInput?(data: string): void }> = [];
-  const tui = { terminal: { columns: 120, rows: 40 }, requestRender: vi.fn() } as unknown as TUI;
+  const components: Array<{
+    render(width: number): string[];
+    handleInput?(data: string): void;
+  }> = [];
+  const tui = {
+    terminal: { columns: 120, rows: 40 },
+    requestRender: vi.fn(),
+  } as unknown as TUI;
   let finishDashboard!: (value: unknown) => void;
   const dashboardDone = new Promise((resolve) => {
     finishDashboard = resolve;
@@ -1098,18 +1102,26 @@ function customHost() {
     unfocus: vi.fn(),
     isFocused: vi.fn(() => false),
   };
-  const custom = vi.fn((
-    factory: (tui: TUI, theme: StatusLineTheme, ...rest: unknown[]) => {
-      render(width: number): string[];
-      handleInput?(data: string): void;
+  const custom = vi.fn(
+    (
+      factory: (
+        tui: TUI,
+        theme: StatusLineTheme,
+        ...rest: unknown[]
+      ) => {
+        render(width: number): string[];
+        handleInput?(data: string): void;
+      },
+      options?: { onHandle?(handle: unknown): void },
+    ) => {
+      const component = factory(tui, noTheme, {}, finishDashboard);
+      components.push(component);
+      options?.onHandle?.(handle);
+      return components.length === 1
+        ? Promise.resolve(undefined)
+        : dashboardDone;
     },
-    options?: { onHandle?(handle: unknown): void },
-  ) => {
-    const component = factory(tui, noTheme, {}, finishDashboard);
-    components.push(component);
-    options?.onHandle?.(handle);
-    return components.length === 1 ? Promise.resolve(undefined) : dashboardDone;
-  });
+  );
   return {
     custom,
     sidebar: () => components[0],
@@ -1124,10 +1136,16 @@ For config-specific cases, follow `tests/index-save.test.ts`: `vi.doMock("../src
 ```ts
 it("seeds manual nested JSON and renders moved stable assignments");
 it("expands the legacy tool sentinel after available tools are discovered");
-it("reconciles new and removed TODO and anonymous contributed rows without moving survivors");
-it("preserves explicit contributed row placement across contribution generation changes");
+it(
+  "reconciles new and removed TODO and anonymous contributed rows without moving survivors",
+);
+it(
+  "preserves explicit contributed row placement across contribution generation changes",
+);
 it("resets volatile layout on session_start and session_tree replacement");
-it("projects stable rows and retains volatile rows after a successful config save");
+it(
+  "projects stable rows and retains volatile rows after a successful config save",
+);
 it("applies neither config nor effective layout when persistence throws");
 it("reconciles registry updates before requesting the next sidebar render");
 ```
@@ -1137,16 +1155,22 @@ Each test must assert concrete IDs and rendered text, not just call counts. The 
 Extend `tests/index-workspace-pulse.test.ts` with:
 
 ```ts
-it("starts for a visible assigned pulse-dependent segment moved outside Workspace");
-it("stops when every pulse-dependent segment is hidden or belongs only to hidden panels");
+it(
+  "starts for a visible assigned pulse-dependent segment moved outside Workspace",
+);
+it(
+  "stops when every pulse-dependent segment is hidden or belongs only to hidden panels",
+);
 it("keeps running when the footer workspace-pulse segment still demands it");
-it("re-evaluates demand after registry/catalog reconciliation and successful save");
+it(
+  "re-evaluates demand after registry/catalog reconciliation and successful save",
+);
 ```
 
 - [ ] **Step 3: Run red**
 
 ```bash
-pnpm test -- tests/core/sidebar-layout.test.ts tests/index-sidebar-layout.test.ts tests/index-save.test.ts tests/index-workspace-pulse.test.ts tests/index.test.ts
+mise exec node@24.15.0 -- pnpm vitest run tests/core/sidebar-layout.test.ts tests/index-sidebar-layout.test.ts tests/index-save.test.ts tests/index-workspace-pulse.test.ts tests/index.test.ts
 ```
 
 Expected: FAIL because index does not own/reconcile/reset an effective-layout runtime and still derives pulse demand from the Workspace panel ID.
@@ -1158,23 +1182,25 @@ Add owner state beside the existing active sidebar controller/registry and extra
 ```ts
 let sidebarLayoutRuntime: SidebarLayoutRuntime | undefined;
 
-function buildCurrentSidebarSnapshot(fallbackCtx: ExtensionContext): SidebarSnapshot {
+function buildCurrentSidebarSnapshot(
+  fallbackCtx: ExtensionContext,
+): SidebarSnapshot {
   const config = runtimeState.snapshot().config;
   const activeCtx = runtimeState.snapshot().ctx ?? fallbackCtx;
   const sessionName = safeRead(() => pi.getSessionName());
-  const activeToolNames = safeRead(() => pi.getActiveTools()) ?? [];
-  const availableToolNames = safeRead(() => pi.getAllTools().map(({ name }) => name)) ?? [];
+  const availableToolNames =
+    safeRead(() => pi.getAllTools().map(({ name }) => name)) ?? [];
   const sessionFile = safeRead(() => activeCtx.sessionManager.getSessionFile());
-  const branchEntries = safeRead(() => activeCtx.sessionManager.getBranch().length);
+  const branchEntries = safeRead(
+    () => activeCtx.sessionManager.getBranch().length,
+  );
   return buildSidebarSnapshot({
     footer: currentFooterInput(fallbackCtx),
     config,
     ...(sessionName !== undefined ? { sessionName } : {}),
     persisted: sessionFile != null,
     branchEntryCount: branchEntries ?? 0,
-    activeToolNames,
     availableToolNames,
-    availableToolCount: availableToolNames.length,
     sidebarPanels: activeSidebarRegistry?.getAvailable() ?? [],
   });
 }
@@ -1183,7 +1209,10 @@ function captureSidebarView(fallbackCtx: ExtensionContext): SidebarView {
   const snapshot = buildCurrentSidebarSnapshot(fallbackCtx);
   const catalog = buildSidebarSegmentCatalog(snapshot);
   if (!sidebarLayoutRuntime) {
-    sidebarLayoutRuntime = createSidebarLayoutRuntime(runtimeState.snapshot().config, catalog);
+    sidebarLayoutRuntime = createSidebarLayoutRuntime(
+      runtimeState.snapshot().config,
+      catalog,
+    );
   } else {
     sidebarLayoutRuntime.reconcile(catalog);
   }
@@ -1241,7 +1270,10 @@ Change `saveAndApplyConfig` to accept the active dashboard context and pass it f
 
 ```ts
 const view = captureSidebarView(ctx);
-const effective = applySidebarPanelControls(view.layout, next.sidebarPanelLayout);
+const effective = applySidebarPanelControls(
+  view.layout,
+  next.sidebarPanelLayout,
+);
 persistSidebarLayout({
   config: next,
   effective,
@@ -1281,8 +1313,10 @@ In `src/index.ts`, continue exporting the contribution protocol and add the opti
 - [ ] **Step 9: Run green and commit**
 
 ```bash
-pnpm test -- tests/core/sidebar-layout.test.ts tests/index-sidebar-layout.test.ts tests/index-save.test.ts tests/index-workspace-pulse.test.ts tests/index.test.ts tests/tui/sidebar.test.ts tests/tui/sidebar-panels.test.ts
-pnpm typecheck
+mise exec node@24.15.0 -- pnpm vitest run tests/core/sidebar-layout.test.ts tests/index-sidebar-layout.test.ts tests/index-save.test.ts tests/index-workspace-pulse.test.ts tests/index.test.ts tests/tui/sidebar.test.ts tests/tui/sidebar-panels.test.ts
+mise exec node@24.15.0 -- pnpm typecheck
+TASK_NPM_CACHE="$(mktemp -d /tmp/pi-status-npm-cache.XXXXXX)"
+env npm_config_cache="$TASK_NPM_CACHE" mise exec node@24.15.0 -- pnpm pack:verify
 git add src/core/sidebar-layout.ts src/index.ts tests/core/sidebar-layout.test.ts tests/index-sidebar-layout.test.ts tests/index-save.test.ts tests/index-workspace-pulse.test.ts tests/index.test.ts
 git commit -m "feat: reconcile sidebar layout lifecycle"
 ```
@@ -1298,7 +1332,7 @@ Expected: session reset, registry churn, stable/session projection, save failure
 - [ ] **Step 1: Run every directly affected suite**
 
 ```bash
-pnpm test -- tests/core/config.test.ts tests/core/sidebar-layout.test.ts tests/tui/sidebar-segments.test.ts tests/tui/sidebar-render.test.ts tests/tui/sidebar.test.ts tests/tui/sidebar-panels.test.ts tests/index-sidebar-layout.test.ts tests/index-save.test.ts tests/index-workspace-pulse.test.ts tests/index.test.ts
+mise exec node@24.15.0 -- pnpm vitest run tests/core/config.test.ts tests/core/sidebar-layout.test.ts tests/tui/sidebar-segments.test.ts tests/tui/sidebar-render.test.ts tests/tui/sidebar.test.ts tests/tui/sidebar-panels.test.ts tests/index-sidebar-layout.test.ts tests/index-save.test.ts tests/index-workspace-pulse.test.ts tests/index.test.ts
 ```
 
 Expected: all pass.
@@ -1306,11 +1340,11 @@ Expected: all pass.
 - [ ] **Step 2: Run the shared repository gate**
 
 ```bash
-node -e 'const [major, minor] = process.versions.node.split(".").map(Number); if (major < 24 || (major === 24 && minor < 15)) process.exit(1); console.log(process.version)'
-pnpm format:check
-pnpm lint
-pnpm typecheck
-pnpm test
+mise exec node@24.15.0 -- node -e 'const [major, minor] = process.versions.node.split(".").map(Number); if (major < 24 || (major === 24 && minor < 15)) process.exit(1); console.log(process.version)'
+mise exec node@24.15.0 -- pnpm format:check
+mise exec node@24.15.0 -- pnpm lint
+mise exec node@24.15.0 -- pnpm typecheck
+mise exec node@24.15.0 -- pnpm test
 git diff --check "$PHASE_BASE"..HEAD
 ```
 
