@@ -299,7 +299,7 @@ describe("statuses surface picker", () => {
   });
 
   it("search filter narrows the discovered statuses regardless of surface", () => {
-    let state = initDashboardState(config(), ["alpha", "beta"], true);
+    const state = initDashboardState(config(), ["alpha", "beta"], true);
     state.navigation.statuses.query = "alp";
     state.navigation.statuses.surface = "sidebar";
     const rows = selectableRows(state, "statuses");
@@ -688,7 +688,7 @@ describe("dashboard Sidebar tab transitions", () => {
   });
 
   it("save emits notify and skips save effect when no panel is visible", () => {
-    let state = initDashboardState(config(), [], true);
+    const state = initDashboardState(config(), [], true);
     state.activeTab = "sidebar";
     // Toggle every built-in panel off so the draft has zero visible panels.
     state.draft.sidebarPanelLayout = BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
@@ -706,7 +706,7 @@ describe("dashboard Sidebar tab transitions", () => {
   });
 
   it("save on a draft with at least one visible panel emits the save effect", () => {
-    let state = initDashboardState(config(), [], true);
+    const state = initDashboardState(config(), [], true);
     state.activeTab = "sidebar";
     state.navigation.sidebar.selectedIndex = selectableRows(state, "sidebar").length - 1;
     const result = reduceDashboardState(state, { type: "activate" });

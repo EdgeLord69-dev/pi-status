@@ -19,10 +19,7 @@ import { fromPiTheme, noColorRequested, noTheme } from "./tui/theme.ts";
 import { openStatusLineDashboard, type StatusLineDashboardComponent } from "./tui/dashboard.ts";
 import { createSidebarController, type SidebarController } from "./tui/sidebar.ts";
 import { buildSidebarSnapshot } from "./tui/sidebar-render.ts";
-import {
-  type SidebarPanelEventTransport,
-  type SidebarPanelRegistry,
-} from "./tui/sidebar-panels.ts";
+import type { SidebarPanelEventTransport, SidebarPanelRegistry } from "./tui/sidebar-panels.ts";
 import {
   createSidebarPanelRegistry,
   isSidebarPanelContributionId,
@@ -131,7 +128,7 @@ export default function createExtension(pi: ExtensionAPI): void {
       if (ctx.mode !== "tui") return;
       if (ctx.sessionManager !== activeTuiSessionManager) return;
       const controller = activeSidebarController;
-      if (!controller || !controller.isEffectivelyVisible()) {
+      if (!controller?.isEffectivelyVisible()) {
         ctx.ui.notify("pi-status sidebar is not visible", "warning");
         return;
       }

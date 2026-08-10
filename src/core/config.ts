@@ -21,7 +21,6 @@ import {
   type SidebarPanelId,
   type SidebarPanelLayout,
   type StatusLineSegmentId,
-  type StatusLineZone,
   type StatusLineZones,
 } from "../shared/types.ts";
 

@@ -142,7 +142,7 @@ function normalizeFilterList(input: string[]): string[] {
 
 export function formatExtensionStatuses(
   input: FooterRenderInput,
-  theme: ThemeLike,
+  _theme: ThemeLike,
 ): ResolvedSegment[] {
   const entries = [...(input.extensionStatuses?.entries() ?? [])].sort(([a], [b]) =>
     a.localeCompare(b),

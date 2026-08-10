@@ -602,7 +602,7 @@ describe("statuses surface picker render", () => {
   });
 
   it("renders 'Surface: Sidebar' after the picker is flipped", () => {
-    let state = initDashboardState(config(), [], true);
+    const state = initDashboardState(config(), [], true);
     state.activeTab = "statuses";
     state.navigation.statuses.surface = "sidebar";
     const output = renderDashboard(state, preview, noTheme, 100, 40).lines.join("\n");
