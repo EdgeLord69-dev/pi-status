@@ -958,6 +958,8 @@ describe("/statusline theme adaptation", () => {
 });
 
 describe("extension wiring — completion notifications", () => {
+  const SETTLED_OSC = "\x1b]9;Pi finished: The current run has settled.\x1b\\";
+
   function enableNotifications(): void {
     const configPath = join(agentDir, "extensions", "statusline.json");
     mkdirSync(join(agentDir, "extensions"), { recursive: true });
@@ -974,31 +976,34 @@ describe("extension wiring — completion notifications", () => {
     );
   }
 
-  function installNotificationSpawn(pi: ExtensionAPI, calls: string[], kill = vi.fn()): void {
-    (pi as unknown as { spawn: () => unknown }).spawn = () => {
-      calls.push("spawn");
-      return { kill, once: () => undefined, unref: () => {} };
-    };
-    (pi as unknown as { platform: NodeJS.Platform }).platform = "darwin";
+  function captureNotificationOutput(output: string[]): void {
+    vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+      output.push(String(chunk));
+      return true;
+    });
   }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
   it("does not launch a native process when the preference is disabled", () => {
     const { pi, handlers } = buildPiWithHandlers();
-    const spawn = vi.fn();
-    (pi as unknown as { spawn: () => unknown }).spawn = spawn;
+    const output: string[] = [];
+    captureNotificationOutput(output);
     createExtension(pi);
     const ctx = createContext({ mode: "tui" });
     for (const h of handlers.get("session_start") ?? []) h({}, ctx);
     for (const h of handlers.get("agent_start") ?? []) h({}, ctx);
     for (const h of handlers.get("agent_settled") ?? []) h({}, ctx);
-    expect(spawn).not.toHaveBeenCalled();
+    expect(output).toEqual([]);
   });
 
   it("notifies for fresh event contexts from the active TUI session", () => {
     enableNotifications();
     const { pi, handlers } = buildPiWithHandlers();
-    const calls: string[] = [];
-    installNotificationSpawn(pi, calls);
+    const output: string[] = [];
+    captureNotificationOutput(output);
     createExtension(pi);
     const sessionManager = createContext().sessionManager;
     const startCtx = createContext({ sessionManager });
@@ -1007,14 +1012,14 @@ describe("extension wiring — completion notifications", () => {
     for (const h of handlers.get("agent_start") ?? []) h({}, eventCtx);
     for (const h of handlers.get("agent_settled") ?? []) h({}, eventCtx);
 
-    expect(calls).toEqual(["spawn"]);
+    expect(output).toEqual([SETTLED_OSC]);
   });
 
   it("ignores agent_settled callbacks for stale session contexts", () => {
     enableNotifications();
     const { pi, handlers } = buildPiWithHandlers();
-    const calls: string[] = [];
-    installNotificationSpawn(pi, calls);
+    const output: string[] = [];
+    captureNotificationOutput(output);
     createExtension(pi);
     const oldSessionManager = createContext().sessionManager;
     const currentSessionManager = createContext().sessionManager;
@@ -1028,14 +1033,14 @@ describe("extension wiring — completion notifications", () => {
     for (const h of handlers.get("agent_settled") ?? []) {
       h({}, createContext({ sessionManager: oldSessionManager }));
     }
-    expect(calls).toEqual([]);
+    expect(output).toEqual([]);
   });
 
   it("forwards only once per questionnaire interval", () => {
     enableNotifications();
     const { pi, handlers, events } = buildPiWithHandlers();
-    const calls: string[] = [];
-    installNotificationSpawn(pi, calls);
+    const output: string[] = [];
+    captureNotificationOutput(output);
     createExtension(pi);
     const ctx = createContext({ mode: "tui" });
     for (const h of handlers.get("session_start") ?? []) h({}, ctx);
@@ -1045,43 +1050,43 @@ describe("extension wiring — completion notifications", () => {
     events.emit("pi-vault:questionnaire:status", { active: false });
     events.emit("pi-vault:questionnaire:status", { active: true, label: "New wait" });
 
-    expect(calls.length).toBe(2);
+    expect(output).toHaveLength(2);
+    expect(output.every((value) => value.includes("Pi needs input"))).toBe(true);
   });
 
   it("ignores malformed questionnaire requests without a label", () => {
     enableNotifications();
     const { pi, handlers, events } = buildPiWithHandlers();
-    const calls: string[] = [];
-    installNotificationSpawn(pi, calls);
+    const output: string[] = [];
+    captureNotificationOutput(output);
     createExtension(pi);
     const ctx = createContext({ mode: "tui" });
     for (const h of handlers.get("session_start") ?? []) h({}, ctx);
 
     events.emit("pi-vault:questionnaire:status", { active: true });
 
-    expect(calls).toEqual([]);
+    expect(output).toEqual([]);
   });
 
   it("does not listen for questionnaire requests in RPC sessions", () => {
     enableNotifications();
     const { pi, handlers, events } = buildPiWithHandlers();
-    const calls: string[] = [];
-    installNotificationSpawn(pi, calls);
+    const output: string[] = [];
+    captureNotificationOutput(output);
     createExtension(pi);
     const ctx = createContext({ mode: "rpc" });
     for (const h of handlers.get("session_start") ?? []) h({}, ctx);
 
     events.emit("pi-vault:questionnaire:status", { active: true, label: "Choose tool" });
 
-    expect(calls).toEqual([]);
+    expect(output).toEqual([]);
   });
 
   it("rearms questionnaires without clearing the settled-run dedupe", () => {
     enableNotifications();
     const { pi, handlers, events } = buildPiWithHandlers();
-    const calls: string[] = [];
-    const kill = vi.fn(() => true);
-    installNotificationSpawn(pi, calls, kill);
+    const output: string[] = [];
+    captureNotificationOutput(output);
     createExtension(pi);
     const ctx = createContext({ mode: "tui" });
     for (const h of handlers.get("session_start") ?? []) h({}, ctx);
@@ -1091,8 +1096,7 @@ describe("extension wiring — completion notifications", () => {
     events.emit("pi-vault:questionnaire:status", { active: false });
     for (const h of handlers.get("agent_settled") ?? []) h({}, ctx);
 
-    expect(calls).toEqual(["spawn"]);
-    expect(kill).not.toHaveBeenCalled();
+    expect(output).toEqual([SETTLED_OSC]);
   });
 });
 

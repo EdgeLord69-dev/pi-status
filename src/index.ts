@@ -2,7 +2,6 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { estimateTokens } from "@earendil-works/pi-coding-agent";
 import { loadConfig, normalizeSidebarPanelLayout, saveConfig } from "./core/config.ts";
 import { createActivityRuntime } from "./core/activity-runtime.ts";
-import type { SpawnNotificationProcess } from "./core/completion-notifier.ts";
 import { buildSnapshot, resolveFooter } from "./core/resolve-footer.ts";
 import { createNotificationsWiring } from "./core/notifications-wiring.ts";
 import { createRuntimeStateMachine } from "./core/runtime-state.ts";
@@ -237,8 +236,6 @@ export default function createExtension(pi: ExtensionAPI): void {
     events: pi.events,
     isEnabled: () => runtimeState.snapshot().config.completionNotifications,
     sessionManager: activeTuiSessionManager,
-    spawn: (pi as unknown as { spawn?: SpawnNotificationProcess }).spawn,
-    platform: (pi as unknown as { platform?: NodeJS.Platform }).platform,
   });
 
   function attachNotificationsForCurrentSession(): void {
@@ -247,8 +244,6 @@ export default function createExtension(pi: ExtensionAPI): void {
       events: pi.events,
       isEnabled: () => runtimeState.snapshot().config.completionNotifications,
       sessionManager: activeTuiSessionManager,
-      spawn: (pi as unknown as { spawn?: SpawnNotificationProcess }).spawn,
-      platform: (pi as unknown as { platform?: NodeJS.Platform }).platform,
     });
   }
 
