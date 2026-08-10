@@ -1,20 +1,20 @@
-import { describe, expect, it } from "vitest";
 import { visibleWidth } from "@earendil-works/pi-tui";
-import { withDefaults } from "../helpers.ts";
+import { describe, expect, it, vi } from "vitest";
 import {
   BUILTIN_SIDEBAR_PANEL_IDS,
   DEFAULT_SIDEBAR_PANEL_LAYOUT,
   KNOWN_SEGMENTS,
   type NormalizedTodo,
 } from "../../src/shared/types.ts";
+import type { SidebarPanelData } from "../../src/tui/sidebar-panels.ts";
+import type { SidebarSnapshot } from "../../src/tui/sidebar-render.ts";
 import {
   buildSidebarSnapshot,
   renderSidebarLines,
   SIDEBAR_SEGMENT_PANELS,
 } from "../../src/tui/sidebar-render.ts";
-import type { SidebarPanelData } from "../../src/tui/sidebar-panels.ts";
 import { noTheme, type StatusLineTheme } from "../../src/tui/theme.ts";
-import type { SidebarSnapshot } from "../../src/tui/sidebar-render.ts";
+import { withDefaults } from "../helpers.ts";
 
 function makeInput(
   overrides: Partial<Parameters<typeof buildSidebarSnapshot>[0]> = {},
@@ -87,7 +87,6 @@ function contributedPanel(): SidebarPanelData {
 describe("SidebarSnapshot", () => {
   it("accepts a full snapshot with empty arrays", () => {
     const snap: SidebarSnapshot = {
-      agentActivity: "ready",
       modelLabel: "M",
       thinkingLevel: "off",
       projectName: "p",
@@ -96,7 +95,7 @@ describe("SidebarSnapshot", () => {
       activeToolCount: 0,
       activeToolNames: [],
       availableToolCount: 0,
-      runPhase: "idle",
+      runState: "idle",
       turnNumber: 0,
       runDurationMs: 0,
       completedToolCount: 0,
@@ -124,32 +123,17 @@ describe("SIDEBAR_SEGMENT_PANELS", () => {
     }
   });
 
-  it("explicitly maps the five segments that drive a sidebar-specific view", () => {
+  it("explicitly maps the six segments that drive a sidebar-specific view", () => {
     expect(SIDEBAR_SEGMENT_PANELS["used-tokens"]).toBe("agent");
     expect(SIDEBAR_SEGMENT_PANELS["cache-write-tokens"]).toBe("usage");
     expect(SIDEBAR_SEGMENT_PANELS["session-id"]).toBe("agent");
     expect(SIDEBAR_SEGMENT_PANELS["five-hour-limit"]).toBe("usage");
     expect(SIDEBAR_SEGMENT_PANELS["weekly-limit"]).toBe("usage");
+    expect(SIDEBAR_SEGMENT_PANELS["run-state"]).toBe("activity");
   });
 });
 
 describe("buildSidebarSnapshot", () => {
-  it("derives ready agentActivity from an idle footer", () => {
-    const snap = buildSidebarSnapshot(makeInput());
-    expect(snap.agentActivity).toBe("ready");
-  });
-
-  it("derives working agentActivity from a busy or queued footer", () => {
-    const a = buildSidebarSnapshot(
-      makeInput({ footer: { ...makeInput().footer, runState: "busy" } }),
-    );
-    const b = buildSidebarSnapshot(
-      makeInput({ footer: { ...makeInput().footer, runState: "queued" } }),
-    );
-    expect(a.agentActivity).toBe("working");
-    expect(b.agentActivity).toBe("working");
-  });
-
   it("splits statuses into alerts and statuses by the exception pattern", () => {
     const snap = buildSidebarSnapshot(makeInput());
     expect(snap.alerts.map((a) => a.key)).toEqual(["err"]);
@@ -225,7 +209,7 @@ describe("renderSidebarLines primitives", () => {
 });
 
 describe("renderSidebarLines built-ins", () => {
-  it("renders an Agent row and a Context row in the working snapshot", () => {
+  it("renders Agent and Context in the default snapshot", () => {
     const input = makeInput();
     const snap = buildSidebarSnapshot(input);
     const lines = renderSidebarLines(snap, input.config, noTheme, 44, 36, { colorEnabled: false });
@@ -239,21 +223,6 @@ describe("renderSidebarLines built-ins", () => {
     const snap = buildSidebarSnapshot(input);
     const lines = renderSidebarLines(snap, input.config, noTheme, 44, 36, { colorEnabled: false });
     expect(lines.join("\n")).toMatch(/ACTIVITY/);
-  });
-
-  it("uses the diamond glyph for the working state and the dot for ready", () => {
-    const ready = buildSidebarSnapshot(makeInput());
-    const working = buildSidebarSnapshot(
-      makeInput({ footer: { ...makeInput().footer, runState: "busy" } }),
-    );
-    const readyLines = renderSidebarLines(ready, makeInput().config, noTheme, 44, 36, {
-      colorEnabled: false,
-    });
-    const workingLines = renderSidebarLines(working, makeInput().config, noTheme, 44, 36, {
-      colorEnabled: false,
-    });
-    expect(readyLines.join("\n")).toContain("● Ready");
-    expect(workingLines.join("\n")).toContain("◆");
   });
 
   it("renders compact mode at width <= 39 and skips the tool-name rows", () => {
@@ -690,5 +659,165 @@ describe("renderSidebarLines failure path", () => {
     });
     expect(lines).toHaveLength(12);
     expect(lines.some((line) => line.includes("Sidebar unavailable"))).toBe(true);
+  });
+});
+
+describe("Activity canonical run state", () => {
+  it("stores footer runState without duplicate activity-phase state", () => {
+    const input = makeInput();
+    input.footer.runState = "queued";
+
+    const snapshot = buildSidebarSnapshot(input);
+    expect(snapshot.runState).toBe("queued");
+    expect(snapshot).not.toHaveProperty("runPhase");
+  });
+
+  it.each([
+    ["idle", "Ready", "thinkingLow"],
+    ["queued", "Queued", "warning"],
+    ["busy", "Working", "mdHeading"],
+  ] as const)("renders footer state %s as semantic Activity %s", (runState, label, token) => {
+    const input = makeInput();
+    input.footer.runState = runState;
+    const config = {
+      ...input.config,
+      sidebarPanelLayout: [{ id: "activity" as const, visible: true }],
+    };
+    const fg = vi.fn((_color: string, text: string) => text);
+    const output = renderSidebarLines(
+      buildSidebarSnapshot(input),
+      config,
+      { ...noTheme, fg },
+      44,
+      12,
+    ).join("\n");
+
+    expect(output).toContain("ACTIVITY");
+    expect(output).toContain(label);
+    expect(fg).toHaveBeenCalledWith(token, label);
+    expect(fg).toHaveBeenCalledWith(token, "ACTIVITY");
+    for (const other of ["Ready", "Queued", "Working"].filter((value) => value !== label)) {
+      expect(output).not.toContain(other);
+    }
+  });
+
+  it("keeps a failed crown error separate from the Working text role", () => {
+    const input = makeInput();
+    input.footer.runState = "busy";
+    input.footer.activity = {
+      run: { status: "active", durationMs: 2_000 },
+      turn: { status: "active", number: 1, durationMs: 1_000 },
+      activeTools: [],
+      recentTools: [],
+      completedToolCount: 0,
+      failedToolCount: 1,
+      response: { status: "idle" },
+      updatedAt: 2_000,
+    };
+    const config = {
+      ...input.config,
+      sidebarPanelLayout: [{ id: "activity" as const, visible: true }],
+    };
+    const fg = vi.fn((_color: string, text: string) => text);
+
+    renderSidebarLines(buildSidebarSnapshot(input), config, { ...noTheme, fg }, 44, 12);
+
+    expect(fg).toHaveBeenCalledWith("error", "ACTIVITY");
+    expect(fg).toHaveBeenCalledWith("mdHeading", "Working");
+  });
+
+  it("keeps response timing beside the canonical Activity state", () => {
+    const input = makeInput();
+    input.footer.runState = "busy";
+    input.footer.activity = {
+      run: { status: "active", durationMs: 2_000 },
+      turn: { status: "active", number: 1, durationMs: 1_000 },
+      activeTools: [],
+      recentTools: [],
+      completedToolCount: 0,
+      failedToolCount: 0,
+      response: { status: "streaming", ttftMs: 450, tps: 12.3 },
+      updatedAt: 2_000,
+    };
+    const config = {
+      ...input.config,
+      sidebarPanelLayout: [{ id: "activity" as const, visible: true }],
+    };
+    const output = renderSidebarLines(buildSidebarSnapshot(input), config, noTheme, 44, 12, {
+      colorEnabled: false,
+    }).join("\n");
+
+    expect(output).toContain("Working");
+    expect(output).toContain("TTFT 450ms · 12.3 tok/s");
+  });
+});
+
+describe("Agent identity-only rendering", () => {
+  function renderAgent(
+    width: number,
+    overrides: Partial<Parameters<typeof withDefaults>[0]> = {},
+    theme: StatusLineTheme = noTheme,
+  ): string {
+    const input = makeInput();
+    input.footer = {
+      ...input.footer,
+      thinkingLevel: "high",
+      runState: "busy",
+      model: { id: "gpt-5", name: "gpt-5", provider: "openai" },
+      accessType: "subscription",
+      ...overrides,
+    };
+    const config = {
+      ...input.config,
+      sidebarPanelLayout: [{ id: "agent" as const, visible: true }],
+    };
+    return renderSidebarLines(buildSidebarSnapshot(input), config, theme, width, 12).join("\n");
+  }
+
+  it("removes duplicate Agent activity state from snapshots", () => {
+    expect(buildSidebarSnapshot(makeInput())).not.toHaveProperty("agentActivity");
+  });
+
+  it("keeps the Agent crown on the static accent role", () => {
+    const fg = vi.fn((_color: string, text: string) => text);
+    renderAgent(52, {}, { ...noTheme, fg });
+    expect(fg).toHaveBeenCalledWith("accent", "AGENT");
+  });
+
+  it("renders only identity metadata under Agent", () => {
+    const output = renderAgent(52);
+    expect(output).toContain("✦ AGENT");
+    expect(output).not.toContain("Ready");
+    expect(output).not.toContain("Queued");
+    expect(output).not.toContain("Working");
+    expect(output).not.toContain("●");
+    expect(output).not.toContain("◆");
+  });
+
+  it("pairs Model with Thinking and Provider with Access at standard width", () => {
+    const output = renderAgent(52);
+    expect(output).toMatch(/gpt-5\s+HIGH/);
+    expect(output).toMatch(/OPENAI\s+SUBSCRIPTION/);
+  });
+
+  it("stacks each identity pair instead of truncating it when narrow", () => {
+    const output = renderAgent(18, {
+      model: { id: "gpt-5-codex", name: "gpt-5-codex", provider: "openai" },
+    });
+    expect(output).toContain("gpt-5-codex");
+    expect(output).toContain("HIGH");
+    expect(output).toContain("OPENAI");
+    expect(output).toContain("SUBSCRIPTION");
+    expect(output).not.toMatch(/gpt-5-codex\s+HIGH/);
+    expect(output).not.toMatch(/OPENAI\s+SUBSCRIPTION/);
+  });
+
+  it("collapses an absent Provider/Access pair to one dim fallback", () => {
+    const output = renderAgent(52, {
+      model: { id: "gpt-5", name: "gpt-5" },
+      accessType: undefined,
+    });
+    expect(output).toMatch(/gpt-5\s+HIGH/);
+    expect(output.match(/—/g)).toHaveLength(1);
   });
 });

@@ -1,10 +1,10 @@
-import type { Component, OverlayHandle, OverlayOptions, TUI } from "@earendil-works/pi-tui";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { Component, OverlayHandle, OverlayOptions, TUI } from "@earendil-works/pi-tui";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildSidebarSnapshot, type SidebarSnapshot } from "../../src/tui/sidebar-render.ts";
 import type { PiStatusConfig } from "../../src/shared/types.ts";
 import { DEFAULT_SIDEBAR_PANEL_LAYOUT, DEFAULT_ZONES } from "../../src/shared/types.ts";
 import { createSidebarController } from "../../src/tui/sidebar.ts";
+import { buildSidebarSnapshot, type SidebarSnapshot } from "../../src/tui/sidebar-render.ts";
 import {
   DEFAULT_SIDEBAR_WIDTH,
   MIN_MAIN_WIDTH,
@@ -301,6 +301,43 @@ describe("sidebar controller", () => {
     // Theme-dependent render: must not collapse to the "Sidebar unavailable" dock.
     expect(lines.some((l) => l.includes("gpt-5.6"))).toBe(true);
     expect(lines.some((l) => l.includes("Sidebar unavailable"))).toBe(false);
+  });
+
+  it("uses a named host theme's live semantic colors on every render", async () => {
+    const { host, tui } = makeFakeHost();
+    let revision: "first" | "second" = "first";
+    const painters = {
+      first: vi.fn((_color: string, text: string) => `\x1b[31m${text}\x1b[39m`),
+      second: vi.fn((_color: string, text: string) => `\x1b[32m${text}\x1b[39m`),
+    };
+    const liveTheme = {
+      ...noTheme,
+      name: "dark",
+      get fg() {
+        return painters[revision];
+      },
+    };
+    const controller = createSidebarController({
+      ctx: makeCtx(host, tui, liveTheme),
+      getSnapshot: () => FIXED_SNAPSHOT,
+      getConfig: () => FIXED_CONFIG,
+    });
+
+    controller.show();
+    await Promise.resolve();
+    const component = host.factories.at(-1);
+    if (!component) throw new Error("expected overlay component");
+
+    const first = component(tui, noTheme).render(44).join("\n");
+    expect(first).toContain("\x1b[31mgpt-5.6\x1b[39m");
+    expect(first).not.toContain("\x1b[38;2;");
+
+    revision = "second";
+    const second = component(tui, noTheme).render(44).join("\n");
+    expect(second).toContain("\x1b[32mgpt-5.6\x1b[39m");
+    expect(second).not.toContain("\x1b[31mgpt-5.6\x1b[39m");
+    expect(painters.first).toHaveBeenCalledWith("text", "gpt-5.6");
+    expect(painters.second).toHaveBeenCalledWith("text", "gpt-5.6");
   });
 
   it("beginResize() returns true and wires ctx.ui.onTerminalInput", async () => {

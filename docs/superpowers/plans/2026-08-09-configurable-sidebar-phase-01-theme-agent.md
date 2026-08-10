@@ -26,6 +26,16 @@ This phase deliberately does **not** add the segment catalog, change `sidebarPan
 - `Queued` uses semantic `warning`, `Ready` uses `ready`, and `Working` uses `working`. A failed-tool count still makes the Activity panel crown `error` without changing the run-state text role.
 - No theme subscription or cache is needed because Pi passes a live theme proxy and the overlay calls `createPalette()` during every render.
 
+## Reference validation
+
+The plan was revalidated against the current checkouts on 2026-08-10:
+
+- Pi at `/Users/lanh/Developer/pi-packages/pi` (`4181f66e6`): `packages/coding-agent/src/modes/interactive/theme/theme.ts` exports `theme` as a stable `Proxy` that reads the active theme from `globalThis`, and `packages/coding-agent/src/modes/interactive/interactive-mode.ts` passes that proxy to custom component factories. Capturing the factory theme once is therefore correct; semantic `fg()` calls resolve the current theme on each render.
+- pi-atelier at `/Users/lanh/Developer/pi-packages/michaelmjhhhh-pi-atelier` (`0236280`): `src/palette.ts` and `src/sidebar.ts` confirm the fixed named-theme RGB branch and Agent-owned activity presentation that pi-status originally inherited. Treat these files as source-behavior references only, not as the desired Phase 1 target.
+- pi-status at `c02cb7b`: the focused baseline is 3 files and 63 tests; the repository baseline is 30 files and 807 tests.
+
+Reference SHAs are evidence for this replan, not execution locks. If an external checkout advances, re-check the cited proxy/factory behavior; do not modify either reference repository.
+
 ## File map
 
 - Modify `src/tui/sidebar-palette.ts`: remove fixed RGB/name branching and map every role to Pi semantic tokens while retaining the exact no-color map.
@@ -54,15 +64,33 @@ No production file is created. In particular, do not create `src/tui/sidebar-seg
 Run:
 
 ```bash
-export PHASE_BASE=$(git rev-parse HEAD)
 test -z "$(git status --short)"
 test "$(shasum -a 256 docs/superpowers/plans/2026-08-09-configurable-sidebar-phased-implementation.md | awk '{print $1}')" = "eb53718f040e21a0d123a5266be04d581a914dd22842baea7c1fe26ee49962d2"
-printf '%s\n' "$PHASE_BASE"
+BASE_FILE=$(git rev-parse --git-path pi-status-phase-01-base)
+git rev-parse HEAD > "$BASE_FILE"
+cat "$BASE_FILE"
 ```
 
-Expected: both `test` commands exit 0 and the base commit prints once. Stop immediately if the worktree is dirty or the parent hash differs.
+Expected: both `test` commands exit 0 and the base commit prints once. The baseline is stored inside this worktree's Git metadata so later task shells can recover it. Stop immediately if the worktree is dirty or the parent hash differs.
 
-- [ ] **Step 2: Run the focused characterization suites**
+- [ ] **Step 2: Revalidate the external reference behavior**
+
+Run:
+
+```bash
+git -C /Users/lanh/Developer/pi-packages/pi rev-parse --short=10 HEAD
+git -C /Users/lanh/Developer/pi-packages/michaelmjhhhh-pi-atelier rev-parse --short=7 HEAD
+rg -n "export const theme: Theme = new Proxy|factory\(this\.ui, theme" \
+  /Users/lanh/Developer/pi-packages/pi/packages/coding-agent/src/modes/interactive/theme/theme.ts \
+  /Users/lanh/Developer/pi-packages/pi/packages/coding-agent/src/modes/interactive/interactive-mode.ts
+rg -n "FIXED_DARK|activityRole\(snapshot\.activity\)" \
+  /Users/lanh/Developer/pi-packages/michaelmjhhhh-pi-atelier/src/palette.ts \
+  /Users/lanh/Developer/pi-packages/michaelmjhhhh-pi-atelier/src/sidebar.ts
+```
+
+Expected: the SHAs print; Pi still exposes the stable theme proxy and passes it to custom factories; pi-atelier still contains the fixed named-theme palette and activity-colored Agent reference behavior. If the semantic behavior is absent, stop and replan. SHA drift alone is informational.
+
+- [ ] **Step 3: Run the focused characterization suites**
 
 Run:
 
@@ -73,7 +101,7 @@ pnpm vitest run tests/tui/sidebar-palette.test.ts tests/tui/sidebar-render.test.
 
 Expected: Node is `v24.15.0` or newer; all 3 test files and the current 63 tests pass before edits.
 
-- [ ] **Step 3: Confirm the obsolete state and fixed palette are locally owned**
+- [ ] **Step 4: Confirm the obsolete state and fixed palette are locally owned**
 
 Run:
 
@@ -161,12 +189,15 @@ describe("createPalette", () => {
     }
   });
 
-  it("does not cache semantic paint results", () => {
+  it("resolves the live theme method on every paint", () => {
     let revision = 1;
-    const palette = createPalette(
-      { fg: (color, text) => `[${revision}:${color}:${text}]` },
-      true,
-    );
+    const theme = {
+      get fg() {
+        const current = revision;
+        return (color: string, text: string) => `[${current}:${color}:${text}]`;
+      },
+    };
+    const palette = createPalette(theme, true);
 
     expect(palette.paint("accent", "x")).toBe("[1:accent:x]");
     revision = 2;
@@ -182,9 +213,20 @@ Add this test at the end of the existing `describe("sidebar controller", ...)` b
 ```ts
   it("uses a named host theme's live semantic colors on every render", async () => {
     const { host, tui } = makeFakeHost();
-    let revision = "first";
-    const fg = vi.fn((color: string, text: string) => `<${revision}:${color}>${text}</${color}>`);
-    const liveTheme = { ...noTheme, name: "dark", fg } as StatusLineTheme & { name: string };
+    let revision: "first" | "second" = "first";
+    const painters = {
+      first: vi.fn((color: string, text: string) => `<first:${color}>${text}</${color}>`),
+      second: vi.fn((color: string, text: string) => `<second:${color}>${text}</${color}>`),
+    };
+    const liveTheme = new Proxy(
+      { ...noTheme, name: "dark" } as StatusLineTheme & { name: string },
+      {
+        get(target, property, receiver) {
+          if (property === "fg") return painters[revision];
+          return Reflect.get(target, property, receiver);
+        },
+      },
+    );
     const controller = createSidebarController({
       ctx: makeCtx(host, tui, liveTheme),
       getSnapshot: () => FIXED_SNAPSHOT,
@@ -203,7 +245,8 @@ Add this test at the end of the existing `describe("sidebar controller", ...)` b
     revision = "second";
     const second = component(tui, noTheme).render(44).join("\n");
     expect(second).toContain("<second:text>gpt-5.6</text>");
-    expect(fg).toHaveBeenCalledWith("text", "gpt-5.6");
+    expect(painters.first).toHaveBeenCalledWith("text", "gpt-5.6");
+    expect(painters.second).toHaveBeenCalledWith("text", "gpt-5.6");
   });
 ```
 
@@ -321,13 +364,41 @@ Expected: one commit containing exactly those three files.
 - Modify: `src/tui/sidebar-render.ts`
 - Test: `tests/tui/sidebar-render.test.ts`
 
-- [ ] **Step 1: Add failing snapshot and three-state Activity tests**
+- [ ] **Step 1: Replace stale ownership tests and add failing semantic Activity tests**
 
-Add this block to `tests/tui/sidebar-render.test.ts` immediately before its final top-level `describe` block ends (or append it as a new top-level block):
+Update the Vitest import:
+
+```ts
+import { describe, expect, it, vi } from "vitest";
+```
+
+In the existing `SIDEBAR_SEGMENT_PANELS` coverage block, rename `"explicitly maps the five segments that drive a sidebar-specific view"` to `"explicitly maps the six segments that drive a sidebar-specific view"` and add:
+
+```ts
+    expect(SIDEBAR_SEGMENT_PANELS["run-state"]).toBe("activity");
+```
+
+Rename `"renders an Agent row and a Context row in the working snapshot"` to `"renders Agent and Context in the default snapshot"`; its fixture is idle and the test does not exercise run state.
+
+In the existing `SidebarSnapshot` fixture, replace:
+
+```ts
+      runPhase: "idle",
+```
+
+with:
+
+```ts
+      runState: "idle",
+```
+
+Keep `agentActivity: "ready"` for this green intermediate slice; Task 4 removes Agent's duplicate state while replacing its renderer in the same commit.
+
+Then append this block to `tests/tui/sidebar-render.test.ts`:
 
 ```ts
 describe("Activity canonical run state", () => {
-  it("stores footer runState without duplicate Agent or activity-phase state", () => {
+  it("stores footer runState without duplicate activity-phase state", () => {
     const input = makeInput({
       footer: withDefaults({
         cwd: "/home/user/repo",
@@ -342,15 +413,14 @@ describe("Activity canonical run state", () => {
 
     const snapshot = buildSidebarSnapshot(input);
     expect(snapshot.runState).toBe("queued");
-    expect(snapshot).not.toHaveProperty("agentActivity");
     expect(snapshot).not.toHaveProperty("runPhase");
   });
 
   it.each([
-    ["idle", "Ready"],
-    ["queued", "Queued"],
-    ["busy", "Working"],
-  ] as const)("renders footer state %s as Activity %s", (runState, label) => {
+    ["idle", "Ready", "thinkingLow"],
+    ["queued", "Queued", "warning"],
+    ["busy", "Working", "mdHeading"],
+  ] as const)("renders footer state %s as semantic Activity %s", (runState, label, token) => {
     const input = makeInput({
       footer: withDefaults({
         cwd: "/home/user/repo",
@@ -366,20 +436,56 @@ describe("Activity canonical run state", () => {
       ...input.config,
       sidebarPanelLayout: [{ id: "activity" as const, visible: true }],
     };
+    const fg = vi.fn((_color: string, text: string) => text);
     const output = renderSidebarLines(
       buildSidebarSnapshot(input),
       config,
-      noTheme,
+      { ...noTheme, fg },
       44,
       12,
-      { colorEnabled: false },
     ).join("\n");
 
     expect(output).toContain("ACTIVITY");
     expect(output).toContain(label);
+    expect(fg).toHaveBeenCalledWith(token, label);
+    expect(fg).toHaveBeenCalledWith(token, "ACTIVITY");
     for (const other of ["Ready", "Queued", "Working"].filter((value) => value !== label)) {
       expect(output).not.toContain(other);
     }
+  });
+
+  it("keeps a failed crown error separate from the Working text role", () => {
+    const input = makeInput({
+      footer: withDefaults({
+        cwd: "/home/user/repo",
+        thinkingLevel: "off",
+        gitBranch: "main",
+        runState: "busy",
+        contextUsage: { tokens: 0, contextWindow: 1, percent: 0 },
+        sessionId: "abc",
+        extensionStatuses: new Map(),
+        activity: {
+          run: { status: "active", durationMs: 2_000 },
+          turn: { status: "active", number: 1, durationMs: 1_000 },
+          activeTools: [],
+          recentTools: [],
+          completedToolCount: 0,
+          failedToolCount: 1,
+          response: { status: "idle" },
+          updatedAt: 2_000,
+        },
+      }),
+    });
+    const config = {
+      ...input.config,
+      sidebarPanelLayout: [{ id: "activity" as const, visible: true }],
+    };
+    const fg = vi.fn((_color: string, text: string) => text);
+
+    renderSidebarLines(buildSidebarSnapshot(input), config, { ...noTheme, fg }, 44, 12);
+
+    expect(fg).toHaveBeenCalledWith("error", "ACTIVITY");
+    expect(fg).toHaveBeenCalledWith("mdHeading", "Working");
   });
 
   it("keeps response timing beside the canonical Activity state", () => {
@@ -423,7 +529,7 @@ describe("Activity canonical run state", () => {
 });
 ```
 
-Use the repository's existing `makeInput`, `withDefaults`, `buildSidebarSnapshot`, `renderSidebarLines`, and `noTheme` imports already present in this test file. The explicit Activity fixture must match the existing `ActivitySnapshot` shape; do not replace it with a cast.
+Use the repository's existing `makeInput`, `withDefaults`, `buildSidebarSnapshot`, `renderSidebarLines`, and `noTheme` imports already present in this test file. The explicit Activity fixture must match the existing `LiveActivitySnapshot` shape; do not replace it with a cast.
 
 - [ ] **Step 2: Run the Activity block and verify red**
 
@@ -433,43 +539,43 @@ Run:
 pnpm vitest run tests/tui/sidebar-render.test.ts -t "Activity canonical run state"
 ```
 
-Expected: FAIL because `SidebarSnapshot.runState` does not exist, the snapshot still has `agentActivity`/`runPhase`, and queued currently renders `Ready`.
+Expected: FAIL because `SidebarSnapshot.runState` does not exist, the snapshot still has `runPhase`, and queued currently renders `Ready`.
 
-- [ ] **Step 3: Replace duplicated snapshot state with the canonical final field name**
+- [ ] **Step 3: Replace only the duplicate activity phase with canonical footer run state**
 
-In `src/tui/sidebar-render.ts`, delete these exports:
+Delete this export from `src/tui/sidebar-render.ts`:
 
 ```ts
-export type AgentActivity = "ready" | "working";
-
 export type RunPhase = "idle" | "active" | "complete";
 ```
 
+Keep `AgentActivity` temporarily so the repository remains type-correct until Task 4 replaces Agent rendering.
+
 In `SidebarSnapshot`, replace:
-
-```ts
-  agentActivity: AgentActivity;
-```
-
-and:
 
 ```ts
   runPhase: RunPhase;
 ```
 
-with the single final field:
+with:
 
 ```ts
   runState: FooterRenderInput["runState"];
 ```
 
-In `buildSidebarSnapshot()`, delete:
+In `SIDEBAR_SEGMENT_PANELS`, replace:
 
 ```ts
-    agentActivity: footer.runState === "idle" ? "ready" : "working",
+  "run-state": "agent",
 ```
 
-and replace:
+with:
+
+```ts
+  "run-state": "activity",
+```
+
+In `buildSidebarSnapshot()`, replace:
 
 ```ts
     runPhase: activity?.run.status ?? "idle",
@@ -481,11 +587,11 @@ with:
     runState: footer.runState,
 ```
 
-Leave `const activity = footer.activity` and all timing/response assignments intact.
+Leave `agentActivity`, `const activity = footer.activity`, and all timing/response assignments intact in this task.
 
-- [ ] **Step 4: Replace the obsolete Agent activity helpers with one Activity presentation helper**
+- [ ] **Step 4: Add the Activity presentation helper without removing Agent's temporary helpers**
 
-Delete `activityRole()` and `activitySymbol()` from `src/tui/sidebar-render.ts`, then add this helper in their former location:
+Keep `activityRole()` and `activitySymbol()` until Task 4. Add this helper immediately after them:
 
 ```ts
 function runStatePresentation(runState: FooterRenderInput["runState"]): {
@@ -561,15 +667,61 @@ Expected: one commit containing only the renderer and its test.
 - Modify: `src/tui/sidebar-render.ts`
 - Test: `tests/tui/sidebar-render.test.ts`
 
-- [ ] **Step 1: Add failing Agent identity tests**
+- [ ] **Step 1: Replace obsolete Agent-state tests with failing identity tests**
 
-Append this block to `tests/tui/sidebar-render.test.ts`:
+In the existing `SidebarSnapshot` fixture, delete:
+
+```ts
+      agentActivity: "ready",
+```
+
+Delete these obsolete `buildSidebarSnapshot` tests:
+
+```ts
+  it("derives ready agentActivity from an idle footer", () => {
+    const snap = buildSidebarSnapshot(makeInput());
+    expect(snap.agentActivity).toBe("ready");
+  });
+
+  it("derives working agentActivity from a busy or queued footer", () => {
+    const a = buildSidebarSnapshot(
+      makeInput({ footer: { ...makeInput().footer, runState: "busy" } }),
+    );
+    const b = buildSidebarSnapshot(
+      makeInput({ footer: { ...makeInput().footer, runState: "queued" } }),
+    );
+    expect(a.agentActivity).toBe("working");
+    expect(b.agentActivity).toBe("working");
+  });
+```
+
+Delete the obsolete Agent glyph test:
+
+```ts
+  it("uses the diamond glyph for the working state and the dot for ready", () => {
+    const ready = buildSidebarSnapshot(makeInput());
+    const working = buildSidebarSnapshot(
+      makeInput({ footer: { ...makeInput().footer, runState: "busy" } }),
+    );
+    const readyLines = renderSidebarLines(ready, makeInput().config, noTheme, 44, 36, {
+      colorEnabled: false,
+    });
+    const workingLines = renderSidebarLines(working, makeInput().config, noTheme, 44, 36, {
+      colorEnabled: false,
+    });
+    expect(readyLines.join("\n")).toContain("● Ready");
+    expect(workingLines.join("\n")).toContain("◆");
+  });
+```
+
+Then append this block:
 
 ```ts
 describe("Agent identity-only rendering", () => {
   function renderAgent(
     width: number,
     overrides: Partial<Parameters<typeof withDefaults>[0]> = {},
+    theme: StatusLineTheme = noTheme,
   ): string {
     const input = makeInput({
       footer: withDefaults({
@@ -592,12 +744,21 @@ describe("Agent identity-only rendering", () => {
     return renderSidebarLines(
       buildSidebarSnapshot(input),
       config,
-      noTheme,
+      theme,
       width,
       12,
-      { colorEnabled: false },
     ).join("\n");
   }
+
+  it("removes duplicate Agent activity state from snapshots", () => {
+    expect(buildSidebarSnapshot(makeInput())).not.toHaveProperty("agentActivity");
+  });
+
+  it("keeps the Agent crown on the static accent role", () => {
+    const fg = vi.fn((_color: string, text: string) => text);
+    renderAgent(52, {}, { ...noTheme, fg });
+    expect(fg).toHaveBeenCalledWith("accent", "AGENT");
+  });
 
   it("renders only identity metadata under Agent", () => {
     const output = renderAgent(52);
@@ -616,12 +777,14 @@ describe("Agent identity-only rendering", () => {
   });
 
   it("stacks each identity pair instead of truncating it when narrow", () => {
-    const output = renderAgent(22);
-    expect(output).toContain("gpt-5");
+    const output = renderAgent(18, {
+      model: { id: "gpt-5-codex", name: "gpt-5-codex", provider: "openai" },
+    });
+    expect(output).toContain("gpt-5-codex");
     expect(output).toContain("HIGH");
     expect(output).toContain("OPENAI");
     expect(output).toContain("SUBSCRIPTION");
-    expect(output).not.toMatch(/gpt-5\s+HIGH/);
+    expect(output).not.toMatch(/gpt-5-codex\s+HIGH/);
     expect(output).not.toMatch(/OPENAI\s+SUBSCRIPTION/);
   });
 
@@ -644,24 +807,43 @@ Run:
 pnpm vitest run tests/tui/sidebar-render.test.ts -t "Agent identity-only rendering"
 ```
 
-Expected: FAIL because Agent still renders `◆ Working`, places status beside Model, and does not form the two required identity pairs.
+Expected: FAIL because snapshots still contain `agentActivity`, Agent still renders `◆ Working`, and it does not form the two required identity pairs.
 
-- [ ] **Step 3: Add the minimal adaptive identity-pair helper**
+- [ ] **Step 3: Remove duplicate Agent state and add the minimal identity-pair helper**
 
-Add this helper immediately before `agentRows()` in `src/tui/sidebar-render.ts`:
+Delete this export from `src/tui/sidebar-render.ts`:
+
+```ts
+export type AgentActivity = "ready" | "working";
+```
+
+Delete this field from `SidebarSnapshot`:
+
+```ts
+  agentActivity: AgentActivity;
+```
+
+Delete this assignment from `buildSidebarSnapshot()`:
+
+```ts
+    agentActivity: footer.runState === "idle" ? "ready" : "working",
+```
+
+Delete `activityRole()` and `activitySymbol()`; Task 3 left them in place only to keep its intermediate commit green.
+
+Then add this helper immediately before `agentRows()`:
 
 ```ts
 function identityPairRows(
   left: string | undefined,
   right: string | undefined,
   contentWidth: number,
-  compact: boolean,
   palette: Palette,
 ): string[] {
   if (!left && !right) return [palette.paint("dim", DEFAULT_TEXT)];
   if (!left) return right ? [right] : [];
   if (!right) return [left];
-  if (compact || visibleWidth(`${left}  ${right}`) > contentWidth) return [left, right];
+  if (visibleWidth(left) + visibleWidth(right) + 1 > contentWidth) return [left, right];
   return [spacedRow(left, right, contentWidth)];
 }
 ```
@@ -675,7 +857,6 @@ Replace the entire existing `agentRows()` function with:
 ```ts
 function agentRows(
   snap: SidebarSnapshot,
-  compact: boolean,
   contentWidth: number,
   palette: Palette,
 ): string[] {
@@ -692,8 +873,8 @@ function agentRows(
     : undefined;
 
   return [
-    ...identityPairRows(model, thinking, contentWidth, compact, palette),
-    ...identityPairRows(provider, access, contentWidth, compact, palette),
+    ...identityPairRows(model, thinking, contentWidth, palette),
+    ...identityPairRows(provider, access, contentWidth, palette),
   ];
 }
 ```
@@ -711,7 +892,7 @@ Replace the Agent group in `renderSidebarLinesInner()` with:
       panelId: "agent",
       panelRole: "accent",
       panelJewel: "✦",
-      rows: agentRows(snapshot, compact, panelContentWidth, palette),
+      rows: agentRows(snapshot, panelContentWidth, palette),
       required: true,
       dropRank: Number.POSITIVE_INFINITY,
     },
@@ -756,7 +937,7 @@ Expected: one commit containing only the renderer and renderer test.
 Run:
 
 ```bash
-test -z "$(rg -n "FIXED_DARK|UNNAMED_THEME|function rgb|theme\.name|AgentActivity|agentActivity|RunPhase|runPhase" src/tui/sidebar-palette.ts src/tui/sidebar-render.ts || true)"
+test -z "$(rg -n "FIXED_DARK|UNNAMED_THEME|function rgb|theme\.name|AgentActivity|agentActivity|RunPhase|runPhase" src/tui/sidebar-palette.ts src/tui/sidebar-render.ts tests/tui/sidebar-palette.test.ts tests/tui/sidebar-render.test.ts || true)"
 test -z "$(rg -n "SidebarSegmentDefinition|SidebarEffectiveLayout|sidebarHiddenSegments|sidebar-segments|sidebar-layout" src tests || true)"
 ```
 
@@ -782,6 +963,8 @@ pnpm format:check
 pnpm lint
 pnpm typecheck
 pnpm test
+PHASE_BASE=$(cat "$(git rev-parse --git-path pi-status-phase-01-base)")
+git cat-file -e "$PHASE_BASE^{commit}"
 git diff --check "$PHASE_BASE"..HEAD
 ```
 
@@ -793,6 +976,8 @@ Run:
 
 ```bash
 test "$(shasum -a 256 docs/superpowers/plans/2026-08-09-configurable-sidebar-phased-implementation.md | awk '{print $1}')" = "eb53718f040e21a0d123a5266be04d581a914dd22842baea7c1fe26ee49962d2"
+PHASE_BASE=$(cat "$(git rev-parse --git-path pi-status-phase-01-base)")
+git cat-file -e "$PHASE_BASE^{commit}"
 git diff --name-only "$PHASE_BASE"..HEAD
 git diff --stat "$PHASE_BASE"..HEAD
 git status --short
@@ -821,6 +1006,16 @@ git commit -m "test: verify configurable sidebar phase one"
 
 Expected: normally no commit is needed because `git status --short` is already empty. Never create an empty commit.
 
+- [ ] **Step 6: Remove the worktree-local baseline marker**
+
+Run:
+
+```bash
+rm -f "$(git rev-parse --git-path pi-status-phase-01-base)"
+```
+
+Expected: the marker is removed after every phase gate has passed; `git status --short` remains empty.
+
 ## Phase 1 completion gate
 
 Phase 2 may begin only when all of the following are true:
@@ -838,6 +1033,6 @@ Phase 2 may begin only when all of the following are true:
 
 - **Run-state spelling drift:** the helper avoids redefining the union and treats only `idle` and `queued` specially. `pnpm typecheck` plus the three-state test catches an incorrect fixture or upstream union change.
 - **ANSI width regressions:** all new pair-fit decisions use `visibleWidth()` and existing `spacedRow()`; the full renderer width matrix remains the regression gate.
-- **Theme proxy regressions:** the controller test mutates the semantic renderer between renders, so fixed RGB, name branching, or caching fails visibly.
+- **Theme proxy regressions:** the palette getter and controller proxy tests swap the active `fg` method between paints/renders, so fixed RGB, name branching, method capture, or output caching fails visibly.
 - **Overscoping into Phase 2:** the later-phase symbol grep and five-file diff gate prevent premature catalog/config work.
 - **Rollback:** each behavior is isolated in a commit. Revert the Agent commit, Activity commit, or semantic-theme commit independently; no schema or persisted data changes require migration or cleanup.
