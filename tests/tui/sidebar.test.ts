@@ -408,3 +408,28 @@ describe("sidebar controller effective width forwarding", () => {
     expect(controller.getEffectiveWidth()).toBe(0);
   });
 });
+
+describe("sidebar controller view boundary", () => {
+  it("rebuilds the catalog and layout from the current snapshot on every render", async () => {
+    const { host, tui } = makeFakeHost();
+    let snapshot = FIXED_SNAPSHOT;
+    const controller = createSidebarController({
+      ctx: makeCtx(host, tui),
+      getSnapshot: () => snapshot,
+      getConfig: () => FIXED_CONFIG,
+    });
+    controller.show();
+    await Promise.resolve();
+    const component = host.factories.at(-1);
+    if (!component) throw new Error("expected overlay component");
+    const mounted = component(tui, noTheme);
+
+    expect(mounted.render(44).join("\n")).toContain("gpt-5.6");
+
+    snapshot = { ...snapshot, modelLabel: "opus-5" };
+    const second = mounted.render(44).join("\n");
+    expect(second).toContain("opus-5");
+    expect(second).not.toContain("gpt-5.6");
+    expect(host.customInvocations).toBe(1);
+  });
+});
