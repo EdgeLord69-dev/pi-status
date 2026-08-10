@@ -960,6 +960,10 @@ describe("/statusline theme adaptation", () => {
 describe("extension wiring — completion notifications", () => {
   const SETTLED_OSC = "\x1b]9;Pi finished: The current run has settled.\x1b\\";
 
+  beforeEach(() => {
+    vi.stubEnv("HERDR_ENV", "");
+  });
+
   function enableNotifications(): void {
     const configPath = join(agentDir, "extensions", "statusline.json");
     mkdirSync(join(agentDir, "extensions"), { recursive: true });
