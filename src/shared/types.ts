@@ -70,6 +70,108 @@ export function isSidebarPanelId(value: unknown): value is SidebarPanelId {
   );
 }
 
+export type SidebarSegmentPersistence = "stable" | "session";
+export type SidebarSegmentPriority = "required" | "important" | "normal" | "optional";
+export type SidebarSegmentRole =
+  | "accent"
+  | "primary"
+  | "muted"
+  | "dim"
+  | "ready"
+  | "working"
+  | "input"
+  | "output"
+  | "cache"
+  | "context"
+  | "cost"
+  | "menu"
+  | "warning"
+  | "error";
+
+export interface SidebarSegmentSpan {
+  text: string;
+  role: SidebarSegmentRole;
+}
+
+export interface SidebarMetricContent {
+  kind: "metric";
+  value: SidebarSegmentSpan[];
+  pairKey: string;
+  unavailable?: boolean;
+  collapseUnavailableKey?: string;
+}
+
+export interface SidebarBlockContent {
+  kind: "block";
+  rows: SidebarSegmentSpan[][];
+}
+
+export type SidebarSegmentContent = SidebarMetricContent | SidebarBlockContent;
+
+export interface SidebarCatalogEntry {
+  id: string;
+  label: string;
+  description: string;
+  defaultPanelId: SidebarPanelId;
+  persistence: SidebarSegmentPersistence;
+  defaultEnabled: boolean;
+  available: boolean;
+  requiresWorkspacePulse: boolean;
+  priority: SidebarSegmentPriority;
+  dropOrder: number;
+  content: SidebarSegmentContent | null;
+}
+
+export interface SidebarEffectivePanelLayoutEntry {
+  id: SidebarPanelId;
+  visible: boolean;
+  segments: string[];
+}
+
+export interface SidebarEffectiveLayout {
+  panels: SidebarEffectivePanelLayoutEntry[];
+  hiddenSegments: string[];
+}
+
+/** Canonical home panel and order for every built-in segment. */
+export const SIDEBAR_BUILTIN_ASSIGNMENTS = {
+  agent: ["builtin:model", "builtin:thinking", "builtin:provider", "builtin:access"],
+  activity: [
+    "builtin:run-state",
+    "builtin:run-timing",
+    "builtin:turn-progress",
+    "builtin:response-performance",
+    "builtin:tool-outcomes",
+    "builtin:recent-tools",
+  ],
+  context: ["builtin:context-used", "builtin:context-remaining", "builtin:context-meter"],
+  workspace: [
+    "builtin:project",
+    "builtin:directory",
+    "builtin:branch",
+    "builtin:changes",
+    "builtin:sync-state",
+    "builtin:session-identity",
+    "builtin:entry-count",
+    "builtin:persistence",
+  ],
+  usage: [
+    "builtin:usage-5h",
+    "builtin:usage-weekly",
+    "builtin:total-tokens",
+    "builtin:cost",
+    "builtin:input",
+    "builtin:output",
+    "builtin:cache-read",
+    "builtin:cache-write",
+    "builtin:cache-hit",
+  ],
+  tools: ["builtin:active-tool-count"],
+  alerts: [],
+  statuses: [],
+  todos: ["builtin:todos-progress"],
+} as const satisfies Record<BuiltinSidebarPanelId, readonly string[]>;
+
 export interface NormalizedTodo {
   id: number;
   text: string;
