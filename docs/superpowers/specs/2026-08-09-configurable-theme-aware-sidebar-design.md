@@ -85,10 +85,10 @@ The default catalog is:
 | Usage              | 5h limit, Weekly limit, Total tokens, Cost, Input, Output, Cache read, Cache write, Cache hit      |
 | Tools              | Active count, plus one stable segment per available tool name; tool-name segments default disabled |
 | Alerts / Statuses  | One stable segment per extension-status key, initially classified into its semantic home panel     |
-| Todos              | One session-only segment per todo ID                                                               |
+| Todos              | Todos progress, plus one session-only segment per todo ID                                           |
 | Contributed panels | One segment per contributed row; stable with an explicit row ID and otherwise session-only         |
 
-Available but inactive tool-name segments remain configurable and render only while that tool has active calls. Aggregate values such as recent tools and tool outcomes remain one built-in segment whose value changes; independently identified TODO, status, tool, and contributed rows each receive their own segment.
+Available but inactive tool-name segments remain configurable and render only while that tool has active calls. Aggregate values such as recent tools, tool outcomes, and Todos progress remain built-in segments whose values change; independently identified TODO, status, tool, and contributed rows each receive their own segment.
 
 New segments use their catalog default in their home panel. Most default enabled; tool-name segments default disabled to preserve the current `showSidebarToolNames: false` behavior. Once a stable segment is saved, its configured panel, position, or disabled state wins over later home-panel classification.
 
@@ -261,7 +261,7 @@ Update the public contribution example to show an optional stable row ID without
 
 - Define every built-in segment with its home panel, renderer kind, and priority.
 - Map all 22 footer segment IDs to useful sidebar definitions.
-- Derive stable status and tool identities and session-only TODO identities.
+- Derive stable status and tool identities, a built-in Todos progress segment, and session-only per-TODO identities.
 - Accept optional valid contributed row IDs without a protocol bump.
 - Treat missing or invalid contributed row IDs as anonymous.
 - Reset anonymous assignments when a contribution revision changes.
