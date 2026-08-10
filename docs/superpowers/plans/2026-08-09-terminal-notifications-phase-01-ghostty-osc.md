@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace direct macOS and Windows notification processes with safe Ghostty OSC 9 output while preserving all notification state and TUI/session filtering.
+**Goal:** Replace direct macOS and Windows notification processes with safe Ghostty OSC 9 output while preserving notification state and TUI/session filtering.
 
-**Architecture:** Keep `CompletionNotifier` as the logical dedupe owner, but make delivery a synchronous best-effort write through an injected `WriteNotification` function. Install the final `spawn`, `env`, and `write` option boundary through notification wiring now so Phase 2 can add Herdr routing without changing consumers again.
+**Architecture:** Keep `CompletionNotifier` as the logical dedupe owner and make delivery a synchronous best-effort write through an optional `WriteNotification` function. The notifier defaults to `process.stdout.write`; `src/index.ts` uses only Pi's public extension API. Herdr environment and process boundaries are added in Phase 2 rather than left unused here.
 
 **Tech Stack:** TypeScript 6, Node `process.stdout.write`, Ghostty OSC 9, Vitest 4, Biome 2, pnpm 11.
 
@@ -12,7 +12,7 @@
 
 ## Atomic result
 
-After this phase, enabled settlement and questionnaire notifications work in direct Ghostty sessions on every host platform. AppleScript, PowerShell, and platform dispatch are gone. Herdr-specific routing is intentionally deferred to Phase 2; no other behavior is deferred.
+After this phase, enabled settlement and questionnaire notifications work in direct Ghostty sessions on every host platform. AppleScript, PowerShell, platform dispatch, and undocumented `ExtensionAPI` test properties are gone. Herdr routing remains in Phase 2.
 
 ## Task 1: Record the native-delivery baseline
 
@@ -48,15 +48,16 @@ pnpm vitest run tests/core/completion-notifier.test.ts tests/core/notifications-
 
 Expected: Node is `v24.15.0` or newer; 3 test files and 72 tests pass before edits.
 
-- [ ] **Step 3: Confirm all native delivery symbols are local to the notifier**
+- [ ] **Step 3: Confirm the native delivery and unsupported Pi test hooks**
 
 Run:
 
 ```bash
-rg -n "APPLE_SCRIPT|WINDOWS_TOAST_SCRIPT|osascript|powershell|platform" src/core/completion-notifier.ts src/core/notifications-wiring.ts src/index.ts tests/core/completion-notifier.test.ts tests/index.test.ts
+rg -n "APPLE_SCRIPT|WINDOWS_TOAST_SCRIPT|osascript|powershell|platform|\.spawn =" src/core/completion-notifier.ts src/core/notifications-wiring.ts src/index.ts tests/core/completion-notifier.test.ts tests/index.test.ts
+rg -n "export interface ExtensionAPI" node_modules/@earendil-works/pi-coding-agent
 ```
 
-Expected: AppleScript and PowerShell implementation details occur only in the notifier and its tests; `platform` is forwarded through wiring and `src/index.ts`.
+Expected: AppleScript and PowerShell details occur only in the notifier and its tests. `platform` and `spawn` are forwarded through wiring and manufactured on the test Pi object, but the installed `ExtensionAPI` declaration has no such members.
 
 ## Task 2: Replace native delivery with safe OSC output
 
@@ -78,7 +79,6 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createCompletionNotifier,
   formatGhosttyNotification,
-  type SpawnNotificationProcess,
   type WriteNotification,
 } from "../../src/core/completion-notifier.ts";
 
@@ -87,18 +87,14 @@ function harness() {
   const write = vi.fn<WriteNotification>((data) => {
     output.push(data);
   });
-  const spawn = vi.fn<SpawnNotificationProcess>();
   let enabled = true;
   const notifier = createCompletionNotifier({
-    env: {},
-    spawn,
     write,
     isEnabled: () => enabled,
   });
   return {
     notifier,
     output,
-    spawn,
     write,
     setEnabled(value: boolean) {
       enabled = value;
@@ -107,7 +103,7 @@ function harness() {
 }
 
 describe("formatGhosttyNotification", () => {
-  it("formats OSC 9 with title and body", () => {
+  it("formats OSC 9 as one combined message", () => {
     expect(formatGhosttyNotification("Pi finished", "The current run has settled.")).toBe(
       "\x1b]9;Pi finished: The current run has settled.\x1b\\",
     );
@@ -142,7 +138,6 @@ describe("createCompletionNotifier", () => {
     h.notifier.turnSettled();
 
     expect(h.output).toEqual(["\x1b]9;Pi finished: The current run has settled.\x1b\\"]);
-    expect(h.spawn).not.toHaveBeenCalled();
   });
 
   it("writes the fixed questionnaire notification", () => {
@@ -232,51 +227,66 @@ describe("createCompletionNotifier", () => {
 
 - [ ] **Step 2: Add failing wiring coverage for the terminal writer**
 
-In `tests/core/notifications-wiring.test.ts`, replace the native process setup and assertion with:
+Replace `tests/core/notifications-wiring.test.ts` with:
 
 ```ts
-const output: string[] = [];
-const write = vi.fn((data: string) => {
-  output.push(data);
-});
-const wiring = createNotificationsWiring({
-  events,
-  isEnabled,
-  sessionManager,
-  env: {},
-  write,
-});
+import { describe, expect, it, vi } from "vitest";
+import type { WriteNotification } from "../../src/core/completion-notifier.ts";
+import { createNotificationsWiring } from "../../src/core/notifications-wiring.ts";
+import { createBus, createContext } from "../helpers.ts";
 
-wiring.notifyRunStarted(createContext({ sessionManager }));
-wiring.notifyAgentSettled(createContext({ sessionManager }));
+describe("createNotificationsWiring", () => {
+  it("matches fresh TUI contexts and forwards the terminal writer", () => {
+    const events = createBus();
+    const isEnabled = vi.fn(() => true);
+    const sessionManager = createContext().sessionManager;
+    const output: string[] = [];
+    const write = vi.fn<WriteNotification>((data) => {
+      output.push(data);
+    });
+    const wiring = createNotificationsWiring({
+      events,
+      isEnabled,
+      sessionManager,
+      write,
+    });
 
-expect(isEnabled).toHaveBeenCalledOnce();
-expect(output).toEqual(["\x1b]9;Pi finished: The current run has settled.\x1b\\"]);
+    wiring.notifyRunStarted(createContext({ sessionManager }));
+    wiring.notifyAgentSettled(createContext({ sessionManager }));
+
+    expect(isEnabled).toHaveBeenCalledOnce();
+    expect(output).toEqual(["\x1b]9;Pi finished: The current run has settled.\x1b\\"]);
+  });
+});
 ```
 
-Remove the now-unused `NotificationProcess` and `SpawnNotificationProcess` imports from that test.
+- [ ] **Step 3: Replace index test hooks with stdout capture**
 
-In the completion-notification block of `tests/index.test.ts`, replace `installNotificationSpawn` with:
-
-```ts
-function installNotificationWrite(pi: ExtensionAPI, output: string[]): void {
-  (pi as unknown as { env: NodeJS.ProcessEnv }).env = {};
-  (pi as unknown as { write: WriteNotification }).write = (data) => {
-    output.push(data);
-  };
-}
-```
-
-Import `type WriteNotification` from `../src/core/completion-notifier.ts`. In the disabled test, inject `env: {}` and a `vi.fn<WriteNotification>()`, then assert the writer was not called instead of asserting against spawn. In every other test, rename `calls` to `output`, call `installNotificationWrite(pi, output)`, and use these exact expectations:
+In the completion-notification `describe` block of `tests/index.test.ts`, replace `installNotificationSpawn` with:
 
 ```ts
 const SETTLED_OSC = "\x1b]9;Pi finished: The current run has settled.\x1b\\";
 
+function captureNotificationOutput(output: string[]): void {
+  vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+    output.push(String(chunk));
+    return true;
+  });
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+```
+
+In every completion-notification test, create `const output: string[] = [];` and call `captureNotificationOutput(output)` before `createExtension(pi)`. Remove all assignments to `pi.spawn` and `pi.platform`, along with the obsolete `kill` spy. Use these exact expectations:
+
+```ts
+// disabled, stale session, malformed questionnaire, and RPC session
+expect(output).toEqual([]);
+
 // fresh active TUI context
 expect(output).toEqual([SETTLED_OSC]);
-
-// stale session, malformed questionnaire, and RPC session
-expect(output).toEqual([]);
 
 // two questionnaire intervals
 expect(output).toHaveLength(2);
@@ -286,9 +296,9 @@ expect(output.every((value) => value.includes("Pi needs input"))).toBe(true);
 expect(output).toEqual([SETTLED_OSC]);
 ```
 
-Declare `SETTLED_OSC` once inside the completion-notification `describe` block. Remove the obsolete `kill` spy and assertion from the final test.
+No notification test may add `write`, `spawn`, `env`, or `platform` to the Pi mock.
 
-- [ ] **Step 3: Run the focused tests to verify red**
+- [ ] **Step 4: Run the focused tests to verify red**
 
 Run:
 
@@ -296,33 +306,17 @@ Run:
 pnpm vitest run tests/core/completion-notifier.test.ts tests/core/notifications-wiring.test.ts tests/index.test.ts
 ```
 
-Expected: FAIL because `formatGhosttyNotification`, `WriteNotification`, and the `env`/`write` wiring options do not exist and native spawning still occurs.
+Expected: FAIL because `formatGhosttyNotification`, `WriteNotification`, and the wiring `write` option do not exist and native spawning still occurs.
 
-- [ ] **Step 4: Replace `src/core/completion-notifier.ts` with the minimal OSC implementation**
+- [ ] **Step 5: Replace `src/core/completion-notifier.ts` with the minimal OSC implementation**
 
 Use this complete file:
 
 ```ts
-import type { SpawnOptions } from "node:child_process";
-
-export interface NotificationProcess {
-  kill(): boolean;
-  once(event: "error" | "exit", listener: (...args: unknown[]) => void): this;
-  unref(): void;
-}
-
-export type SpawnNotificationProcess = (
-  file: string,
-  args: string[],
-  options: SpawnOptions,
-) => NotificationProcess;
-
 export type WriteNotification = (data: string) => unknown;
 
 export interface CompletionNotifierOptions {
   isEnabled(): boolean;
-  spawn?: SpawnNotificationProcess;
-  env?: NodeJS.ProcessEnv;
   write?: WriteNotification;
 }
 
@@ -385,17 +379,14 @@ export function createCompletionNotifier(options: CompletionNotifierOptions): Co
 }
 ```
 
-The unused `spawn` and `env` options are intentional final consumer seams for Phase 2; do not add branches for them in this phase.
+- [ ] **Step 6: Replace `src/core/notifications-wiring.ts` with the writer-only boundary**
 
-- [ ] **Step 5: Forward the final delivery seams through `notifications-wiring.ts`**
-
-Replace `src/core/notifications-wiring.ts` with:
+Use this complete file:
 
 ```ts
 import type { EventBus, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   createCompletionNotifier,
-  type SpawnNotificationProcess,
   type WriteNotification,
 } from "./completion-notifier.ts";
 
@@ -405,16 +396,12 @@ type NotificationsWiringOptions = {
   events: EventBus;
   isEnabled: () => boolean;
   sessionManager?: ExtensionContext["sessionManager"];
-  spawn?: SpawnNotificationProcess;
-  env?: NodeJS.ProcessEnv;
   write?: WriteNotification;
 };
 
 export function createNotificationsWiring(options: NotificationsWiringOptions) {
   const notifier = createCompletionNotifier({
     isEnabled: options.isEnabled,
-    spawn: options.spawn,
-    env: options.env,
     write: options.write,
   });
   let questionnaireActive = false;
@@ -460,43 +447,27 @@ export function createNotificationsWiring(options: NotificationsWiringOptions) {
 }
 ```
 
-- [ ] **Step 6: Replace the `src/index.ts` notification boundary imports and setup**
+- [ ] **Step 7: Remove undocumented notification fields from `src/index.ts`**
 
-Use this import:
-
-```ts
-import type {
-  SpawnNotificationProcess,
-  WriteNotification,
-} from "./core/completion-notifier.ts";
-```
-
-Immediately before the first `createNotificationsWiring` call, add:
+Delete this import:
 
 ```ts
-const notificationHost = pi as unknown as {
-  spawn?: SpawnNotificationProcess;
-  env?: NodeJS.ProcessEnv;
-  write?: WriteNotification;
-};
+import type { SpawnNotificationProcess } from "./core/completion-notifier.ts";
 ```
 
-Replace both notification wiring option objects with the same final boundary fields:
+Replace both notification wiring option objects with:
 
 ```ts
 {
   events: pi.events,
   isEnabled: () => runtimeState.snapshot().config.completionNotifications,
   sessionManager: activeTuiSessionManager,
-  spawn: notificationHost.spawn,
-  env: notificationHost.env,
-  write: notificationHost.write,
 }
 ```
 
-Keep the existing initial wiring, `attachNotificationsForCurrentSession()`, event handlers, disposal, and session-manager filtering unchanged.
+Keep the initial wiring, `attachNotificationsForCurrentSession()`, event handlers, disposal, and session-manager filtering unchanged. Do not cast `ExtensionAPI` to a host object.
 
-- [ ] **Step 7: Run the focused tests to verify green**
+- [ ] **Step 8: Run the focused tests to verify green**
 
 Run:
 
@@ -505,19 +476,19 @@ pnpm vitest run tests/core/completion-notifier.test.ts tests/core/notifications-
 pnpm typecheck
 ```
 
-Expected: all selected tests pass; typecheck exits 0; no OSC sequence is written by a test through real stdout.
+Expected: all selected tests pass; typecheck exits 0; tests capture OSC without writing it to real stdout.
 
-- [ ] **Step 8: Confirm native delivery is gone**
+- [ ] **Step 9: Confirm native delivery and hidden Pi fields are gone**
 
 Run:
 
 ```bash
-! rg -n "APPLE_SCRIPT|WINDOWS_TOAST_SCRIPT|osascript|powershell|PI_STATUS_NOTIFICATION_|platform" src/core/completion-notifier.ts src/core/notifications-wiring.ts src/index.ts tests/core/completion-notifier.test.ts tests/core/notifications-wiring.test.ts tests/index.test.ts
+! rg -n "APPLE_SCRIPT|WINDOWS_TOAST_SCRIPT|osascript|powershell|PI_STATUS_NOTIFICATION_|notificationHost|\.spawn =|\.platform =" src/core/completion-notifier.ts src/core/notifications-wiring.ts src/index.ts tests/core/completion-notifier.test.ts tests/core/notifications-wiring.test.ts tests/index.test.ts
 ```
 
 Expected: exit 0 with no matches.
 
-- [ ] **Step 9: Commit the atomic direct-terminal result**
+- [ ] **Step 10: Commit the atomic direct-terminal result**
 
 ```bash
 git add src/core/completion-notifier.ts src/core/notifications-wiring.ts src/index.ts tests/core/completion-notifier.test.ts tests/core/notifications-wiring.test.ts tests/index.test.ts

@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Prove Herdr and OSC delivery through the full extension adapter, replace obsolete native-delivery documentation, and pass all repository/package release gates.
+**Goal:** Confirm the public Pi adapter boundary, replace obsolete native-delivery documentation, and pass all repository/package release gates.
 
-**Architecture:** Keep routing unit-tested in `CompletionNotifier`, adding only two adapter-level tests that prove injected Herdr and fallback boundaries cross `src/index.ts`. Then update user-facing prose and run the broadest automated and optional manual verification without changing production behavior.
+**Architecture:** Keep OSC formatting and Herdr routing covered at the notifier/wiring boundaries. The extension tests capture real default stdout while using only Pi's public API; this phase reruns that coverage rather than adding a test-only host API. Then update user-facing prose and run the broadest automated and optional manual verification without changing production behavior.
 
 **Tech Stack:** TypeScript 6, Pi extension test harness, Vitest 4, Markdown, pnpm package verification, Herdr CLI, Ghostty OSC 9.
 
@@ -12,16 +12,16 @@
 
 ## Atomic result
 
-After this phase, terminal notifications are release-ready: direct and nested delivery are covered through the extension entry point, documentation matches behavior, and the package passes every automated gate.
+After this phase, terminal notifications are release-ready: adapter and routing coverage is green, documentation matches behavior, and the package passes every automated gate.
 
-## Task 1: Add end-to-end extension routing tests
+## Task 1: Confirm the final extension boundary
 
 **Files:**
 
-- Modify: `tests/index.test.ts`
+- Inspect: `src/index.ts`
+- Test: `tests/index.test.ts`
 - Regression test: `tests/core/completion-notifier.test.ts`
 - Regression test: `tests/core/notifications-wiring.test.ts`
-- Verify: `src/index.ts`
 
 - [ ] **Step 1: Capture the Phase 3 base and run the notification suite**
 
@@ -33,110 +33,29 @@ test -z "$(git status --short)"
 pnpm vitest run tests/core/completion-notifier.test.ts tests/core/notifications-wiring.test.ts tests/index.test.ts
 ```
 
-Expected: all Phase 2 routing, fallback, lifecycle, direct-OSC, and extension tests pass.
+Expected: all Phase 2 routing, fallback, lifecycle, direct-OSC, and extension tests pass without launching real Herdr or writing OSC to real stdout.
 
-- [ ] **Step 2: Add Herdr-through-index coverage**
-
-Merge `NotificationProcess` and `SpawnNotificationProcess` into the existing notifier type import in `tests/index.test.ts`. Add this test inside `describe("extension wiring — completion notifications", ...)`:
-
-```ts
-it("forwards the Herdr host boundaries for the active TUI session", () => {
-  enableNotifications();
-  const { pi, handlers } = buildPiWithHandlers();
-  const process: NotificationProcess = {
-    kill: () => true,
-    once: () => process,
-    unref: () => {},
-  };
-  const spawn = vi.fn<SpawnNotificationProcess>(() => process);
-  const write = vi.fn<WriteNotification>();
-  (pi as unknown as { env: NodeJS.ProcessEnv }).env = {
-    HERDR_ENV: "1",
-    HERDR_BIN_PATH: "/Applications/Herdr/bin/herdr",
-  };
-  (pi as unknown as { spawn: SpawnNotificationProcess }).spawn = spawn;
-  (pi as unknown as { write: WriteNotification }).write = write;
-  createExtension(pi);
-  const sessionManager = createContext().sessionManager;
-  const startCtx = createContext({ sessionManager });
-  const eventCtx = createContext({ sessionManager });
-
-  for (const handler of handlers.get("session_start") ?? []) handler({}, startCtx);
-  for (const handler of handlers.get("agent_start") ?? []) handler({}, eventCtx);
-  for (const handler of handlers.get("agent_settled") ?? []) handler({}, eventCtx);
-
-  expect(spawn).toHaveBeenCalledWith(
-    "/Applications/Herdr/bin/herdr",
-    [
-      "notification",
-      "show",
-      "Pi finished",
-      "--body",
-      "The current run has settled.",
-      "--sound",
-      "done",
-    ],
-    { detached: true, stdio: "ignore" },
-  );
-  expect(write).not.toHaveBeenCalled();
-  for (const handler of handlers.get("session_shutdown") ?? []) handler({}, eventCtx);
-});
-```
-
-- [ ] **Step 3: Add adapter-level launch-error fallback coverage**
-
-Append beside the prior test:
-
-```ts
-it("falls back through the injected terminal writer when Herdr launch errors", () => {
-  enableNotifications();
-  const { pi, handlers } = buildPiWithHandlers();
-  let errorListener: ((...args: unknown[]) => void) | undefined;
-  const process: NotificationProcess = {
-    kill: () => true,
-    once: (event, listener) => {
-      if (event === "error") errorListener = listener;
-      return process;
-    },
-    unref: () => {},
-  };
-  const output: string[] = [];
-  (pi as unknown as { env: NodeJS.ProcessEnv }).env = { HERDR_ENV: "1" };
-  (pi as unknown as { spawn: SpawnNotificationProcess }).spawn = () => process;
-  (pi as unknown as { write: WriteNotification }).write = (data) => output.push(data);
-  createExtension(pi);
-  const sessionManager = createContext().sessionManager;
-  const ctx = createContext({ sessionManager });
-
-  for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
-  for (const handler of handlers.get("agent_start") ?? []) handler({}, ctx);
-  for (const handler of handlers.get("agent_settled") ?? []) handler({}, ctx);
-  errorListener?.(new Error("Herdr unavailable"));
-
-  expect(output).toEqual(["\x1b]9;Pi finished: The current run has settled.\x1b\\"]);
-});
-```
-
-These tests supplement rather than replace the Phase 1 direct-OSC, disabled, stale-session, questionnaire interval, malformed payload, and RPC tests.
-
-- [ ] **Step 4: Run the extension tests to verify green**
+- [ ] **Step 2: Verify the public Pi boundary and test ownership**
 
 Run:
 
 ```bash
-pnpm vitest run tests/index.test.ts
-pnpm vitest run tests/core/completion-notifier.test.ts tests/core/notifications-wiring.test.ts
-pnpm typecheck
+! rg -n "notificationHost|pi as unknown as.*(spawn|env|write|platform)" src/index.ts tests/index.test.ts
+rg -n "process\.stdout|SETTLED_OSC|HERDR_ENV" tests/index.test.ts
+rg -n "spawn|env|write" src/core/completion-notifier.ts src/core/notifications-wiring.ts tests/core/completion-notifier.test.ts tests/core/notifications-wiring.test.ts
 ```
 
-Expected: all commands pass without launching a real Herdr process or writing OSC to real stdout.
+Expected: index has no invented notification host fields. Index tests capture stdout and stub Herdr detection off. Herdr environment, spawning, fallback, and writer injection remain covered by notifier/wiring tests.
 
-- [ ] **Step 5: Commit integration coverage**
+- [ ] **Step 3: Confirm Task 1 produces no diff**
+
+Run:
 
 ```bash
-git add tests/index.test.ts
-git commit -m "test: cover terminal notification integration"
+git status --short
 ```
+
+Expected: no output. Do not add an integration abstraction or commit for this verification-only task.
 
 ## Task 2: Update user-facing notification documentation
 
@@ -169,10 +88,11 @@ interval; the event label is ignored, so prompts, answers, and other content
 are never included in the notification body.
 
 Inside a Herdr pane (`HERDR_ENV=1`), pi-status runs
-`herdr notification show`; `HERDR_BIN_PATH` is used when provided. Herdr then
-honors its own `[ui.toast].delivery` setting, which may route delivery through
-Herdr, the outer terminal, the system, or suppress it. Settlement uses the
-`done` sound and questionnaire input uses `request`.
+`herdr notification show`; `HERDR_BIN_PATH` is used when provided. The child
+inherits the complete environment so Herdr can use its socket and session
+routing. Herdr then honors its own `[ui.toast].delivery` setting, which may
+route delivery through Herdr, the outer terminal, the system, or suppress it.
+Settlement uses the `done` sound and questionnaire input uses `request`.
 
 Outside Herdr, pi-status writes Ghostty's OSC 9 notification sequence to the
 terminal. A synchronous Herdr launch failure or child `error` falls back to the
@@ -189,7 +109,7 @@ settings writes leave both runtime state and notifier behavior unchanged.
 
 - [ ] **Step 2: Replace the obsolete changelog bullet**
 
-Under `## Unreleased` → `### Added`, replace:
+Under `## Unreleased` and `### Added`, replace:
 
 ```markdown
 - Added opt-in completion notifications on macOS and Windows, configured from the dashboard Settings tab and driven by Pi's `agent_settled` event plus questionnaire wait-state events.
@@ -211,7 +131,7 @@ rg -n "HERDR_ENV|HERDR_BIN_PATH|notification show|OSC 9|agent_settled|questionna
 git diff --check -- README.md CHANGELOG.md
 ```
 
-Expected: the obsolete native-delivery terms have no matches; Herdr, OSC, lifecycle signals, and fixed behavior are documented; whitespace check passes.
+Expected: obsolete native-delivery terms have no matches. Herdr, OSC, lifecycle signals, and fixed behavior are documented; whitespace check passes.
 
 - [ ] **Step 4: Commit documentation**
 
@@ -246,13 +166,14 @@ Expected: Node is 24.15.0 or newer; formatting, lint, typecheck, all tests, pack
 - [ ] **Step 2: Verify final scope and removed native code**
 
 ```bash
-! rg -n "APPLE_SCRIPT|WINDOWS_TOAST_SCRIPT|osascript|powershell|PI_STATUS_NOTIFICATION_|platform" src/core/completion-notifier.ts src/core/notifications-wiring.ts src/index.ts README.md CHANGELOG.md
-rg -n "HERDR_ENV|HERDR_BIN_PATH|--sound|formatGhosttyNotification|PROCESS_TIMEOUT_MS" src/core/completion-notifier.ts src/core/notifications-wiring.ts src/index.ts tests/core/completion-notifier.test.ts tests/core/notifications-wiring.test.ts tests/index.test.ts
+! rg -n "APPLE_SCRIPT|WINDOWS_TOAST_SCRIPT|osascript|powershell|PI_STATUS_NOTIFICATION_|platform|notificationHost" src/core/completion-notifier.ts src/core/notifications-wiring.ts src/index.ts README.md CHANGELOG.md
+rg -n "HERDR_ENV|HERDR_BIN_PATH|--sound|formatGhosttyNotification|PROCESS_TIMEOUT_MS" src/core/completion-notifier.ts src/core/notifications-wiring.ts tests/core/completion-notifier.test.ts tests/core/notifications-wiring.test.ts tests/index.test.ts
+! rg -n "pi as unknown as.*(spawn|env|write|platform)" src/index.ts tests/index.test.ts
 git diff --stat "$PHASE_BASE"..HEAD
 git status --short
 ```
 
-Expected: no native-delivery remnants; final terminal/Herdr symbols and coverage are present; two scoped Phase 3 commits exist; worktree clean.
+Expected: no native-delivery remnants or invented Pi notification fields. Final terminal/Herdr symbols and coverage are present; one scoped Phase 3 documentation commit exists; worktree is clean.
 
 - [ ] **Step 3: Inspect dry-run package contents**
 
@@ -264,7 +185,7 @@ rg "src/core/(completion-notifier|notifications-wiring)\.ts|README\.md|CHANGELOG
 ! rg "tests/|docs/superpowers/|\.superpowers/" /tmp/pi-status-terminal-notifications-pack.txt
 ```
 
-Expected: both notifier production files and user documentation are packaged; tests, plans/specs, and local brainstorming artifacts are excluded.
+Expected: both notifier production files and user documentation are packaged. Tests, plans/specs, and local brainstorming artifacts are excluded.
 
 - [ ] **Step 4: Perform optional real-host smoke checks**
 
@@ -289,4 +210,4 @@ git log --oneline "$PHASE_BASE"..HEAD
 git status --short
 ```
 
-Expected: Phase 3 contains only integration-test and documentation commits; the full program satisfies the parent completion gate with no dependency, native OS API, sidebar code, or generated artifact.
+Expected: Phase 3 contains only the documentation commit. The full program satisfies the parent completion gate with no dependency, native OS API, sidebar code, hidden Pi notification field, or generated artifact.
