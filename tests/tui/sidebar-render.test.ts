@@ -87,7 +87,6 @@ function contributedPanel(): SidebarPanelData {
 describe("SidebarSnapshot", () => {
   it("accepts a full snapshot with empty arrays", () => {
     const snap: SidebarSnapshot = {
-      agentActivity: "ready",
       modelLabel: "M",
       thinkingLevel: "off",
       projectName: "p",
@@ -135,22 +134,6 @@ describe("SIDEBAR_SEGMENT_PANELS", () => {
 });
 
 describe("buildSidebarSnapshot", () => {
-  it("derives ready agentActivity from an idle footer", () => {
-    const snap = buildSidebarSnapshot(makeInput());
-    expect(snap.agentActivity).toBe("ready");
-  });
-
-  it("derives working agentActivity from a busy or queued footer", () => {
-    const a = buildSidebarSnapshot(
-      makeInput({ footer: { ...makeInput().footer, runState: "busy" } }),
-    );
-    const b = buildSidebarSnapshot(
-      makeInput({ footer: { ...makeInput().footer, runState: "queued" } }),
-    );
-    expect(a.agentActivity).toBe("working");
-    expect(b.agentActivity).toBe("working");
-  });
-
   it("splits statuses into alerts and statuses by the exception pattern", () => {
     const snap = buildSidebarSnapshot(makeInput());
     expect(snap.alerts.map((a) => a.key)).toEqual(["err"]);
@@ -240,21 +223,6 @@ describe("renderSidebarLines built-ins", () => {
     const snap = buildSidebarSnapshot(input);
     const lines = renderSidebarLines(snap, input.config, noTheme, 44, 36, { colorEnabled: false });
     expect(lines.join("\n")).toMatch(/ACTIVITY/);
-  });
-
-  it("uses the diamond glyph for the working state and the dot for ready", () => {
-    const ready = buildSidebarSnapshot(makeInput());
-    const working = buildSidebarSnapshot(
-      makeInput({ footer: { ...makeInput().footer, runState: "busy" } }),
-    );
-    const readyLines = renderSidebarLines(ready, makeInput().config, noTheme, 44, 36, {
-      colorEnabled: false,
-    });
-    const workingLines = renderSidebarLines(working, makeInput().config, noTheme, 44, 36, {
-      colorEnabled: false,
-    });
-    expect(readyLines.join("\n")).toContain("● Ready");
-    expect(workingLines.join("\n")).toContain("◆");
   });
 
   it("renders compact mode at width <= 39 and skips the tool-name rows", () => {
@@ -811,16 +779,86 @@ describe("Activity canonical run state", () => {
       ...input.config,
       sidebarPanelLayout: [{ id: "activity" as const, visible: true }],
     };
-    const output = renderSidebarLines(
-      buildSidebarSnapshot(input),
-      config,
-      noTheme,
-      44,
-      12,
-      { colorEnabled: false },
-    ).join("\n");
+    const output = renderSidebarLines(buildSidebarSnapshot(input), config, noTheme, 44, 12, {
+      colorEnabled: false,
+    }).join("\n");
 
     expect(output).toContain("Working");
     expect(output).toContain("TTFT 450ms · 12.3 tok/s");
+  });
+});
+
+describe("Agent identity-only rendering", () => {
+  function renderAgent(
+    width: number,
+    overrides: Partial<Parameters<typeof withDefaults>[0]> = {},
+    theme: StatusLineTheme = noTheme,
+  ): string {
+    const input = makeInput({
+      footer: withDefaults({
+        cwd: "/home/user/repo",
+        thinkingLevel: "high",
+        gitBranch: "main",
+        runState: "busy",
+        contextUsage: { tokens: 0, contextWindow: 1, percent: 0 },
+        sessionId: "abc",
+        extensionStatuses: new Map(),
+        model: { id: "gpt-5", name: "gpt-5", provider: "openai" },
+        accessType: "subscription",
+        ...overrides,
+      }),
+    });
+    const config = {
+      ...input.config,
+      sidebarPanelLayout: [{ id: "agent" as const, visible: true }],
+    };
+    return renderSidebarLines(buildSidebarSnapshot(input), config, theme, width, 12).join("\n");
+  }
+
+  it("removes duplicate Agent activity state from snapshots", () => {
+    expect(buildSidebarSnapshot(makeInput())).not.toHaveProperty("agentActivity");
+  });
+
+  it("keeps the Agent crown on the static accent role", () => {
+    const fg = vi.fn((_color: string, text: string) => text);
+    renderAgent(52, {}, { ...noTheme, fg });
+    expect(fg).toHaveBeenCalledWith("accent", "AGENT");
+  });
+
+  it("renders only identity metadata under Agent", () => {
+    const output = renderAgent(52);
+    expect(output).toContain("✦ AGENT");
+    expect(output).not.toContain("Ready");
+    expect(output).not.toContain("Queued");
+    expect(output).not.toContain("Working");
+    expect(output).not.toContain("●");
+    expect(output).not.toContain("◆");
+  });
+
+  it("pairs Model with Thinking and Provider with Access at standard width", () => {
+    const output = renderAgent(52);
+    expect(output).toMatch(/gpt-5\s+HIGH/);
+    expect(output).toMatch(/OPENAI\s+SUBSCRIPTION/);
+  });
+
+  it("stacks each identity pair instead of truncating it when narrow", () => {
+    const output = renderAgent(18, {
+      model: { id: "gpt-5-codex", name: "gpt-5-codex", provider: "openai" },
+    });
+    expect(output).toContain("gpt-5-codex");
+    expect(output).toContain("HIGH");
+    expect(output).toContain("OPENAI");
+    expect(output).toContain("SUBSCRIPTION");
+    expect(output).not.toMatch(/gpt-5-codex\s+HIGH/);
+    expect(output).not.toMatch(/OPENAI\s+SUBSCRIPTION/);
+  });
+
+  it("collapses an absent Provider/Access pair to one dim fallback", () => {
+    const output = renderAgent(52, {
+      model: { id: "gpt-5", name: "gpt-5" },
+      accessType: undefined,
+    });
+    expect(output).toMatch(/gpt-5\s+HIGH/);
+    expect(output.match(/—/g)).toHaveLength(1);
   });
 });

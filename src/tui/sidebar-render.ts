@@ -23,8 +23,6 @@ import {
 } from "./sidebar-palette.ts";
 import type { StatusLineTheme } from "./theme.ts";
 
-export type AgentActivity = "ready" | "working";
-
 export interface WorkspacePulseAggregates {
   status: "clean" | "changed" | "conflict" | "not-repository" | "unavailable" | "stale";
   branch?: string;
@@ -42,7 +40,6 @@ export interface WorkspacePulseAggregates {
 }
 
 export interface SidebarSnapshot {
-  agentActivity: AgentActivity;
   modelLabel: string;
   provider?: string;
   thinkingLevel: string;
@@ -187,7 +184,6 @@ export function buildSidebarSnapshot(input: SidebarSnapshotInput): SidebarSnapsh
   const fiveHour = getRateWindow(footer, "fiveHour");
   const weekly = getRateWindow(footer, "weekly");
   return {
-    agentActivity: footer.runState === "idle" ? "ready" : "working",
     modelLabel: footer.model?.name ?? footer.model?.id ?? DEFAULT_TEXT,
     provider: footer.model?.provider,
     thinkingLevel: footer.thinkingLevel,
@@ -326,15 +322,6 @@ function spacedRow(left: string, right: string, width: number): string {
   return truncateToWidth(`${safeLeft}${gap}${right}`, safeWidth, "");
 }
 
-function activityRole(activity: AgentActivity): PaletteRole {
-  if (activity === "working") return "working";
-  return "ready";
-}
-
-function activitySymbol(activity: AgentActivity): string {
-  return activity === "working" ? "◆" : "●";
-}
-
 function runStatePresentation(runState: FooterRenderInput["runState"]): {
   label: "Ready" | "Queued" | "Working";
   role: PaletteRole;
@@ -367,44 +354,35 @@ function metricPairRows(
   return visibleWidth(inline) <= contentWidth ? [inline] : [left, right];
 }
 
-function agentRows(
-  snap: SidebarSnapshot,
-  compact: boolean,
+function identityPairRows(
+  left: string | undefined,
+  right: string | undefined,
   contentWidth: number,
   palette: Palette,
-  theme: StatusLineTheme,
 ): string[] {
-  const activityText = snap.agentActivity === "working" ? "Working" : "Ready";
-  const status = safeBold(
-    theme,
-    palette.paint(
-      activityRole(snap.agentActivity),
-      `${activitySymbol(snap.agentActivity)} ${activityText}`,
-    ),
-  );
+  if (!left && !right) return [palette.paint("dim", DEFAULT_TEXT)];
+  if (!left) return right ? [right] : [];
+  if (!right) return [left];
+  if (visibleWidth(left) + visibleWidth(right) + 1 > contentWidth) return [left, right];
+  return [spacedRow(left, right, contentWidth)];
+}
+
+function agentRows(snap: SidebarSnapshot, contentWidth: number, palette: Palette): string[] {
   const model = valueRow(snap.modelLabel, palette, "primary");
+  const thinking = palette.paint("primary", display(snap.thinkingLevel).toUpperCase());
   const provider = snap.provider
     ? palette.paint("muted", display(snap.provider).toUpperCase())
-    : "";
-  const thinking = palette.paint("primary", display(snap.thinkingLevel).toUpperCase());
+    : undefined;
   const access = snap.accessType
     ? palette.paint(
         snap.accessType === "subscription" ? "ready" : "muted",
         snap.accessType.toUpperCase(),
       )
-    : "";
-  const separator = ` ${palette.paint("dim", "·")} `;
-  if (compact) {
-    const rows = [status, model];
-    if (provider) rows.push(provider);
-    const secondary = [thinking, access].filter(Boolean);
-    if (secondary.length > 0) rows.push(secondary.join(separator));
-    return rows;
-  }
-  const metadata = [provider, thinking, access].filter(Boolean);
+    : undefined;
+
   return [
-    spacedRow(status, model, contentWidth),
-    metadata.length > 0 ? metadata.join(separator) : palette.paint("dim", DEFAULT_TEXT),
+    ...identityPairRows(model, thinking, contentWidth, palette),
+    ...identityPairRows(provider, access, contentWidth, palette),
   ];
 }
 
@@ -756,9 +734,9 @@ function renderSidebarLinesInner(
       name: "agent",
       panel: "AGENT",
       panelId: "agent",
-      panelRole: activityRole(snapshot.agentActivity),
+      panelRole: "accent",
       panelJewel: "✦",
-      rows: agentRows(snapshot, compact, panelContentWidth, palette, theme),
+      rows: agentRows(snapshot, panelContentWidth, palette),
       required: true,
       dropRank: Number.POSITIVE_INFINITY,
     },
