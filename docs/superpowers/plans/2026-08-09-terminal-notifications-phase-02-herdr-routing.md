@@ -4,7 +4,7 @@
 
 **Goal:** Route notifications through Herdr inside managed panes, retaining direct Ghostty delivery and one-shot OSC fallback when Herdr cannot launch.
 
-**Architecture:** Add environment and spawn boundaries to the notifier and notification wiring, not to Pi's `ExtensionAPI`. Detect Herdr from the selected complete environment, pass that environment to its public CLI, and restore the bounded detached-child lifecycle. Only synchronous spawn failure or child `error` falls back to OSC.
+**Architecture:** Add environment and spawn boundaries to the notifier and notification wiring, not to Pi's `ExtensionAPI`. Detect Herdr from the selected complete environment, pass that environment to its public CLI, and restore the bounded detached-child lifecycle. Only synchronous spawn failure or child `error` falls back to OSC. Core tests select direct-terminal or Herdr environments explicitly so inherited developer state cannot launch the real CLI.
 
 **Tech Stack:** TypeScript 6, Node `child_process.spawn`, Herdr CLI, Ghostty OSC 9, Vitest fake processes/timers, pnpm 11.
 
@@ -12,7 +12,7 @@
 
 ## Atomic result
 
-After this phase, pi-status works both directly in Ghostty and inside Herdr. Herdr owns configured toast delivery after a successful launch. Tests running inside Herdr stub detection off unless they explicitly test notifier/wiring routing.
+After this phase, pi-status works both directly in Ghostty and inside Herdr. Herdr owns configured toast delivery after a successful launch. Core tests inject either a direct-terminal environment or a Herdr environment with a fake spawn; index tests stub detection off. Inherited developer state never selects a real delivery path.
 
 ## Task 1: Add failing Herdr routing and process-lifecycle tests
 
@@ -31,9 +31,9 @@ test -z "$(git status --short)"
 pnpm vitest run tests/core/completion-notifier.test.ts tests/core/notifications-wiring.test.ts tests/index.test.ts
 ```
 
-Expected: the worktree is clean and all direct-OSC tests pass.
+Expected: the worktree is clean; 3 files and 69 direct-OSC tests pass.
 
-- [ ] **Step 2: Add the fake process and Herdr harness**
+- [ ] **Step 2: Isolate direct-terminal tests and add the fake Herdr process harness**
 
 Replace the import from `completion-notifier.ts` in `tests/core/completion-notifier.test.ts` with:
 
@@ -47,7 +47,44 @@ import {
 } from "../../src/core/completion-notifier.ts";
 ```
 
-Then add below the imports:
+Replace the existing direct-terminal `harness` with:
+
+```ts
+function harness(env: NodeJS.ProcessEnv = {}) {
+  const output: string[] = [];
+  const write = vi.fn<WriteNotification>((data) => {
+    output.push(data);
+  });
+  let enabled = true;
+  const notifier = createCompletionNotifier({
+    env,
+    write,
+    isEnabled: () => enabled,
+  });
+  return {
+    notifier,
+    output,
+    write,
+    setEnabled(value: boolean) {
+      enabled = value;
+    },
+  };
+}
+```
+
+In the existing `"absorbs terminal write failures"` test, replace the notifier construction with:
+
+```ts
+const notifier = createCompletionNotifier({
+  env: {},
+  isEnabled: () => true,
+  write: () => {
+    throw new Error("stdout unavailable");
+  },
+});
+```
+
+Then add below the direct-terminal harness:
 
 ```ts
 class FakeProcess implements NotificationProcess {
@@ -89,7 +126,7 @@ function herdrHarness(
 }
 ```
 
-Keep all type names in the existing import declaration; do not add a second import from the same module.
+Keep all type names in the existing import declaration; do not add a second import from the same module. Every existing direct-OSC notifier test now uses `env: {}` through `harness()`, so `process.env.HERDR_ENV` cannot change its route.
 
 - [ ] **Step 3: Add the complete Herdr behavior suite**
 
@@ -261,6 +298,18 @@ import type {
   SpawnNotificationProcess,
   WriteNotification,
 } from "../../src/core/completion-notifier.ts";
+```
+
+In the existing `"matches fresh TUI contexts and forwards the terminal writer"` test, replace the wiring construction with:
+
+```ts
+const wiring = createNotificationsWiring({
+  events,
+  isEnabled,
+  sessionManager,
+  env: {},
+  write,
+});
 ```
 
 Then append:
@@ -558,7 +607,7 @@ pnpm vitest run tests/core/completion-notifier.test.ts tests/core/notifications-
 pnpm typecheck
 ```
 
-Expected: all selected tests pass; typecheck exits 0; no test launches a real Herdr process or writes OSC to real stdout.
+Expected: 3 files and 82 tests pass; typecheck exits 0; no test launches a real Herdr process or writes OSC to real stdout.
 
 - [ ] **Step 5: Commit Herdr routing**
 
@@ -580,10 +629,12 @@ pnpm format:check
 pnpm lint
 pnpm typecheck
 pnpm test
+HERDR_ENV=1 HERDR_BIN_PATH=/definitely/not-a-real-herdr \
+  pnpm vitest run tests/core/completion-notifier.test.ts tests/core/notifications-wiring.test.ts tests/index.test.ts
 git diff --check "$PHASE_BASE"..HEAD
 ```
 
-Expected: every command exits 0.
+Expected: every command exits 0. The hostile inherited-environment run reports 3 files and 82 passing tests, proving that core tests use explicit environments and index tests stub Herdr detection without launching a real process.
 
 - [ ] **Step 2: Review routing and phase scope**
 
