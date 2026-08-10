@@ -991,7 +991,7 @@ describe("extension wiring — completion notifications", () => {
     vi.restoreAllMocks();
   });
 
-  it("does not launch a native process when the preference is disabled", () => {
+  it("does not emit OSC when the preference is disabled", () => {
     const { pi, handlers } = buildPiWithHandlers();
     const output: string[] = [];
     captureNotificationOutput(output);
@@ -1001,6 +1001,34 @@ describe("extension wiring — completion notifications", () => {
     for (const h of handlers.get("agent_start") ?? []) h({}, ctx);
     for (const h of handlers.get("agent_settled") ?? []) h({}, ctx);
     expect(output).toEqual([]);
+  });
+
+  it("defers Herdr settlement output and forwards questionnaire state", () => {
+    vi.stubEnv("HERDR_ENV", "1");
+    const { pi, handlers, events } = buildPiWithHandlers();
+    const output: string[] = [];
+    const blocked: unknown[] = [];
+    events.on("herdr:blocked", (payload) => blocked.push(payload));
+    captureNotificationOutput(output);
+    createExtension(pi);
+    const ctx = createContext({ mode: "tui" });
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+    for (const h of handlers.get("agent_start") ?? []) h({}, ctx);
+    for (const h of handlers.get("agent_settled") ?? []) h({}, ctx);
+
+    events.emit("pi-vault:questionnaire:status", {
+      active: true,
+      label: "Choose tool",
+    });
+    events.emit("pi-vault:questionnaire:status", {
+      active: true,
+      label: "Duplicate",
+    });
+    events.emit("pi-vault:questionnaire:status", { active: false });
+    events.emit("pi-vault:questionnaire:status", { active: false });
+
+    expect(output).toEqual([]);
+    expect(blocked).toEqual([{ active: true, label: "Choose tool" }, { active: false }]);
   });
 
   it("notifies for fresh event contexts from the active TUI session", () => {
