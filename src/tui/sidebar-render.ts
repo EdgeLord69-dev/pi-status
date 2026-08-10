@@ -156,7 +156,10 @@ function deriveProjectName(footer: Omit<FooterRenderInput, "zones" | "extensionS
 function splitStatuses(
   statuses: ReadonlyMap<string, string>,
   hidden: readonly string[],
-): { alerts: { key: string; text: string }[]; statuses: { key: string; text: string }[] } {
+): {
+  alerts: { key: string; text: string }[];
+  statuses: { key: string; text: string }[];
+} {
   const blocked = new Set(hidden);
   const entries = [...statuses.entries()]
     .filter(([key]) => !blocked.has(key))
@@ -360,8 +363,7 @@ function identityPairRows(
   contentWidth: number,
   palette: Palette,
 ): string[] {
-  if (!left && !right) return [palette.paint("dim", DEFAULT_TEXT)];
-  if (!left) return right ? [right] : [];
+  if (!left) return [right ?? palette.paint("dim", DEFAULT_TEXT)];
   if (!right) return [left];
   if (visibleWidth(left) + visibleWidth(right) + 1 > contentWidth) return [left, right];
   return [spacedRow(left, right, contentWidth)];
@@ -697,7 +699,9 @@ function renderUnavailableDock(width: number, height: number): string[] {
   const safeHeight = Math.max(0, Math.trunc(height));
   if (safeWidth === 0 || safeHeight === 0) return [];
   const rows = Array.from({ length: safeHeight }, () => "Sidebar unavailable");
-  return renderDock(rows, safeWidth, safeHeight, { paint: (_role, text) => text });
+  return renderDock(rows, safeWidth, safeHeight, {
+    paint: (_role, text) => text,
+  });
 }
 
 function renderSidebarLinesInner(

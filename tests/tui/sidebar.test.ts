@@ -310,15 +310,13 @@ describe("sidebar controller", () => {
       first: vi.fn((_color: string, text: string) => `\x1b[31m${text}\x1b[39m`),
       second: vi.fn((_color: string, text: string) => `\x1b[32m${text}\x1b[39m`),
     };
-    const liveTheme = new Proxy(
-      { ...noTheme, name: "dark" } as StatusLineTheme & { name: string },
-      {
-        get(target, property, receiver) {
-          if (property === "fg") return painters[revision];
-          return Reflect.get(target, property, receiver);
-        },
+    const liveTheme = {
+      ...noTheme,
+      name: "dark",
+      get fg() {
+        return painters[revision];
       },
-    );
+    };
     const controller = createSidebarController({
       ctx: makeCtx(host, tui, liveTheme),
       getSnapshot: () => FIXED_SNAPSHOT,
