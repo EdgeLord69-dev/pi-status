@@ -200,31 +200,37 @@ of the old `statusLine` object into `extensions/statusline.json`.
 ## Completion Notifications
 
 The Settings tab in `/statusline` controls an opt-in, global preference for
-bounded, best-effort native system notifications when a TUI agent run settles
-or `@pi-vault/pi-questionnaire` enters its wait state.
-
-The preference is global-only, off by default, and lives in the same
-`extensions/statusline.json` file. There is no per-project or per-session
-override.
+best-effort direct-terminal notifications when a TUI agent run settles or
+`@pi-vault/pi-questionnaire` enters its wait state. The preference is off by
+default, lives in `extensions/statusline.json`, and has no per-project or
+per-session override.
 
 The authoritative settlement signal is Pi's public `agent_settled` event. The
 extension does not infer completion from `agent_end`, `turn_end`, assistant
-text, or tool completion. When `@pi-vault/pi-questionnaire` is installed, the
-extension also subscribes to its literal
-`pi-vault:questionnaire:status` event and notifies once per false-to-true
-interval; the event label is ignored, so prompts, answers, and other content
-are never included in the notification body.
+text, or tool completion.
 
-macOS and Windows receive best-effort native delivery through `/usr/bin/osascript`
-or hidden `powershell.exe`. The notification text is fixed: `Pi finished` /
-`The current run has settled.` on settlement, and `Pi needs input` /
-`A questionnaire is waiting for you.` while a questionnaire is active. Notification
-text is always passed through argv (macOS) or child-only environment variables
-named `PI_STATUS_NOTIFICATION_TITLE` and `PI_STATUS_NOTIFICATION_BODY`
-(Windows); no shell interpolation is used. Native processes are detached,
-time-bounded, and fail silently if the OS rejects them. Other platforms and
-RPC/print contexts do not receive notifications. Failed settings writes leave
-both runtime state and the notifier unchanged.
+Outside a Herdr pane, the preference controls Ghostty OSC 9 delivery. Direct
+notification text is fixed: `Pi finished` / `The current run has settled.` on
+settlement, and `Pi needs input` / `A questionnaire is waiting for you.` while
+a questionnaire is active. Terminal control characters are removed before OSC
+output, and write failures do not interrupt Pi.
+
+Inside a Herdr pane (`HERDR_ENV=1`), pi-status emits no OSC and does not execute
+`herdr notification show`. The official Herdr Pi integration owns settlement
+state, presentation, toast delivery, delay, and sound according to Herdr's
+`[ui.toast]` and `[ui.sound]` configuration.
+
+When `@pi-vault/pi-questionnaire` is installed, pi-status subscribes to its
+literal `pi-vault:questionnaire:status` event. An active payload must include a
+string `label` to pass runtime validation. Direct OSC notification text never
+includes the label. In a Herdr pane, pi-status forwards it as the blocked-state
+message and Herdr decides how to present it. Each validated false-to-true wait
+interval is forwarded once as `herdr:blocked`, followed by one matching
+inactive event. This semantic bridge remains active even when the pi-status
+notification preference is disabled.
+
+RPC and print contexts do not receive direct notifications. Failed settings
+writes leave both runtime state and notifier behavior unchanged.
 
 ## Upgrade Notes For 0.2.x Users
 

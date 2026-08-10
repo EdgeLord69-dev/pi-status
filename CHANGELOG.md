@@ -14,7 +14,7 @@ All notable changes to `@pi-vault/pi-status` are documented in this file.
 
 - Added the opt-in `workspace-pulse` footer segment for a bounded, read-only Git workspace summary without retaining or displaying changed-file paths.
 - Added opt-in `turn-progress` and `response-performance` footer segments for current-turn tool activity, time-to-first-token, and response throughput.
-- Added opt-in completion notifications on macOS and Windows, configured from the dashboard Settings tab and driven by Pi's `agent_settled` event plus questionnaire wait-state events.
+- Added opt-in direct-terminal completion notifications through Ghostty OSC 9; Herdr panes defer settlement delivery to the official Herdr integration and bridge questionnaire waits through `herdr:blocked`.
 - Added four-zone footer layout controls and minimal, balanced, and telemetry presets in the dashboard Layout tab.
 - Added opt-in `cache-read-tokens`, `cache-write-tokens`, `cache-hit`, `session-cost`, and `access-type` footer segments.
 
