@@ -44,8 +44,7 @@ const FIXED_SNAPSHOT: SidebarSnapshot = buildSidebarSnapshot({
   },
   persisted: true,
   branchEntryCount: 3,
-  availableToolCount: 5,
-  activeToolNames: ["read", "read", "bash"],
+  availableToolNames: ["read", "bash", "edit", "grep", "glob"],
   todos: [],
   sidebarPanels: [],
 });

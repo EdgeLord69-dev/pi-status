@@ -2,11 +2,13 @@ import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import {
   BUILTIN_SIDEBAR_PANEL_IDS,
   type AccessType,
+  type LiveActivitySnapshot,
   type NormalizedTodo,
   type PiStatusConfig,
   type SessionMetrics,
   type SidebarPanelId,
   type StatusLineSegmentId,
+  type ToolActivity,
 } from "../shared/types.ts";
 import {
   isSidebarPanelContributionId,
@@ -14,6 +16,7 @@ import {
   type SidebarPanelData,
 } from "./sidebar-panels.ts";
 import type { FooterRenderInput } from "./render.ts";
+import { removeLeadingStatusKey } from "./render.ts";
 import { formatTtft, getRateWindow } from "./formatters.ts";
 import {
   createPalette,
@@ -32,6 +35,8 @@ export interface WorkspacePulseAggregates {
   linesAdded: number;
   linesRemoved: number;
   binaryFiles: number;
+  staged: number;
+  unstaged: number;
   untracked: number;
   conflicts: number;
   submodules: number;
@@ -45,6 +50,7 @@ export interface SidebarSnapshot {
   thinkingLevel: string;
   projectName: string;
   sessionName?: string;
+  sessionId?: string;
   persisted: boolean;
   contextTokens?: number;
   contextWindow?: number;
@@ -55,16 +61,10 @@ export interface SidebarSnapshot {
   accessType?: AccessType;
   pulse?: WorkspacePulseAggregates;
   branchEntryCount: number;
-  activeToolCount: number;
-  activeToolNames: readonly string[];
-  availableToolCount: number;
+  /** Configured tool definitions; live calls come from `activity.activeTools`. */
+  availableToolNames: readonly string[];
   runState: FooterRenderInput["runState"];
-  turnNumber: number;
-  runDurationMs: number;
-  completedToolCount: number;
-  failedToolCount: number;
-  ttftMs?: number;
-  tps?: number;
+  activity?: LiveActivitySnapshot;
   alerts: readonly { key: string; text: string }[];
   statuses: readonly { key: string; text: string }[];
   todos: readonly NormalizedTodo[];
@@ -77,8 +77,7 @@ export interface SidebarSnapshotInput {
   sessionName?: string;
   persisted: boolean;
   branchEntryCount: number;
-  activeToolNames?: readonly string[];
-  availableToolCount: number;
+  availableToolNames: readonly string[];
   todos?: readonly NormalizedTodo[];
   sidebarPanels?: readonly SidebarPanelData[];
 }
@@ -142,6 +141,8 @@ function deriveProjectName(footer: Omit<FooterRenderInput, "zones" | "extensionS
     linesRemoved: pulse.linesRemoved,
     binaryFiles: pulse.binaryFiles,
     untracked: pulse.counts.untracked,
+    staged: pulse.counts.staged,
+    unstaged: pulse.counts.unstaged,
     conflicts: pulse.counts.conflicts,
     submodules: pulse.submodules,
     root: pulse.root ?? footer.cwd,
@@ -163,7 +164,7 @@ function splitStatuses(
   const blocked = new Set(hidden);
   const entries = [...statuses.entries()]
     .filter(([key]) => !blocked.has(key))
-    .map(([key, value]) => ({ key, text: sanitizeText(value) }))
+    .map(([key, value]) => ({ key, text: sanitizeText(removeLeadingStatusKey(key, value)) }))
     .filter(({ text }) => text.length > 0)
     .sort((a, b) => a.key.localeCompare(b.key));
   const alerts: { key: string; text: string }[] = [];
@@ -175,6 +176,26 @@ function splitStatuses(
   return { alerts, statuses: rest };
 }
 
+function cloneToolActivity(tool: ToolActivity): ToolActivity {
+  return { ...tool };
+}
+
+function cloneActivity(
+  activity: LiveActivitySnapshot | undefined,
+): LiveActivitySnapshot | undefined {
+  if (!activity) return undefined;
+  return {
+    run: { ...activity.run },
+    turn: { ...activity.turn },
+    activeTools: activity.activeTools.map(cloneToolActivity),
+    recentTools: activity.recentTools.map(cloneToolActivity),
+    completedToolCount: activity.completedToolCount,
+    failedToolCount: activity.failedToolCount,
+    response: { ...activity.response },
+    updatedAt: activity.updatedAt,
+  };
+}
+
 export function buildSidebarSnapshot(input: SidebarSnapshotInput): SidebarSnapshot {
   const { footer, config } = input;
   const { projectName, pulse } = deriveProjectName(footer);
@@ -182,8 +203,7 @@ export function buildSidebarSnapshot(input: SidebarSnapshotInput): SidebarSnapsh
     footer.extensionStatuses ?? new Map<string, string>(),
     config.sidebarExtensionSegments.hidden,
   );
-  const activeNames = Array.from(new Set(input.activeToolNames ?? []));
-  const activity = footer.activity;
+  const activity = cloneActivity(footer.activity);
   const fiveHour = getRateWindow(footer, "fiveHour");
   const weekly = getRateWindow(footer, "weekly");
   return {
@@ -192,6 +212,7 @@ export function buildSidebarSnapshot(input: SidebarSnapshotInput): SidebarSnapsh
     thinkingLevel: footer.thinkingLevel,
     projectName,
     sessionName: input.sessionName,
+    sessionId: footer.sessionId,
     persisted: input.persisted,
     contextTokens: footer.contextUsage?.tokens ?? undefined,
     contextWindow: footer.contextUsage?.contextWindow,
@@ -202,16 +223,9 @@ export function buildSidebarSnapshot(input: SidebarSnapshotInput): SidebarSnapsh
     accessType: footer.accessType,
     pulse,
     branchEntryCount: input.branchEntryCount,
-    activeToolCount: activeNames.length,
-    activeToolNames: activeNames,
-    availableToolCount: input.availableToolCount,
+    availableToolNames: [...input.availableToolNames],
     runState: footer.runState,
-    turnNumber: activity?.turn.number ?? 0,
-    runDurationMs: activity?.run.durationMs ?? 0,
-    completedToolCount: activity?.completedToolCount ?? 0,
-    failedToolCount: activity?.failedToolCount ?? 0,
-    ttftMs: activity?.response.ttftMs,
-    tps: activity?.response.tps,
+    activity,
     alerts,
     statuses,
     todos: input.todos ?? [],
@@ -462,7 +476,9 @@ function toolsStatusRows(
     spacedRow(
       palette.paint(
         "primary",
-        `${finiteCount(snap.activeToolCount)} / ${finiteCount(snap.availableToolCount)} active`,
+        `${finiteCount(snap.activity?.activeTools.length ?? 0)} / ${finiteCount(
+          snap.availableToolNames.length,
+        )} active`,
       ),
       palette.paint("dim", disclosure),
       contentWidth,
@@ -475,7 +491,9 @@ function activeToolNameRows(
   contentWidth: number,
   palette: Palette,
 ): string[] {
-  const names = snap.activeToolNames.map((name) => palette.paint("primary", name));
+  const names = (snap.activity?.activeTools ?? []).map((tool) =>
+    palette.paint("primary", tool.name),
+  );
   if (names.length === 0) return [];
   const leftColumnWidth = names.reduce(
     (max, name, index) => (index % 2 === 0 ? Math.max(max, visibleWidth(name)) : max),
@@ -748,15 +766,17 @@ function renderSidebarLinesInner(
       name: "activityCore",
       panel: "ACTIVITY",
       panelId: "activity",
-      panelRole: snapshot.failedToolCount > 0 ? "error" : runState.role,
+      panelRole: (snapshot.activity?.failedToolCount ?? 0) > 0 ? "error" : runState.role,
       rows: [
         palette.paint(runState.role, runState.label),
-        ...(snapshot.ttftMs !== undefined
+        ...(snapshot.activity?.response.ttftMs !== undefined
           ? [
               palette.paint(
                 "output",
-                `TTFT ${formatTtft(snapshot.ttftMs)}${
-                  snapshot.tps !== undefined ? ` · ${snapshot.tps.toFixed(1)} tok/s` : ""
+                `TTFT ${formatTtft(snapshot.activity.response.ttftMs)}${
+                  snapshot.activity.response.tps !== undefined
+                    ? ` · ${snapshot.activity.response.tps.toFixed(1)} tok/s`
+                    : ""
                 }`,
               ),
             ]

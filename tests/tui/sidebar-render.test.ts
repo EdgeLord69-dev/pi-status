@@ -4,6 +4,7 @@ import {
   BUILTIN_SIDEBAR_PANEL_IDS,
   DEFAULT_SIDEBAR_PANEL_LAYOUT,
   KNOWN_SEGMENTS,
+  type LiveActivitySnapshot,
   type NormalizedTodo,
 } from "../../src/shared/types.ts";
 import type { SidebarPanelData } from "../../src/tui/sidebar-panels.ts";
@@ -53,11 +54,52 @@ function makeInput(
     },
     persisted: true,
     branchEntryCount: 3,
-    availableToolCount: 5,
-    activeToolNames: ["read", "read", "bash"],
+    availableToolNames: ["read", "bash", "edit", "grep", "glob"],
     todos: [] as NormalizedTodo[],
     sidebarPanels: [] as SidebarPanelData[],
     ...overrides,
+  };
+}
+
+function liveActivity(): LiveActivitySnapshot {
+  return {
+    run: { status: "active", startedAt: 1_000, durationMs: 4_000 },
+    turn: { status: "active", number: 3, startedAt: 2_000, durationMs: 2_000 },
+    activeTools: [
+      { callId: "a", name: "bash", summary: "one", status: "active", startedAt: 1, durationMs: 10 },
+      { callId: "b", name: "bash", summary: "two", status: "active", startedAt: 2, durationMs: 20 },
+      {
+        callId: "c",
+        name: "read",
+        summary: "three",
+        status: "active",
+        startedAt: 3,
+        durationMs: 5,
+      },
+    ],
+    recentTools: [
+      {
+        callId: "z",
+        name: "grep",
+        summary: "done",
+        status: "complete",
+        startedAt: 0,
+        endedAt: 1_200,
+        durationMs: 1_200,
+      },
+    ],
+    completedToolCount: 4,
+    failedToolCount: 1,
+    response: {
+      status: "streaming",
+      startedAt: 1_000,
+      firstTokenAt: 1_450,
+      ttftMs: 450,
+      outputTokens: 120,
+      tokenCountKind: "estimated",
+      tps: 12.3,
+    },
+    updatedAt: 5_000,
   };
 }
 
@@ -93,20 +135,14 @@ describe("SidebarSnapshot", () => {
       projectName: "p",
       persisted: true,
       branchEntryCount: 0,
-      activeToolCount: 0,
-      activeToolNames: [],
-      availableToolCount: 0,
+      availableToolNames: [],
       runState: "idle",
-      turnNumber: 0,
-      runDurationMs: 0,
-      completedToolCount: 0,
-      failedToolCount: 0,
       alerts: [],
       statuses: [],
       todos: [],
       sidebarPanels: [],
     };
-    expect(snap.activeToolNames).toEqual([]);
+    expect(snap.availableToolNames).toEqual([]);
   });
 });
 
@@ -156,9 +192,82 @@ describe("buildSidebarSnapshot", () => {
     expect(snap.alerts.find((a) => a.key === "err")).toBeDefined();
   });
 
-  it("deduplicates active tool names", () => {
-    const snap = buildSidebarSnapshot(makeInput({ activeToolNames: ["read", "read", "bash"] }));
-    expect(snap.activeToolNames).toEqual(["read", "bash"]);
+  it("clones the complete live activity into the snapshot", () => {
+    const activity = liveActivity();
+    const footer = { ...makeInput().footer, activity };
+    const snap = buildSidebarSnapshot(makeInput({ footer }));
+    expect(snap.activity).toEqual(activity);
+    expect(snap.activity).not.toBe(activity);
+    expect(snap.activity?.activeTools).not.toBe(activity.activeTools);
+    expect(snap.activity?.recentTools[0]).not.toBe(activity.recentTools[0]);
+  });
+
+  it("preserves repeated live tool-call names", () => {
+    const footer = { ...makeInput().footer, activity: liveActivity() };
+    const snap = buildSidebarSnapshot(makeInput({ footer }));
+    expect(snap.activity?.activeTools.map((tool) => tool.name)).toEqual(["bash", "bash", "read"]);
+  });
+
+  it("carries configured tool definitions instead of live call names", () => {
+    const snap = buildSidebarSnapshot(makeInput({ availableToolNames: ["read", "bash"] }));
+    expect(snap.availableToolNames).toEqual(["read", "bash"]);
+  });
+
+  it("keeps the response token-count kind", () => {
+    const footer = { ...makeInput().footer, activity: liveActivity() };
+    const snap = buildSidebarSnapshot(makeInput({ footer }));
+    expect(snap.activity?.response.tokenCountKind).toBe("estimated");
+  });
+
+  it("carries staged and unstaged pulse counts", () => {
+    const footer = withDefaults({
+      cwd: "/home/user/repo",
+      thinkingLevel: "off",
+      gitBranch: "main",
+      runState: "idle",
+      contextUsage: { tokens: 0, contextWindow: 1, percent: 0 },
+      sessionId: "x",
+      extensionStatuses: new Map(),
+      workspacePulse: {
+        status: "changed",
+        directory: "/home/user/repo",
+        root: "/home/user/repo",
+        branch: "main",
+        ahead: 2,
+        behind: 1,
+        counts: { staged: 4, unstaged: 6, untracked: 1, conflicts: 0 },
+        trackedFiles: 10,
+        linesAdded: 3,
+        linesRemoved: 2,
+        binaryFiles: 0,
+        submodules: 0,
+      },
+    });
+    const snap = buildSidebarSnapshot(makeInput({ footer }));
+    expect(snap.pulse?.staged).toBe(4);
+    expect(snap.pulse?.unstaged).toBe(6);
+  });
+
+  it("normalizes a repeated leading status key", () => {
+    const footer = {
+      ...makeInput().footer,
+      extensionStatuses: new Map<string, string>([["lsp", "lsp: ready"]]),
+    };
+    const snap = buildSidebarSnapshot(makeInput({ footer }));
+    expect(snap.statuses).toEqual([{ key: "lsp", text: "ready" }]);
+  });
+
+  it("carries the session id for identity fallback", () => {
+    const snap = buildSidebarSnapshot(makeInput());
+    expect(snap.sessionId).toBe("abc12345");
+  });
+
+  it("produces a structured-cloneable snapshot", () => {
+    const footer = { ...makeInput().footer, activity: liveActivity() };
+    const snap = buildSidebarSnapshot(
+      makeInput({ footer, sidebarPanels: [contributedPanel()], todos: [] }),
+    );
+    expect(structuredClone(snap)).toEqual(snap);
   });
 
   it("derives the project label from the workspace pulse root when present", () => {
@@ -230,7 +339,7 @@ describe("renderSidebarLines built-ins", () => {
     const snap = buildSidebarSnapshot(
       makeInput({
         config: { ...makeInput().config, showSidebarToolNames: true },
-        activeToolNames: ["read", "bash"],
+        availableToolNames: ["read", "bash"],
       }),
     );
     const lines = renderSidebarLines(snap, makeInput().config, noTheme, 36, 36, {
@@ -246,10 +355,25 @@ describe("renderSidebarLines built-ins", () => {
     const layout = base.config.sidebarPanelLayout.map((entry) =>
       entry.id === "workspace" || entry.id === "usage" ? { ...entry, visible: false } : entry,
     );
+    const activity = liveActivity();
+    const longNames = ["very-long-tool-name-a", "very-long-tool-name-b", "very-long-tool-name-c"];
     const input = {
       ...base,
+      footer: {
+        ...base.footer,
+        activity: {
+          ...activity,
+          activeTools: longNames.map((name, index) => ({
+            callId: `call-${index}`,
+            name,
+            summary: name,
+            status: "active" as const,
+            startedAt: index,
+            durationMs: 10,
+          })),
+        },
+      },
       config: { ...base.config, sidebarPanelLayout: layout, showSidebarToolNames: true },
-      activeToolNames: ["very-long-tool-name-a", "very-long-tool-name-b", "very-long-tool-name-c"],
     };
     const snap = buildSidebarSnapshot(input);
     const lines = renderSidebarLines(snap, input.config, noTheme, 44, 36, { colorEnabled: false });

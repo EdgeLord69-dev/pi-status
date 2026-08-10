@@ -385,8 +385,7 @@ export default function createExtension(pi: ExtensionAPI): void {
             const config = runtimeState.snapshot().config;
             const activeCtx = runtimeState.snapshot().ctx ?? ctx;
             const safeSessionName = safeRead(() => pi.getSessionName());
-            const safeActiveTools = safeRead(() => pi.getActiveTools());
-            const safeAvailableToolCount = safeRead(() => pi.getAllTools().length);
+            const safeAvailableToolNames = safeRead(() => pi.getAllTools().map(({ name }) => name));
             const sessionFile = safeRead(() => activeCtx.sessionManager.getSessionFile());
             const branchEntries = safeRead(() => activeCtx.sessionManager.getBranch().length);
             return buildSidebarSnapshot({
@@ -395,8 +394,7 @@ export default function createExtension(pi: ExtensionAPI): void {
               ...(safeSessionName !== undefined ? { sessionName: safeSessionName } : {}),
               persisted: sessionFile !== undefined,
               branchEntryCount: branchEntries ?? 0,
-              activeToolNames: safeActiveTools ?? [],
-              availableToolCount: safeAvailableToolCount ?? 0,
+              availableToolNames: safeAvailableToolNames ?? [],
               sidebarPanels: activeSidebarRegistry?.getAvailable() ?? [],
             });
           },
