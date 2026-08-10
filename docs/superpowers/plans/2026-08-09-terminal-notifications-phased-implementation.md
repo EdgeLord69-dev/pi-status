@@ -4,7 +4,7 @@
 
 **Goal:** Replace direct operating-system notifications with safe Ghostty OSC 9 delivery and Herdr-aware routing while preserving pi-status notification lifecycle behavior.
 
-**Architecture:** First replace native macOS and Windows delivery with an injected terminal writer and deterministic OSC formatter. Then add Herdr detection, bounded CLI spawning, and one-shot OSC fallback. Finish with end-to-end boundary verification, user documentation, and repository/package gates; no phase changes the preference, TUI/session filtering, message content, or deduplication rules.
+**Architecture:** First replace native macOS and Windows delivery with a deterministic OSC formatter and a notifier-owned terminal writer. Then add Herdr detection, bounded CLI spawning, and one-shot OSC fallback at the notifier/wiring boundary. `src/index.ts` uses only Pi's public extension API. The final phase updates user documentation and runs repository/package gates; no phase changes the preference, TUI/session filtering, message content, or deduplication rules.
 
 **Tech Stack:** TypeScript 6, Node `>=24.15.0`, Pi public extension/event APIs, Ghostty OSC 9, Herdr CLI, Vitest 4, Biome 2, pnpm 11.
 
@@ -24,9 +24,9 @@ Execute all phases sequentially in one isolated worktree. Before execution, use 
 
 | Phase | Atomic usable result | Depends on | Detailed plan |
 | --- | --- | --- | --- |
-| 1 | Enabled notifications use sanitized Ghostty OSC 9 through the terminal writer on every platform; direct AppleScript and PowerShell delivery is gone, while all logical lifecycle behavior remains usable for direct Ghostty sessions. | Approved spec | [`phase-01-ghostty-osc`](2026-08-09-terminal-notifications-phase-01-ghostty-osc.md) |
-| 2 | Herdr panes use bounded `herdr notification show`; direct sessions still use OSC 9, and Herdr launch failures fall back to OSC exactly once. | Phase 1 | [`phase-02-herdr-routing`](2026-08-09-terminal-notifications-phase-02-herdr-routing.md) |
-| 3 | Runtime integration proves final injected boundaries and TUI/session behavior end to end; README, changelog, full checks, and package verification describe and validate the releasable feature. | Phase 2 | [`phase-03-release-integration`](2026-08-09-terminal-notifications-phase-03-release-integration.md) |
+| 1 | Enabled notifications use sanitized Ghostty OSC 9 through the notifier's terminal writer on every platform; direct AppleScript and PowerShell delivery is gone, while all logical lifecycle behavior remains usable for direct Ghostty sessions. | Approved spec | [`phase-01-ghostty-osc`](2026-08-09-terminal-notifications-phase-01-ghostty-osc.md) |
+| 2 | Herdr panes use bounded `herdr notification show` with their complete inherited routing environment; direct sessions still use OSC 9, and Herdr launch failures fall back to OSC exactly once. | Phase 1 | [`phase-02-herdr-routing`](2026-08-09-terminal-notifications-phase-02-herdr-routing.md) |
+| 3 | Existing adapter and routing tests remain green; README, changelog, full checks, and package verification describe and validate the releasable feature. | Phase 2 | [`phase-03-release-integration`](2026-08-09-terminal-notifications-phase-03-release-integration.md) |
 
 The order is fixed from the smallest delivery change to nested-terminal process routing and finally the broadest integration/release gate. Every phase leaves the repository green and independently usable. Do not merge phases or add configurable-sidebar work.
 
@@ -35,8 +35,8 @@ The order is fixed from the smallest delivery change to nested-terminal process 
 ### Modified production files
 
 - `src/core/completion-notifier.ts`: fixed messages, OSC 9 formatting and sanitization, Herdr environment routing, bounded child lifecycle, one-shot fallback, and logical notification deduplication.
-- `src/core/notifications-wiring.ts`: captures and forwards injected `spawn`, `env`, and `write` boundaries while retaining active-TUI/session/questionnaire ownership.
-- `src/index.ts`: supplies optional test-host notification boundaries and otherwise relies on notifier defaults.
+- `src/core/notifications-wiring.ts`: forwards optional `spawn`, `env`, and `write` boundaries in focused tests while retaining active-TUI/session/questionnaire ownership.
+- `src/index.ts`: uses only public Pi extension APIs and relies on notifier defaults for Node environment, process spawning, and terminal output.
 - `README.md`: documents opt-in Herdr-first and Ghostty fallback behavior.
 - `CHANGELOG.md`: replaces the obsolete macOS/Windows-native delivery claim.
 
@@ -46,7 +46,7 @@ No new production file or dependency is required.
 
 - `tests/core/completion-notifier.test.ts`: deterministic OSC formatting, control sanitization, routing, arguments, fallback, timeout, cancellation, and logical-state coverage.
 - `tests/core/notifications-wiring.test.ts`: proves `spawn`, `env`, and `write` cross the wiring boundary without weakening session checks.
-- `tests/index.test.ts`: proves direct and Herdr delivery through the extension adapter while retaining disabled, stale-session, questionnaire, and RPC behavior.
+- `tests/index.test.ts`: captures direct OSC through stdout while retaining disabled, stale-session, questionnaire, and RPC behavior; Herdr routing stays covered at notifier/wiring boundaries.
 
 ## Cross-phase invariants
 
@@ -65,7 +65,7 @@ questionnaire  title "Pi needs input"; body "A questionnaire is waiting for you.
 7. Herdr is detected only by `env.HERDR_ENV === "1"`. Use non-empty `HERDR_BIN_PATH`; otherwise execute `herdr`.
 8. Herdr arguments are exactly `notification show <title> --body <body> --sound done|request`. Never use a shell or private socket protocol.
 9. A successful spawn owns delivery. Synchronous spawn failure or child `error` emits one OSC fallback; normal exit, nonzero exit, timeout, and reset do not emit a second notification.
-10. Herdr children remain detached, ignore stdio, unref, time out after three seconds, and are killed at most once on timeout or reset.
+10. Herdr children receive the complete selected environment so inherited socket/session routing survives. They remain detached, ignore stdio, unref, time out after three seconds, and are killed at most once on timeout or reset.
 11. Spawn, terminal write, child event, timer, kill, cleanup, and callback failures never escape into Pi.
 12. Add no dependency, queue, retry loop, terminal compatibility matrix, OS-native branch, Pi-core change, or configurable-sidebar work.
 

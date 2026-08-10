@@ -1,5 +1,5 @@
 import type { EventBus, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { createCompletionNotifier, type SpawnNotificationProcess } from "./completion-notifier.ts";
+import { createCompletionNotifier, type WriteNotification } from "./completion-notifier.ts";
 
 const NOTIFICATIONS_STATUS_EVENT = "pi-vault:questionnaire:status";
 
@@ -7,15 +7,13 @@ type NotificationsWiringOptions = {
   events: EventBus;
   isEnabled: () => boolean;
   sessionManager?: ExtensionContext["sessionManager"];
-  spawn?: SpawnNotificationProcess;
-  platform?: NodeJS.Platform;
+  write?: WriteNotification;
 };
 
 export function createNotificationsWiring(options: NotificationsWiringOptions) {
   const notifier = createCompletionNotifier({
     isEnabled: options.isEnabled,
-    spawn: options.spawn,
-    platform: options.platform,
+    write: options.write,
   });
   let questionnaireActive = false;
   let questionnaireInterval = 0;

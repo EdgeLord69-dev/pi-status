@@ -41,13 +41,15 @@ Ghostty OSC 9 carries one message rather than separate title and body fields, so
 
 Herdr processes retain the existing detached, ignored-stdio, three-second bounded execution. Pending children are killed during notifier reset and disposal. Delivery errors, terminal-write errors, child termination, and cleanup errors are absorbed because notification delivery must never interrupt Pi.
 
-The notifier continues to expose only `runStarted`, `inputRequested`, `turnSettled`, and `reset`. Testable delivery boundaries are injected through notifier options:
+The notifier continues to expose only `runStarted`, `inputRequested`, `turnSettled`, and `reset`. Its testable delivery boundaries are injected through notifier options:
 
 - `spawn`, defaulting to `node:child_process.spawn`
 - `env`, defaulting to `process.env`
 - `write`, defaulting to `process.stdout.write`
 
-The obsolete `platform` option and the `osascript` and PowerShell implementations are removed. `notifications-wiring.ts` and `src/index.ts` forward the replacement boundaries while preserving active-TUI and idle checks.
+`notifications-wiring.ts` forwards optional boundaries in focused tests. `src/index.ts` uses only the public Pi extension API and relies on the notifier defaults in production. It must not read `spawn`, `env`, `write`, or `platform` from `ExtensionAPI`, because Pi does not expose those properties. Index-level OSC tests capture `process.stdout.write` directly, matching Pi's own terminal tests.
+
+When Herdr is selected, the spawned child receives the complete selected environment so `HERDR_SOCKET_PATH`, `HERDR_SESSION`, and other routing values remain available. The obsolete `platform` option and the `osascript` and PowerShell implementations are removed.
 
 ## Documentation
 

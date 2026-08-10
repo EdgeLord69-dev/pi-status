@@ -4,7 +4,7 @@
 
 **Goal:** Route notifications through Herdr inside managed panes, retaining direct Ghostty delivery and one-shot OSC fallback when Herdr cannot launch.
 
-**Architecture:** Detect Herdr only from the injected environment, then spawn its public CLI with fixed argv and the event-specific sound. Reintroduce the existing bounded detached-child lifecycle in the notifier; distinguish launch failure from normal exit, timeout, and cancellation so fallback can occur exactly once.
+**Architecture:** Add environment and spawn boundaries to the notifier and notification wiring, not to Pi's `ExtensionAPI`. Detect Herdr from the selected complete environment, pass that environment to its public CLI, and restore the bounded detached-child lifecycle. Only synchronous spawn failure or child `error` falls back to OSC.
 
 **Tech Stack:** TypeScript 6, Node `child_process.spawn`, Herdr CLI, Ghostty OSC 9, Vitest fake processes/timers, pnpm 11.
 
@@ -12,7 +12,7 @@
 
 ## Atomic result
 
-After this phase, pi-status is usable both directly in Ghostty and inside Herdr. Herdr owns configured toast delivery after a successful launch; only synchronous launch failure or child `error` falls back to OSC.
+After this phase, pi-status works both directly in Ghostty and inside Herdr. Herdr owns configured toast delivery after a successful launch. Tests running inside Herdr stub detection off unless they explicitly test notifier/wiring routing.
 
 ## Task 1: Add failing Herdr routing and process-lifecycle tests
 
@@ -33,13 +33,23 @@ pnpm vitest run tests/core/completion-notifier.test.ts tests/core/notifications-
 
 Expected: the worktree is clean and all direct-OSC tests pass.
 
-- [ ] **Step 2: Add a deterministic fake process and Herdr harness**
+- [ ] **Step 2: Add the fake process and Herdr harness**
 
-Add below the imports in `tests/core/completion-notifier.test.ts`:
+Replace the import from `completion-notifier.ts` in `tests/core/completion-notifier.test.ts` with:
 
 ```ts
-import type { NotificationProcess } from "../../src/core/completion-notifier.ts";
+import {
+  createCompletionNotifier,
+  formatGhosttyNotification,
+  type NotificationProcess,
+  type SpawnNotificationProcess,
+  type WriteNotification,
+} from "../../src/core/completion-notifier.ts";
+```
 
+Then add below the imports:
+
+```ts
 class FakeProcess implements NotificationProcess {
   readonly kill = vi.fn(() => true);
   readonly unref = vi.fn();
@@ -56,7 +66,9 @@ class FakeProcess implements NotificationProcess {
   }
 }
 
-function herdrHarness(env: NodeJS.ProcessEnv = { HERDR_ENV: "1" }) {
+function herdrHarness(
+  env: NodeJS.ProcessEnv = { HERDR_ENV: "1", HERDR_SOCKET_PATH: "/tmp/herdr.sock" },
+) {
   const output: string[] = [];
   const processes: FakeProcess[] = [];
   const write = vi.fn<WriteNotification>((data) => {
@@ -73,19 +85,25 @@ function herdrHarness(env: NodeJS.ProcessEnv = { HERDR_ENV: "1" }) {
     write,
     isEnabled: () => true,
   });
-  return { notifier, output, processes, spawn, write };
+  return { env, notifier, output, processes, spawn, write };
 }
 ```
 
-Merge the new `NotificationProcess` type into the existing import from `completion-notifier.ts` rather than retaining a second import declaration.
+Keep all type names in the existing import declaration; do not add a second import from the same module.
 
 - [ ] **Step 3: Add the complete Herdr behavior suite**
 
 Append inside `describe("createCompletionNotifier", ...)`:
 
 ```ts
-it("uses HERDR_BIN_PATH and done sound for settlement", () => {
-  const h = herdrHarness({ HERDR_ENV: "1", HERDR_BIN_PATH: "/opt/herdr/bin/herdr" });
+it("uses HERDR_BIN_PATH, the complete environment, and done sound for settlement", () => {
+  const env = {
+    HERDR_ENV: "1",
+    HERDR_BIN_PATH: "/opt/herdr/bin/herdr",
+    HERDR_SOCKET_PATH: "/tmp/herdr.sock",
+    HERDR_SESSION: "work",
+  };
+  const h = herdrHarness(env);
 
   h.notifier.turnSettled();
 
@@ -100,7 +118,7 @@ it("uses HERDR_BIN_PATH and done sound for settlement", () => {
       "--sound",
       "done",
     ],
-    { detached: true, stdio: "ignore" },
+    { detached: true, stdio: "ignore", env },
   );
   expect(h.processes[0]?.unref).toHaveBeenCalledOnce();
   expect(h.output).toEqual([]);
@@ -123,7 +141,7 @@ it("uses the PATH executable and request sound for questionnaire input", () => {
       "--sound",
       "request",
     ],
-    { detached: true, stdio: "ignore" },
+    { detached: true, stdio: "ignore", env: h.env },
   );
   expect(h.output).toEqual([]);
   h.notifier.reset();
@@ -235,10 +253,20 @@ it("absorbs kill failures and late child events", () => {
 
 - [ ] **Step 4: Add a wiring-boundary Herdr test**
 
-Restore the `SpawnNotificationProcess` type import in `tests/core/notifications-wiring.test.ts` and append:
+Replace the notifier type import in `tests/core/notifications-wiring.test.ts` with:
 
 ```ts
-it("forwards env and spawn to Herdr delivery", () => {
+import type {
+  NotificationProcess,
+  SpawnNotificationProcess,
+  WriteNotification,
+} from "../../src/core/completion-notifier.ts";
+```
+
+Then append:
+
+```ts
+it("forwards the complete environment and spawn to Herdr delivery", () => {
   const events = createBus();
   const sessionManager = createContext().sessionManager;
   const process: NotificationProcess = {
@@ -248,11 +276,16 @@ it("forwards env and spawn to Herdr delivery", () => {
   };
   const spawn = vi.fn<SpawnNotificationProcess>(() => process);
   const write = vi.fn();
+  const env = {
+    HERDR_ENV: "1",
+    HERDR_BIN_PATH: "/custom/herdr",
+    HERDR_SOCKET_PATH: "/tmp/custom-herdr.sock",
+  };
   const wiring = createNotificationsWiring({
     events,
     isEnabled: () => true,
     sessionManager,
-    env: { HERDR_ENV: "1", HERDR_BIN_PATH: "/custom/herdr" },
+    env,
     spawn,
     write,
   });
@@ -271,14 +304,12 @@ it("forwards env and spawn to Herdr delivery", () => {
       "--sound",
       "done",
     ],
-    { detached: true, stdio: "ignore" },
+    { detached: true, stdio: "ignore", env },
   );
   expect(write).not.toHaveBeenCalled();
   wiring.dispose();
 });
 ```
-
-Import both `NotificationProcess` and `SpawnNotificationProcess` from the notifier module.
 
 - [ ] **Step 5: Run the tests to verify red**
 
@@ -288,15 +319,17 @@ Run:
 pnpm vitest run tests/core/completion-notifier.test.ts tests/core/notifications-wiring.test.ts
 ```
 
-Expected: Herdr assertions fail because Phase 1 ignores `env` and `spawn`, writes OSC immediately, and owns no child lifecycle.
+Expected: TypeScript transformation or assertions fail because Phase 1 has no `NotificationProcess`, `SpawnNotificationProcess`, `env`, or `spawn` boundaries and always writes OSC.
 
 ## Task 2: Implement Herdr routing and bounded fallback
 
 **Files:**
 
 - Modify: `src/core/completion-notifier.ts`
+- Modify: `src/core/notifications-wiring.ts`
+- Modify: `tests/index.test.ts`
 - Test: `tests/core/completion-notifier.test.ts`
-- Regression test: `tests/core/notifications-wiring.test.ts`
+- Test: `tests/core/notifications-wiring.test.ts`
 
 - [ ] **Step 1: Replace `src/core/completion-notifier.ts` with the final delivery implementation**
 
@@ -378,6 +411,7 @@ export function createCompletionNotifier(options: CompletionNotifierOptions): Co
       spawn,
       env.HERDR_BIN_PATH || "herdr",
       ["notification", "show", title, "--body", body, "--sound", sound],
+      env,
       () => writeOsc(title, body),
       () => {
         if (cancel) activeCancellations.delete(cancel);
@@ -417,6 +451,7 @@ function spawnHerdr(
   spawn: SpawnNotificationProcess,
   file: string,
   args: string[],
+  env: NodeJS.ProcessEnv,
   onLaunchError: () => void,
   onFinished: () => void,
 ): (() => void) | undefined {
@@ -451,7 +486,7 @@ function spawnHerdr(
   };
 
   try {
-    child = spawn(file, args, { detached: true, stdio: "ignore" });
+    child = spawn(file, args, { detached: true, stdio: "ignore", env });
     child.once("error", () => finish(false, true));
     if (finished) return undefined;
     child.once("exit", () => finish(false, false));
@@ -468,33 +503,67 @@ function spawnHerdr(
 }
 ```
 
-Do not pass notification content through a shell, environment variable, command string, or private Herdr socket.
+Do not pass notification content through a shell, environment variable, command string, or private Herdr socket. Passing the complete environment object is intentional because Herdr uses inherited socket and session variables for routing.
 
-- [ ] **Step 2: Run the focused suite to verify green**
+- [ ] **Step 2: Add the Phase 2 boundaries to `src/core/notifications-wiring.ts`**
+
+Replace the notifier import with:
+
+```ts
+import {
+  createCompletionNotifier,
+  type SpawnNotificationProcess,
+  type WriteNotification,
+} from "./completion-notifier.ts";
+```
+
+Add these fields to `NotificationsWiringOptions`:
+
+```ts
+spawn?: SpawnNotificationProcess;
+env?: NodeJS.ProcessEnv;
+```
+
+Pass them to `createCompletionNotifier`:
+
+```ts
+const notifier = createCompletionNotifier({
+  isEnabled: options.isEnabled,
+  spawn: options.spawn,
+  env: options.env,
+  write: options.write,
+});
+```
+
+Do not change `src/index.ts`; omitted options select the real Node defaults.
+
+- [ ] **Step 3: Keep extension tests deterministic inside a real Herdr pane**
+
+At the start of the completion-notification `describe` block in `tests/index.test.ts`, add:
+
+```ts
+beforeEach(() => {
+  vi.stubEnv("HERDR_ENV", "");
+});
+```
+
+The file's existing top-level `afterEach` calls `vi.unstubAllEnvs()`. Do not add environment fields to the Pi mock. This stub prevents index tests from launching the real Herdr CLI when the test runner itself is inside Herdr.
+
+- [ ] **Step 4: Run focused tests to verify green**
 
 Run:
 
 ```bash
-pnpm vitest run tests/core/completion-notifier.test.ts tests/core/notifications-wiring.test.ts
+pnpm vitest run tests/core/completion-notifier.test.ts tests/core/notifications-wiring.test.ts tests/index.test.ts
 pnpm typecheck
 ```
 
-Expected: all notifier and wiring tests pass; typecheck exits 0.
+Expected: all selected tests pass; typecheck exits 0; no test launches a real Herdr process or writes OSC to real stdout.
 
-- [ ] **Step 3: Run the existing extension regressions**
-
-Run:
+- [ ] **Step 5: Commit Herdr routing**
 
 ```bash
-pnpm vitest run tests/index.test.ts
-```
-
-Expected: direct OSC extension tests from Phase 1 still pass because their injected environment does not set `HERDR_ENV`.
-
-- [ ] **Step 4: Commit Herdr routing**
-
-```bash
-git add src/core/completion-notifier.ts tests/core/completion-notifier.test.ts tests/core/notifications-wiring.test.ts
+git add src/core/completion-notifier.ts src/core/notifications-wiring.ts tests/core/completion-notifier.test.ts tests/core/notifications-wiring.test.ts tests/index.test.ts
 git commit -m "feat: route notifications through Herdr"
 ```
 
@@ -519,9 +588,10 @@ Expected: every command exits 0.
 - [ ] **Step 2: Review routing and phase scope**
 
 ```bash
-rg -n "HERDR_ENV|HERDR_BIN_PATH|notification|--sound|formatGhosttyNotification|PROCESS_TIMEOUT_MS" src/core/completion-notifier.ts tests/core/completion-notifier.test.ts tests/core/notifications-wiring.test.ts
+rg -n "HERDR_ENV|HERDR_BIN_PATH|HERDR_SOCKET_PATH|notification|--sound|formatGhosttyNotification|PROCESS_TIMEOUT_MS" src/core/completion-notifier.ts src/core/notifications-wiring.ts tests/core/completion-notifier.test.ts tests/core/notifications-wiring.test.ts tests/index.test.ts
+! rg -n "notificationHost|pi as unknown as.*(spawn|env|write|platform)" src/index.ts tests/index.test.ts
 git diff --stat "$PHASE_BASE"..HEAD
 git status --short
 ```
 
-Expected: exact environment detection, CLI argv, both sounds, fallback, and timeout coverage are present; one scoped commit exists; the worktree is clean; no README/changelog or sidebar work landed early.
+Expected: exact environment detection, complete child environment, CLI argv, both sounds, fallback, timeout coverage, and the index test isolation stub are present. No hidden Pi host object exists. One scoped commit exists; the worktree is clean; no README, changelog, or sidebar work landed early.
