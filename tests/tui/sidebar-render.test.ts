@@ -81,6 +81,7 @@ function contributedPanel(): SidebarPanelData {
     role: "primary",
     available: true,
     source: "ext",
+    generation: 1,
   };
 }
 

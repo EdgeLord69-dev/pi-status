@@ -3,6 +3,7 @@
 // sidebar panels.
 
 import { SIDEBAR_PANEL_MAX_ID_CHARS, type ContributedSidebarPanelId } from "../shared/types.js";
+import { SIDEBAR_PANEL_ROW_ID_PATTERN } from "../core/sidebar-layout.js";
 
 /** The event channel used by the public sidebar contribution protocol. */
 export const SIDEBAR_PANEL_CHANNEL = "pi-status:sidebar-panels";
@@ -67,6 +68,8 @@ export type SidebarPanelRole =
 export interface SidebarPanelRow {
   text: string;
   role?: SidebarPanelRole;
+  /** Optional stable identity; only `^[a-z][a-z0-9_-]{0,63}$` survives sanitization. */
+  id?: string;
 }
 
 /** Structured, presentation-only data accepted from another extension. */
@@ -88,6 +91,8 @@ export interface SidebarPanelData extends Omit<SidebarPanelContribution, "rows">
   rows: readonly SidebarPanelRow[];
   available: true;
   source: string;
+  /** Increments whenever the sanitized content of this panel changes. */
+  generation: number;
 }
 
 export interface SidebarPanelRegisterEvent {
@@ -256,6 +261,9 @@ function sanitizeContribution(value: unknown): SanitizedSidebarPanelContribution
     rows.push({
       text: sanitizeSidebarPanelText(text, SIDEBAR_PANEL_MAX_ROW_CHARS),
       ...(isRecord(row) && isSidebarPanelRole(row.role) ? { role: row.role } : {}),
+      ...(isRecord(row) && typeof row.id === "string" && SIDEBAR_PANEL_ROW_ID_PATTERN.test(row.id)
+        ? { id: row.id }
+        : {}),
     });
   }
   return {
@@ -371,7 +379,7 @@ export function registerSidebarPanel(
 function copyPanelData(data: SidebarPanelData): SidebarPanelData {
   return {
     ...data,
-    rows: data.rows.map((row) => (row.role === undefined ? { text: row.text } : { ...row })),
+    rows: data.rows.map((row) => ({ ...row })),
   };
 }
 
@@ -380,6 +388,7 @@ export function createSidebarPanelRegistry(
 ): SidebarPanelRegistry {
   const panels = new Map<string, SidebarPanelData>();
   const owners = new Map<string, string>();
+  const generations = new Map<string, number>();
   let disposed = false;
   let discoverySequence = 0;
   const requestPrefix = discoveryPrefix(options.instanceId);
@@ -400,14 +409,21 @@ export function createSidebarPanelRegistry(
     for (let index = 0; index < first.rows.length; index += 1) {
       const a = first.rows[index];
       const b = second.rows[index];
-      if (!a || !b || a.text !== b.text || a.role !== b.role) return false;
+      if (!a || !b || a.text !== b.text || a.role !== b.role || a.id !== b.id) return false;
     }
     return true;
   };
   const applyRegister = (safe: SanitizedSidebarPanelContribution, source: string): boolean => {
-    const next: SidebarPanelData = { ...safe, available: true, source };
     const previous = panels.get(safe.id);
+    const next: SidebarPanelData = {
+      ...safe,
+      available: true,
+      source,
+      generation: previous?.generation ?? generations.get(safe.id) ?? 0,
+    };
     if (previous && panelsEqual(previous, next)) return false;
+    next.generation += 1;
+    generations.set(safe.id, next.generation);
     owners.set(safe.id, source);
     panels.set(safe.id, next);
     changed();
@@ -512,6 +528,7 @@ export function createSidebarPanelRegistry(
       unsubscribe = undefined;
       panels.clear();
       owners.clear();
+      generations.clear();
     },
   };
 }

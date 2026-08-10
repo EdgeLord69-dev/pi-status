@@ -1294,3 +1294,95 @@ describe("public sidebar panel seam exports", () => {
     expect(typeof defaultExport).toBe("function");
   });
 });
+
+describe("contributed row identity and generation", () => {
+  it("retains valid row IDs and drops invalid ones while keeping the row", () => {
+    const registry = createSidebarPanelRegistry();
+    registry.register({
+      id: "vendor:queue",
+      title: "Queue",
+      rows: [
+        { text: "stable", id: "row_one" },
+        { text: "anonymous", id: "Row-Two" },
+        { text: "long", id: "a".repeat(65) },
+        { text: "plain" },
+      ],
+    });
+    expect(registry.get("vendor:queue")?.rows).toEqual([
+      { text: "stable", id: "row_one" },
+      { text: "anonymous" },
+      { text: "long" },
+      { text: "plain" },
+    ]);
+    registry.dispose();
+  });
+
+  it("increments the generation only when sanitized content changes", () => {
+    const registry = createSidebarPanelRegistry();
+    registry.register({ id: "vendor:queue", title: "Queue", rows: ["one"] });
+    expect(registry.get("vendor:queue")?.generation).toBe(1);
+    registry.register({ id: "vendor:queue", title: "Queue", rows: ["one"] });
+    expect(registry.get("vendor:queue")?.generation).toBe(1);
+    registry.register({ id: "vendor:queue", title: "Queue", rows: ["two"] });
+    expect(registry.get("vendor:queue")?.generation).toBe(2);
+    registry.register({
+      id: "vendor:queue",
+      title: "Queue",
+      rows: [{ text: "two", id: "row_one" }],
+    });
+    expect(registry.get("vendor:queue")?.generation).toBe(3);
+    registry.dispose();
+  });
+
+  it("keeps generations advancing across unregister and re-register", () => {
+    const registry = createSidebarPanelRegistry();
+    registry.register({ id: "vendor:queue", title: "Queue", rows: ["one"] }, "vendor");
+    registry.unregister("vendor:queue", "vendor");
+    registry.register({ id: "vendor:queue", title: "Queue", rows: ["one"] }, "vendor");
+    expect(registry.get("vendor:queue")?.generation).toBe(2);
+    registry.dispose();
+  });
+
+  it("clears generations only on dispose", () => {
+    const registry = createSidebarPanelRegistry();
+    registry.register({ id: "vendor:queue", title: "Queue", rows: ["one"] });
+    registry.dispose();
+    const next = createSidebarPanelRegistry();
+    next.register({ id: "vendor:queue", title: "Queue", rows: ["one"] });
+    expect(next.get("vendor:queue")?.generation).toBe(1);
+    next.dispose();
+  });
+
+  it("hands out defensive copies of rows that carry IDs", () => {
+    const registry = createSidebarPanelRegistry();
+    registry.register({
+      id: "vendor:queue",
+      title: "Queue",
+      rows: [{ text: "one", id: "row_one" }],
+    });
+    const first = registry.get("vendor:queue");
+    const row = first?.rows[0];
+    if (!row) throw new Error("expected a row");
+    (row as { text: string }).text = "mutated";
+    expect(registry.get("vendor:queue")?.rows[0]).toEqual({ text: "one", id: "row_one" });
+    registry.dispose();
+  });
+
+  it("keeps protocol version 1 while carrying row IDs over events", () => {
+    const registry = createSidebarPanelRegistry();
+    registry.handleEvent({
+      version: 1,
+      type: "register",
+      source: "vendor",
+      revision: 1,
+      panel: {
+        id: "vendor:queue",
+        title: "Queue",
+        rows: [{ text: "one", id: "row_one" }],
+      },
+    });
+    expect(SIDEBAR_PANEL_PROTOCOL_VERSION).toBe(1);
+    expect(registry.get("vendor:queue")?.rows[0]).toEqual({ text: "one", id: "row_one" });
+    registry.dispose();
+  });
+});
