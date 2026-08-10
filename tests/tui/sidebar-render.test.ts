@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { withDefaults } from "../helpers.ts";
 import {
@@ -96,7 +96,7 @@ describe("SidebarSnapshot", () => {
       activeToolCount: 0,
       activeToolNames: [],
       availableToolCount: 0,
-      runPhase: "idle",
+      runState: "idle",
       turnNumber: 0,
       runDurationMs: 0,
       completedToolCount: 0,
@@ -124,12 +124,13 @@ describe("SIDEBAR_SEGMENT_PANELS", () => {
     }
   });
 
-  it("explicitly maps the five segments that drive a sidebar-specific view", () => {
+  it("explicitly maps the six segments that drive a sidebar-specific view", () => {
     expect(SIDEBAR_SEGMENT_PANELS["used-tokens"]).toBe("agent");
     expect(SIDEBAR_SEGMENT_PANELS["cache-write-tokens"]).toBe("usage");
     expect(SIDEBAR_SEGMENT_PANELS["session-id"]).toBe("agent");
     expect(SIDEBAR_SEGMENT_PANELS["five-hour-limit"]).toBe("usage");
     expect(SIDEBAR_SEGMENT_PANELS["weekly-limit"]).toBe("usage");
+    expect(SIDEBAR_SEGMENT_PANELS["run-state"]).toBe("activity");
   });
 });
 
@@ -225,7 +226,7 @@ describe("renderSidebarLines primitives", () => {
 });
 
 describe("renderSidebarLines built-ins", () => {
-  it("renders an Agent row and a Context row in the working snapshot", () => {
+  it("renders Agent and Context in the default snapshot", () => {
     const input = makeInput();
     const snap = buildSidebarSnapshot(input);
     const lines = renderSidebarLines(snap, input.config, noTheme, 44, 36, { colorEnabled: false });
@@ -690,5 +691,136 @@ describe("renderSidebarLines failure path", () => {
     });
     expect(lines).toHaveLength(12);
     expect(lines.some((line) => line.includes("Sidebar unavailable"))).toBe(true);
+  });
+});
+
+describe("Activity canonical run state", () => {
+  it("stores footer runState without duplicate activity-phase state", () => {
+    const input = makeInput({
+      footer: withDefaults({
+        cwd: "/home/user/repo",
+        thinkingLevel: "off",
+        gitBranch: "main",
+        runState: "queued",
+        contextUsage: { tokens: 0, contextWindow: 1, percent: 0 },
+        sessionId: "abc",
+        extensionStatuses: new Map(),
+      }),
+    });
+
+    const snapshot = buildSidebarSnapshot(input);
+    expect(snapshot.runState).toBe("queued");
+    expect(snapshot).not.toHaveProperty("runPhase");
+  });
+
+  it.each([
+    ["idle", "Ready", "thinkingLow"],
+    ["queued", "Queued", "warning"],
+    ["busy", "Working", "mdHeading"],
+  ] as const)("renders footer state %s as semantic Activity %s", (runState, label, token) => {
+    const input = makeInput({
+      footer: withDefaults({
+        cwd: "/home/user/repo",
+        thinkingLevel: "off",
+        gitBranch: "main",
+        runState,
+        contextUsage: { tokens: 0, contextWindow: 1, percent: 0 },
+        sessionId: "abc",
+        extensionStatuses: new Map(),
+      }),
+    });
+    const config = {
+      ...input.config,
+      sidebarPanelLayout: [{ id: "activity" as const, visible: true }],
+    };
+    const fg = vi.fn((_color: string, text: string) => text);
+    const output = renderSidebarLines(
+      buildSidebarSnapshot(input),
+      config,
+      { ...noTheme, fg },
+      44,
+      12,
+    ).join("\n");
+
+    expect(output).toContain("ACTIVITY");
+    expect(output).toContain(label);
+    expect(fg).toHaveBeenCalledWith(token, label);
+    expect(fg).toHaveBeenCalledWith(token, "ACTIVITY");
+    for (const other of ["Ready", "Queued", "Working"].filter((value) => value !== label)) {
+      expect(output).not.toContain(other);
+    }
+  });
+
+  it("keeps a failed crown error separate from the Working text role", () => {
+    const input = makeInput({
+      footer: withDefaults({
+        cwd: "/home/user/repo",
+        thinkingLevel: "off",
+        gitBranch: "main",
+        runState: "busy",
+        contextUsage: { tokens: 0, contextWindow: 1, percent: 0 },
+        sessionId: "abc",
+        extensionStatuses: new Map(),
+        activity: {
+          run: { status: "active", durationMs: 2_000 },
+          turn: { status: "active", number: 1, durationMs: 1_000 },
+          activeTools: [],
+          recentTools: [],
+          completedToolCount: 0,
+          failedToolCount: 1,
+          response: { status: "idle" },
+          updatedAt: 2_000,
+        },
+      }),
+    });
+    const config = {
+      ...input.config,
+      sidebarPanelLayout: [{ id: "activity" as const, visible: true }],
+    };
+    const fg = vi.fn((_color: string, text: string) => text);
+
+    renderSidebarLines(buildSidebarSnapshot(input), config, { ...noTheme, fg }, 44, 12);
+
+    expect(fg).toHaveBeenCalledWith("error", "ACTIVITY");
+    expect(fg).toHaveBeenCalledWith("mdHeading", "Working");
+  });
+
+  it("keeps response timing beside the canonical Activity state", () => {
+    const input = makeInput({
+      footer: withDefaults({
+        cwd: "/home/user/repo",
+        thinkingLevel: "off",
+        gitBranch: "main",
+        runState: "busy",
+        contextUsage: { tokens: 0, contextWindow: 1, percent: 0 },
+        sessionId: "abc",
+        extensionStatuses: new Map(),
+        activity: {
+          run: { status: "active", durationMs: 2_000 },
+          turn: { status: "active", number: 1, durationMs: 1_000 },
+          activeTools: [],
+          recentTools: [],
+          completedToolCount: 0,
+          failedToolCount: 0,
+          response: { status: "streaming", ttftMs: 450, tps: 12.3 },
+          updatedAt: 2_000,
+        },
+      }),
+    });
+    const config = {
+      ...input.config,
+      sidebarPanelLayout: [{ id: "activity" as const, visible: true }],
+    };
+    const output = renderSidebarLines(
+      buildSidebarSnapshot(input),
+      config,
+      noTheme,
+      44,
+      12,
+      { colorEnabled: false },
+    ).join("\n");
+
+    expect(output).toContain("Working");
+    expect(output).toContain("TTFT 450ms · 12.3 tok/s");
   });
 });

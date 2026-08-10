@@ -25,8 +25,6 @@ import type { StatusLineTheme } from "./theme.ts";
 
 export type AgentActivity = "ready" | "working";
 
-export type RunPhase = "idle" | "active" | "complete";
-
 export interface WorkspacePulseAggregates {
   status: "clean" | "changed" | "conflict" | "not-repository" | "unavailable" | "stale";
   branch?: string;
@@ -63,7 +61,7 @@ export interface SidebarSnapshot {
   activeToolCount: number;
   activeToolNames: readonly string[];
   availableToolCount: number;
-  runPhase: RunPhase;
+  runState: FooterRenderInput["runState"];
   turnNumber: number;
   runDurationMs: number;
   completedToolCount: number;
@@ -95,7 +93,7 @@ export const SIDEBAR_SEGMENT_PANELS: Readonly<Record<StatusLineSegmentId, Sideba
   "current-dir": "workspace",
   "git-branch": "workspace",
   "workspace-pulse": "workspace",
-  "run-state": "agent",
+  "run-state": "activity",
   "context-remaining": "context",
   "context-used": "context",
   "used-tokens": "agent",
@@ -208,7 +206,7 @@ export function buildSidebarSnapshot(input: SidebarSnapshotInput): SidebarSnapsh
     activeToolCount: activeNames.length,
     activeToolNames: activeNames,
     availableToolCount: input.availableToolCount,
-    runPhase: activity?.run.status ?? "idle",
+    runState: footer.runState,
     turnNumber: activity?.turn.number ?? 0,
     runDurationMs: activity?.run.durationMs ?? 0,
     completedToolCount: activity?.completedToolCount ?? 0,
@@ -335,6 +333,15 @@ function activityRole(activity: AgentActivity): PaletteRole {
 
 function activitySymbol(activity: AgentActivity): string {
   return activity === "working" ? "◆" : "●";
+}
+
+function runStatePresentation(runState: FooterRenderInput["runState"]): {
+  label: "Ready" | "Queued" | "Working";
+  role: PaletteRole;
+} {
+  if (runState === "idle") return { label: "Ready", role: "ready" };
+  if (runState === "queued") return { label: "Queued", role: "warning" };
+  return { label: "Working", role: "working" };
 }
 
 function contextRole(percent: number | undefined): PaletteRole {
@@ -732,6 +739,7 @@ function renderSidebarLinesInner(
     ? activeToolNameRows(snapshot, panelContentWidth, palette)
     : [];
   const workspace = workspaceRows(snapshot, panelContentWidth, palette);
+  const runState = runStatePresentation(snapshot.runState);
 
   const groups: SidebarGroup[] = [
     ...(options?.resizing
@@ -758,12 +766,9 @@ function renderSidebarLinesInner(
       name: "activityCore",
       panel: "ACTIVITY",
       panelId: "activity",
-      panelRole: snapshot.failedToolCount > 0 ? "error" : "ready",
+      panelRole: snapshot.failedToolCount > 0 ? "error" : runState.role,
       rows: [
-        palette.paint(
-          snapshot.runPhase === "active" ? "working" : "ready",
-          snapshot.runPhase === "active" ? "Working" : "Ready",
-        ),
+        palette.paint(runState.role, runState.label),
         ...(snapshot.ttftMs !== undefined
           ? [
               palette.paint(
