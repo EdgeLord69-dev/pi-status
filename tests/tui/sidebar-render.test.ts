@@ -1,20 +1,20 @@
-import { describe, expect, it, vi } from "vitest";
 import { visibleWidth } from "@earendil-works/pi-tui";
-import { withDefaults } from "../helpers.ts";
+import { describe, expect, it, vi } from "vitest";
 import {
   BUILTIN_SIDEBAR_PANEL_IDS,
   DEFAULT_SIDEBAR_PANEL_LAYOUT,
   KNOWN_SEGMENTS,
   type NormalizedTodo,
 } from "../../src/shared/types.ts";
+import type { SidebarPanelData } from "../../src/tui/sidebar-panels.ts";
+import type { SidebarSnapshot } from "../../src/tui/sidebar-render.ts";
 import {
   buildSidebarSnapshot,
   renderSidebarLines,
   SIDEBAR_SEGMENT_PANELS,
 } from "../../src/tui/sidebar-render.ts";
-import type { SidebarPanelData } from "../../src/tui/sidebar-panels.ts";
 import { noTheme, type StatusLineTheme } from "../../src/tui/theme.ts";
-import type { SidebarSnapshot } from "../../src/tui/sidebar-render.ts";
+import { withDefaults } from "../helpers.ts";
 
 function makeInput(
   overrides: Partial<Parameters<typeof buildSidebarSnapshot>[0]> = {},
@@ -664,17 +664,8 @@ describe("renderSidebarLines failure path", () => {
 
 describe("Activity canonical run state", () => {
   it("stores footer runState without duplicate activity-phase state", () => {
-    const input = makeInput({
-      footer: withDefaults({
-        cwd: "/home/user/repo",
-        thinkingLevel: "off",
-        gitBranch: "main",
-        runState: "queued",
-        contextUsage: { tokens: 0, contextWindow: 1, percent: 0 },
-        sessionId: "abc",
-        extensionStatuses: new Map(),
-      }),
-    });
+    const input = makeInput();
+    input.footer.runState = "queued";
 
     const snapshot = buildSidebarSnapshot(input);
     expect(snapshot.runState).toBe("queued");
@@ -686,17 +677,8 @@ describe("Activity canonical run state", () => {
     ["queued", "Queued", "warning"],
     ["busy", "Working", "mdHeading"],
   ] as const)("renders footer state %s as semantic Activity %s", (runState, label, token) => {
-    const input = makeInput({
-      footer: withDefaults({
-        cwd: "/home/user/repo",
-        thinkingLevel: "off",
-        gitBranch: "main",
-        runState,
-        contextUsage: { tokens: 0, contextWindow: 1, percent: 0 },
-        sessionId: "abc",
-        extensionStatuses: new Map(),
-      }),
-    });
+    const input = makeInput();
+    input.footer.runState = runState;
     const config = {
       ...input.config,
       sidebarPanelLayout: [{ id: "activity" as const, visible: true }],
@@ -720,27 +702,18 @@ describe("Activity canonical run state", () => {
   });
 
   it("keeps a failed crown error separate from the Working text role", () => {
-    const input = makeInput({
-      footer: withDefaults({
-        cwd: "/home/user/repo",
-        thinkingLevel: "off",
-        gitBranch: "main",
-        runState: "busy",
-        contextUsage: { tokens: 0, contextWindow: 1, percent: 0 },
-        sessionId: "abc",
-        extensionStatuses: new Map(),
-        activity: {
-          run: { status: "active", durationMs: 2_000 },
-          turn: { status: "active", number: 1, durationMs: 1_000 },
-          activeTools: [],
-          recentTools: [],
-          completedToolCount: 0,
-          failedToolCount: 1,
-          response: { status: "idle" },
-          updatedAt: 2_000,
-        },
-      }),
-    });
+    const input = makeInput();
+    input.footer.runState = "busy";
+    input.footer.activity = {
+      run: { status: "active", durationMs: 2_000 },
+      turn: { status: "active", number: 1, durationMs: 1_000 },
+      activeTools: [],
+      recentTools: [],
+      completedToolCount: 0,
+      failedToolCount: 1,
+      response: { status: "idle" },
+      updatedAt: 2_000,
+    };
     const config = {
       ...input.config,
       sidebarPanelLayout: [{ id: "activity" as const, visible: true }],
@@ -754,27 +727,18 @@ describe("Activity canonical run state", () => {
   });
 
   it("keeps response timing beside the canonical Activity state", () => {
-    const input = makeInput({
-      footer: withDefaults({
-        cwd: "/home/user/repo",
-        thinkingLevel: "off",
-        gitBranch: "main",
-        runState: "busy",
-        contextUsage: { tokens: 0, contextWindow: 1, percent: 0 },
-        sessionId: "abc",
-        extensionStatuses: new Map(),
-        activity: {
-          run: { status: "active", durationMs: 2_000 },
-          turn: { status: "active", number: 1, durationMs: 1_000 },
-          activeTools: [],
-          recentTools: [],
-          completedToolCount: 0,
-          failedToolCount: 0,
-          response: { status: "streaming", ttftMs: 450, tps: 12.3 },
-          updatedAt: 2_000,
-        },
-      }),
-    });
+    const input = makeInput();
+    input.footer.runState = "busy";
+    input.footer.activity = {
+      run: { status: "active", durationMs: 2_000 },
+      turn: { status: "active", number: 1, durationMs: 1_000 },
+      activeTools: [],
+      recentTools: [],
+      completedToolCount: 0,
+      failedToolCount: 0,
+      response: { status: "streaming", ttftMs: 450, tps: 12.3 },
+      updatedAt: 2_000,
+    };
     const config = {
       ...input.config,
       sidebarPanelLayout: [{ id: "activity" as const, visible: true }],
@@ -794,20 +758,15 @@ describe("Agent identity-only rendering", () => {
     overrides: Partial<Parameters<typeof withDefaults>[0]> = {},
     theme: StatusLineTheme = noTheme,
   ): string {
-    const input = makeInput({
-      footer: withDefaults({
-        cwd: "/home/user/repo",
-        thinkingLevel: "high",
-        gitBranch: "main",
-        runState: "busy",
-        contextUsage: { tokens: 0, contextWindow: 1, percent: 0 },
-        sessionId: "abc",
-        extensionStatuses: new Map(),
-        model: { id: "gpt-5", name: "gpt-5", provider: "openai" },
-        accessType: "subscription",
-        ...overrides,
-      }),
-    });
+    const input = makeInput();
+    input.footer = {
+      ...input.footer,
+      thinkingLevel: "high",
+      runState: "busy",
+      model: { id: "gpt-5", name: "gpt-5", provider: "openai" },
+      accessType: "subscription",
+      ...overrides,
+    };
     const config = {
       ...input.config,
       sidebarPanelLayout: [{ id: "agent" as const, visible: true }],
