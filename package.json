@@ -1,6 +1,6 @@
 {
   "name": "@pi-vault/pi-status",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "type": "module",
   "description": "Pi extension that replaces the default status with a Codex-like status",
   "author": "Lanh Hoang <lanhhoang@users.noreply.github.com>",
@@ -26,8 +26,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "pack:dry-run": "pnpm pack --dry-run",
-    "pack:verify": "node scripts/verify-pack.mjs",
-    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm pack:verify"
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test",
+    "release:check": "pnpm check && pnpm run pack:dry-run"
   },
   "pi": {
     "extensions": [
@@ -48,10 +48,10 @@
     "@pi-vault/pi-usage": "^0.7.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.6",
+    "@biomejs/biome": "^2.5.8",
     "@earendil-works/pi-coding-agent": "^0.84.1",
     "@earendil-works/pi-tui": "^0.84.1",
-    "@types/node": "^26.1.1",
+    "@types/node": "^26.2.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.10"
   },

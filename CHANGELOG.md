@@ -2,7 +2,7 @@
 
 All notable changes to `@pi-vault/pi-status` are documented in this file.
 
-## Unreleased
+## 0.4.0 - 2026-08-11
 
 ### Breaking Changes
 
@@ -39,7 +39,8 @@ All notable changes to `@pi-vault/pi-status` are documented in this file.
 
 ### Compatibility
 
-- Retained Pi agent and TUI 0.83.0 compatibility and Node.js 24.15.0+ support.
+- Updated the tested host baseline to `@earendil-works/pi-coding-agent@0.84.1` and `@earendil-works/pi-tui@0.84.1`. Node.js 24.15.0+ still required.
+- Updated `@pi-vault/pi-usage` to `^0.7.0`.
 
 ### Internal
 
