@@ -7,7 +7,7 @@ import {
   type PiStatusConfig,
 } from "../src/shared/types.ts";
 import type { StatusLineDashboardComponent } from "../src/tui/dashboard.ts";
-import { isDashboardDirty } from "../src/tui/dashboard-state.ts";
+import { isDashboardDirty, selectableRows } from "../src/tui/dashboard-state.ts";
 import {
   buildPiWithHandlers,
   buildSetFooterSpy,
@@ -43,27 +43,31 @@ function config(): PiStatusConfig {
 
 function deferredCustomHost() {
   let resolveCustom!: (value: unknown) => void;
-  let component!: StatusLineDashboardComponent;
+  const components: StatusLineDashboardComponent[] = [];
   const customPromise = new Promise((resolve) => {
     resolveCustom = resolve;
   });
   const done = vi.fn((value: unknown) => {
-    component.dispose();
+    components.at(-1)?.dispose();
     resolveCustom(value);
   });
   const custom = vi.fn((factory) => {
-    component = factory(
+    const component = factory(
       { terminal: { columns: 80, rows: 30 }, requestRender: vi.fn() } as unknown as TUI,
       null,
       {},
       done,
     ) as StatusLineDashboardComponent;
+    components.push(component);
     return customPromise;
   });
   return {
     custom,
     resolveCustom: (value: unknown) => done(value),
-    component: () => component,
+    component: () => components.at(-1),
+    sidebar: () => components[0],
+    dashboard: () => components.at(-1),
+    components: () => components,
     done,
   };
 }
@@ -97,6 +101,7 @@ describe("/statusline persistence", () => {
 
     await new Promise((resolve) => setImmediate(resolve));
     const component = host.component();
+    if (!component) throw new Error("expected dashboard component");
 
     // Settings tab: default is statusbar; five forward cycles reach settings.
     component.handleInput("\t");
@@ -150,6 +155,7 @@ describe("/statusline persistence", () => {
 
     await new Promise((resolve) => setImmediate(resolve));
     const component = host.component();
+    if (!component) throw new Error("expected dashboard component");
     // Settings tab: default is statusbar; five forward cycles reach settings.
     component.handleInput("\t");
     component.handleInput("\t");
@@ -166,6 +172,102 @@ describe("/statusline persistence", () => {
     expect(isDashboardDirty(component.getState())).toBe(true);
     expect(renderWithFactory(footerSpy.calls.at(-1))).toContain("project");
     expect(host.done).not.toHaveBeenCalled();
+
+    host.resolveCustom(undefined);
+    await commandPromise;
+  });
+
+  it("saves stable and session effective layout in a single Save", async () => {
+    const initial = config();
+    const loadConfig = vi.fn(() => initial);
+    const saveConfig = vi.fn();
+    vi.doMock("../src/core/config.ts", () => ({ loadConfig, saveConfig }));
+
+    const { default: createExtension } = await import("../src/index.ts");
+    const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
+    const footerSpy = buildSetFooterSpy();
+    createExtension(pi);
+
+    const host = deferredCustomHost();
+    const ctx = createContext({
+      ui: {
+        ...createContext().ui,
+        setFooter: footerSpy.setFooter,
+        custom: host.custom as unknown as ExtensionCommandContext["ui"]["custom"],
+      },
+    });
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+    const commandPromise = getRegisteredCommand(registerCommandCalls, "statusline").handler(
+      "",
+      ctx,
+    );
+
+    await new Promise((resolve) => setImmediate(resolve));
+    const component = host.component();
+    if (!component) throw new Error("expected dashboard component");
+    component.handleInput("\t"); // sidebar
+    component.handleInput("\x1b[B"); // panel visibility
+    component.handleInput("\r"); // hide first panel
+    // Move to Save (last row)
+    const sidebarRows = selectableRows(component.getState(), "sidebar").length;
+    for (let i = 0; i < sidebarRows; i += 1) component.handleInput("\x1b[B");
+    component.handleInput("\r"); // open dialog
+    component.handleInput("\x1b[B"); // → Save
+    component.handleInput("\r"); // confirm Save
+
+    expect(saveConfig).toHaveBeenCalledOnce();
+    const persisted = saveConfig.mock.calls[0]?.[0];
+    expect(persisted?.sidebarPanelLayout).toBeDefined();
+    // TODO/anonymous segments never reach disk
+    expect(JSON.stringify(persisted)).not.toContain("session:todo:");
+    expect(isDashboardDirty(component.getState())).toBe(false);
+
+    host.resolveCustom(undefined);
+    await commandPromise;
+  });
+
+  it("failed save leaves runtime and Workspace Pulse demand unchanged", async () => {
+    const initial = config();
+    const loadConfig = vi.fn(() => initial);
+    const saveConfig = vi.fn(() => {
+      throw new Error("disk full");
+    });
+    vi.doMock("../src/core/config.ts", () => ({ loadConfig, saveConfig }));
+
+    const { default: createExtension } = await import("../src/index.ts");
+    const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
+    const footerSpy = buildSetFooterSpy();
+    createExtension(pi);
+
+    const host = deferredCustomHost();
+    const ctx = createContext({
+      ui: {
+        ...createContext().ui,
+        setFooter: footerSpy.setFooter,
+        custom: host.custom as unknown as ExtensionCommandContext["ui"]["custom"],
+      },
+    });
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+    const commandPromise = getRegisteredCommand(registerCommandCalls, "statusline").handler(
+      "",
+      ctx,
+    );
+
+    await new Promise((resolve) => setImmediate(resolve));
+    const component = host.component();
+    if (!component) throw new Error("expected dashboard component");
+    component.handleInput("\t"); // sidebar
+    component.handleInput("\x1b[B"); // panel visibility
+    component.handleInput("\r"); // hide first panel
+    const sidebarRows = selectableRows(component.getState(), "sidebar").length;
+    for (let i = 0; i < sidebarRows; i += 1) component.handleInput("\x1b[B");
+    component.handleInput("\r"); // open dialog
+    component.handleInput("\x1b[B"); // → Save
+    const beforeSidebar = component.getState().draftSidebarLayout;
+    component.handleInput("\r"); // confirm Save
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Failed to save statusline config", "warning");
+    expect(component.getState().draftSidebarLayout).toEqual(beforeSidebar);
+    expect(isDashboardDirty(component.getState())).toBe(true);
 
     host.resolveCustom(undefined);
     await commandPromise;
