@@ -3,7 +3,7 @@ import type { Component, OverlayHandle, OverlayOptions, TUI } from "@earendil-wo
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PiStatusConfig } from "../../src/shared/types.ts";
 import { DEFAULT_SIDEBAR_PANEL_LAYOUT, DEFAULT_ZONES } from "../../src/shared/types.ts";
-import { createSidebarController, type SidebarControllerOptions } from "../../src/tui/sidebar.ts";
+import { createSidebarController } from "../../src/tui/sidebar.ts";
 import { seedSidebarEffectiveLayout } from "../../src/core/sidebar-layout.ts";
 import { buildSidebarSegmentCatalog } from "../../src/tui/sidebar-segments.ts";
 import { buildSidebarSnapshot, type SidebarSnapshot } from "../../src/tui/sidebar-render.ts";
@@ -50,6 +50,15 @@ const FIXED_CONFIG = {
   sidebarPanelLayout: [...DEFAULT_SIDEBAR_PANEL_LAYOUT],
   sidebarHiddenSegments: [],
 } as unknown as PiStatusConfig;
+
+function sidebarView(snapshot = FIXED_SNAPSHOT) {
+  const catalog = buildSidebarSegmentCatalog(snapshot);
+  return {
+    snapshot,
+    catalog,
+    layout: seedSidebarEffectiveLayout(FIXED_CONFIG, catalog),
+  };
+}
 
 class FakeOverlayHandle implements OverlayHandle {
   hidden = false;
@@ -141,8 +150,7 @@ describe("sidebar controller", () => {
     const { host, tui } = makeFakeHost();
     const controller = createSidebarController({
       ctx: makeCtx(host, tui),
-      getSnapshot: () => FIXED_SNAPSHOT,
-      getConfig: () => FIXED_CONFIG,
+      getView: () => sidebarView(),
     });
     controller.show();
     await Promise.resolve();
@@ -156,8 +164,7 @@ describe("sidebar controller", () => {
     const { host, tui } = makeFakeHost();
     const controller = createSidebarController({
       ctx: makeCtx(host, tui),
-      getSnapshot: () => FIXED_SNAPSHOT,
-      getConfig: () => FIXED_CONFIG,
+      getView: () => sidebarView(),
     });
     controller.show();
     await Promise.resolve();
@@ -174,8 +181,7 @@ describe("sidebar controller", () => {
     const { host, tui } = makeFakeHost();
     const controller = createSidebarController({
       ctx: makeCtx(host, tui),
-      getSnapshot: () => FIXED_SNAPSHOT,
-      getConfig: () => FIXED_CONFIG,
+      getView: () => sidebarView(),
     });
     controller.show();
     await Promise.resolve();
@@ -190,8 +196,7 @@ describe("sidebar controller", () => {
     const { host, tui } = makeFakeHost();
     const controller = createSidebarController({
       ctx: makeCtx(host, tui),
-      getSnapshot: () => FIXED_SNAPSHOT,
-      getConfig: () => FIXED_CONFIG,
+      getView: () => sidebarView(),
     });
     controller.show();
     await Promise.resolve();
@@ -208,8 +213,7 @@ describe("sidebar controller", () => {
     const ctx = makeCtx(host, tui);
     const controller = createSidebarController({
       ctx,
-      getSnapshot: () => FIXED_SNAPSHOT,
-      getConfig: () => FIXED_CONFIG,
+      getView: () => sidebarView(),
     });
     controller.show();
     await Promise.resolve();
@@ -228,8 +232,7 @@ describe("sidebar controller", () => {
     let animate = false;
     const controller = createSidebarController({
       ctx: makeCtx(host, tui),
-      getSnapshot: () => FIXED_SNAPSHOT,
-      getConfig: () => FIXED_CONFIG,
+      getView: () => sidebarView(),
       animationIntervalMs: 100,
       shouldAnimate: () => animate,
     });
@@ -251,8 +254,7 @@ describe("sidebar controller", () => {
       true;
     const controller = createSidebarController({
       ctx: makeCtx(host, tui),
-      getSnapshot: () => FIXED_SNAPSHOT,
-      getConfig: () => FIXED_CONFIG,
+      getView: () => sidebarView(),
     });
     controller.show();
     await Promise.resolve();
@@ -263,8 +265,7 @@ describe("sidebar controller", () => {
     const { host, tui } = makeFakeHost(120);
     const controller = createSidebarController({
       ctx: makeCtx(host, tui),
-      getSnapshot: () => FIXED_SNAPSHOT,
-      getConfig: () => FIXED_CONFIG,
+      getView: () => sidebarView(),
     });
     controller.show();
     await Promise.resolve();
@@ -279,8 +280,7 @@ describe("sidebar controller", () => {
     const { host, tui } = makeFakeHost();
     const controller = createSidebarController({
       ctx: makeCtx(host, tui),
-      getSnapshot: () => FIXED_SNAPSHOT,
-      getConfig: () => FIXED_CONFIG,
+      getView: () => sidebarView(),
     });
     controller.show();
     await Promise.resolve();
@@ -310,8 +310,7 @@ describe("sidebar controller", () => {
     };
     const controller = createSidebarController({
       ctx: makeCtx(host, tui, liveTheme),
-      getSnapshot: () => FIXED_SNAPSHOT,
-      getConfig: () => FIXED_CONFIG,
+      getView: () => sidebarView(),
     });
 
     controller.show();
@@ -336,8 +335,7 @@ describe("sidebar controller", () => {
     const ctx = makeCtx(host, tui);
     const controller = createSidebarController({
       ctx,
-      getSnapshot: () => FIXED_SNAPSHOT,
-      getConfig: () => FIXED_CONFIG,
+      getView: () => sidebarView(),
     });
     controller.show();
     await Promise.resolve();
@@ -352,8 +350,7 @@ describe("sidebar controller effective width forwarding", () => {
     const { host, tui } = makeFakeHost(120);
     const controller = createSidebarController({
       ctx: makeCtx(host, tui),
-      getSnapshot: () => FIXED_SNAPSHOT,
-      getConfig: () => FIXED_CONFIG,
+      getView: () => sidebarView(),
     });
     expect(controller.getEffectiveWidth()).toBe(0);
   });
@@ -362,8 +359,7 @@ describe("sidebar controller effective width forwarding", () => {
     const { host, tui } = makeFakeHost(MIN_MAIN_WIDTH + MIN_SIDEBAR_WIDTH - 1);
     const controller = createSidebarController({
       ctx: makeCtx(host, tui),
-      getSnapshot: () => FIXED_SNAPSHOT,
-      getConfig: () => FIXED_CONFIG,
+      getView: () => sidebarView(),
     });
     controller.show();
     await Promise.resolve();
@@ -375,8 +371,7 @@ describe("sidebar controller effective width forwarding", () => {
     const { host, tui } = makeFakeHost(120);
     const controller = createSidebarController({
       ctx: makeCtx(host, tui),
-      getSnapshot: () => FIXED_SNAPSHOT,
-      getConfig: () => FIXED_CONFIG,
+      getView: () => sidebarView(),
     });
     controller.show();
     await Promise.resolve();
@@ -391,8 +386,7 @@ describe("sidebar controller effective width forwarding", () => {
     const { host, tui } = makeFakeHost(120);
     const controller = createSidebarController({
       ctx: makeCtx(host, tui),
-      getSnapshot: () => FIXED_SNAPSHOT,
-      getConfig: () => FIXED_CONFIG,
+      getView: () => sidebarView(),
     });
     controller.show();
     await Promise.resolve();
@@ -413,7 +407,7 @@ describe("sidebar controller view boundary", () => {
     const controller = createSidebarController({
       ctx: makeCtx(host, tui),
       getView,
-    } as unknown as SidebarControllerOptions);
+    });
     controller.show();
     await Promise.resolve();
     const component = host.factories.at(-1);
@@ -431,8 +425,7 @@ describe("sidebar controller view boundary", () => {
     let snapshot = FIXED_SNAPSHOT;
     const controller = createSidebarController({
       ctx: makeCtx(host, tui),
-      getSnapshot: () => snapshot,
-      getConfig: () => FIXED_CONFIG,
+      getView: () => sidebarView(snapshot),
     });
     controller.show();
     await Promise.resolve();

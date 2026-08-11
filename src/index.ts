@@ -5,6 +5,8 @@ import {
   applySidebarPanelControls,
   createSidebarLayoutRuntime,
   persistSidebarLayout,
+  reconcileSidebarEffectiveLayout,
+  seedSidebarEffectiveLayout,
   sidebarLayoutDemandsWorkspacePulse,
   type SidebarLayoutRuntime,
 } from "./core/sidebar-layout.ts";
@@ -152,14 +154,16 @@ export default function createExtension(pi: ExtensionAPI): void {
 
   function saveAndApplyConfig(next: PiStatusConfig): void {
     const ctx = runtimeState.snapshot().ctx;
-    if (ctx?.mode === "tui" && sidebarLayoutRuntime) {
-      const view = captureSidebarView(ctx);
+    if (ctx?.mode === "tui") {
+      const view = previewSidebarView(ctx);
       const layout = applySidebarPanelControls(next.sidebarPanelLayout, view.layout);
-      persistSidebarLayout(layout, {
-        base: next,
+      persistSidebarLayout({
+        config: next,
+        effective: layout,
+        catalog: view.catalog,
         persist: saveConfig,
-        commit: (committed) => {
-          sidebarLayoutRuntime?.replace(layout);
+        commit: (committed, committedLayout) => {
+          sidebarLayoutRuntime?.replace(committedLayout, view.catalog);
           runtimeState.update({ type: "config_reload", config: committed });
         },
       });
@@ -245,16 +249,25 @@ export default function createExtension(pi: ExtensionAPI): void {
     });
   }
 
-  function captureSidebarView(ctx: ExtensionContext): SidebarView {
+  function previewSidebarView(ctx: ExtensionContext): SidebarView {
     const snapshot = buildCurrentSidebarSnapshot(ctx);
     const catalog = buildSidebarSegmentCatalog(snapshot);
-    const config = runtimeState.snapshot().config;
+    const layout = sidebarLayoutRuntime
+      ? reconcileSidebarEffectiveLayout(sidebarLayoutRuntime.snapshot(), catalog)
+      : seedSidebarEffectiveLayout(runtimeState.snapshot().config, catalog);
+    return { snapshot, catalog, layout };
+  }
+
+  function captureSidebarView(ctx: ExtensionContext): SidebarView {
+    const view = previewSidebarView(ctx);
     if (!sidebarLayoutRuntime) {
-      sidebarLayoutRuntime = createSidebarLayoutRuntime({ config, catalog });
-    } else {
-      sidebarLayoutRuntime.reconcile(catalog);
+      sidebarLayoutRuntime = createSidebarLayoutRuntime({
+        config: runtimeState.snapshot().config,
+        catalog: view.catalog,
+      });
     }
-    return { snapshot, catalog, layout: sidebarLayoutRuntime.snapshot() };
+    sidebarLayoutRuntime.replace(view.layout, view.catalog);
+    return { ...view, layout: sidebarLayoutRuntime.snapshot() };
   }
 
   const usageRuntime = createUsageRuntime(pi);
@@ -440,6 +453,7 @@ export default function createExtension(pi: ExtensionAPI): void {
         },
       });
       try {
+        captureSidebarView(ctx);
         activeSidebarController = createSidebarController({
           ctx,
           getView: () => captureSidebarView(ctx),
@@ -454,6 +468,7 @@ export default function createExtension(pi: ExtensionAPI): void {
         safelyDisposeSidebarRegistry();
         activeSidebarRegistry = undefined;
         activeSidebarController = undefined;
+        sidebarLayoutRuntime = undefined;
         ctx.ui.notify(
           `pi-status sidebar setup failed: ${
             error instanceof Error ? error.message : String(error)

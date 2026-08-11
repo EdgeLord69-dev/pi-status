@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { TUI } from "@earendil-works/pi-tui";
-import { BUILTIN_SIDEBAR_PANEL_IDS, SIDEBAR_BUILTIN_ASSIGNMENTS, type PiStatusConfig } from "../src/shared/types.ts";
+import {
+  BUILTIN_SIDEBAR_PANEL_IDS,
+  SIDEBAR_BUILTIN_ASSIGNMENTS,
+  type PiStatusConfig,
+} from "../src/shared/types.ts";
 import type { StatusLineDashboardComponent } from "../src/tui/dashboard.ts";
 import { isDashboardDirty } from "../src/tui/dashboard-state.ts";
 import {
@@ -28,7 +32,11 @@ function config(): PiStatusConfig {
     extensionSegments: { hidden: [] },
     extensionStatusZone: "bottomRight",
     completionNotifications: false,
-    sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true, segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]] })),
+    sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
+      id,
+      visible: true,
+      segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]],
+    })),
     sidebarHiddenSegments: [],
   };
 }
@@ -62,14 +70,8 @@ function deferredCustomHost() {
 
 describe("/statusline persistence", () => {
   it("saves the dashboard draft and keeps the footer factory in sync", async () => {
-    const initial: PiStatusConfig = {
-      zones: { topLeft: ["model"], topRight: [], bottomLeft: ["current-dir"], bottomRight: [] },
-      extensionSegments: { hidden: [] },
-      extensionStatusZone: "bottomRight",
-      completionNotifications: false,
-      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true, segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]] })),
-      sidebarHiddenSegments: [],
-    };
+    const initial = config();
+    initial.zones.topLeft = ["model"];
     const loadConfig = vi.fn(() => initial);
     const saveConfig = vi.fn();
     vi.doMock("../src/core/config.ts", () => ({ loadConfig, saveConfig }));
@@ -119,7 +121,7 @@ describe("/statusline persistence", () => {
     await commandPromise;
   });
 
-  it("keeps the draft dirty when saveConfig throws", async () => {
+  it("keeps config and the dashboard draft unchanged when saveConfig throws", async () => {
     const initial: PiStatusConfig = config();
     const loadConfig = vi.fn(() => initial);
     const saveConfig = vi.fn(() => {
@@ -162,6 +164,7 @@ describe("/statusline persistence", () => {
     expect(ctx.ui.notify).toHaveBeenCalledWith("Failed to save statusline config", "warning");
     expect(ctx.ui.notify).toHaveBeenCalledTimes(1);
     expect(isDashboardDirty(component.getState())).toBe(true);
+    expect(renderWithFactory(footerSpy.calls.at(-1))).toContain("project");
     expect(host.done).not.toHaveBeenCalled();
 
     host.resolveCustom(undefined);

@@ -65,7 +65,7 @@ describe("extension wiring", () => {
     expect(renderWithFactory(footerSpy.calls[0])).toContain("$0.0100");
     expect(renderWithFactory(footerSpy.calls[0])).toContain("SUBSCRIPTION");
     expect(getEntries).toHaveBeenCalled();
-    expect(getBranch).not.toHaveBeenCalled();
+    expect(getBranch).toHaveBeenCalled();
   });
 
   it("classifies Kimi as subscription, other models as metered, and omits access without a model", () => {
@@ -657,7 +657,7 @@ describe("extension wiring", () => {
         visible: true,
         segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]],
       })),
-      sidebarHiddenSegments: [],
+      sidebarHiddenSegments: ["tool:read"],
     });
   });
 
