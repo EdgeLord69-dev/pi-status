@@ -65,7 +65,7 @@ describe("extension wiring", () => {
     expect(renderWithFactory(footerSpy.calls[0])).toContain("$0.0100");
     expect(renderWithFactory(footerSpy.calls[0])).toContain("SUBSCRIPTION");
     expect(getEntries).toHaveBeenCalled();
-    expect(getBranch).not.toHaveBeenCalled();
+    expect(getBranch).toHaveBeenCalled();
   });
 
   it("classifies Kimi as subscription, other models as metered, and omits access without a model", () => {
@@ -542,7 +542,7 @@ describe("extension wiring", () => {
     expect(requestRender).toHaveBeenCalledTimes(1);
   });
 
-  it("reloads persisted config on session events", () => {
+  it("preserves the active config across session-tree events", () => {
     const project = join(agentDir, "project");
     const configPath = join(agentDir, "extensions", "statusline.json");
     mkdirSync(join(agentDir, "extensions"), { recursive: true });
@@ -594,7 +594,7 @@ describe("extension wiring", () => {
       "utf8",
     );
     for (const h of handlers.get("session_tree") ?? []) h({}, ctx);
-    expect(footer?.render(200).join("\n")).toBe("project");
+    expect(footer?.render(200).join("\n")).toBe("GPT-5");
   });
 
   it("declares only pi-status in pi.extensions", () => {
@@ -626,8 +626,7 @@ describe("extension wiring", () => {
       component.handleInput("\t");
       component.handleInput("\t");
       component.handleInput("\r"); // toggle notifications (row 0)
-      component.handleInput("\x1b[B"); // → sidebar_tool_names (row 1)
-      component.handleInput("\x1b[B"); // → Save (row 2)
+      component.handleInput("\x1b[B"); // → Save (row 1)
       component.handleInput("\r"); // open dialog
       component.handleInput("\x1b[B"); // → Save
       component.handleInput("\r"); // confirm Save
@@ -651,11 +650,14 @@ describe("extension wiring", () => {
         bottomRight: [],
       },
       extensionSegments: { hidden: [] },
-      sidebarExtensionSegments: { hidden: [] },
       extensionStatusZone: "bottomRight",
       completionNotifications: true,
-      showSidebarToolNames: false,
-      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
+      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
+        id,
+        visible: true,
+        segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]],
+      })),
+      sidebarHiddenSegments: ["tool:read"],
     });
   });
 
@@ -974,8 +976,11 @@ describe("extension wiring — completion notifications", () => {
         zones: { topLeft: [], topRight: [], bottomLeft: [], bottomRight: [] },
         extensionSegments: { hidden: [] },
         completionNotifications: true,
-        showSidebarToolNames: false,
-        sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
+        sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
+          id,
+          visible: true,
+          segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]],
+        })),
       }),
       "utf8",
     );

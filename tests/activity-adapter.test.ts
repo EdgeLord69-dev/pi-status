@@ -22,7 +22,6 @@ beforeEach(() => {
         bottomRight: [],
       },
       extensionSegments: { hidden: [] },
-      sidebarExtensionSegments: { hidden: [] },
       extensionStatusZone: "bottomRight",
     }),
     "utf8",

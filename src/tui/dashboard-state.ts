@@ -9,6 +9,7 @@ import type {
 import {
   BUILTIN_SIDEBAR_PANEL_IDS,
   isUsageSegment,
+  SIDEBAR_BUILTIN_ASSIGNMENTS,
   STATUS_LINE_ZONE_ORDER,
 } from "../shared/types.ts";
 import type { SessionDetails } from "./session-actions.ts";
@@ -31,7 +32,6 @@ export interface TabNavigation {
   selectedIndex: number;
   query: string;
   offset: number;
-  surface: "statusbar" | "sidebar";
 }
 
 export interface DashboardState {
@@ -51,14 +51,12 @@ export type DashboardSelectableRow =
   | { type: "preset" }
   | { type: "zone" }
   | { type: "extension_status_zone" }
-  | { type: "surface_picker"; surface: "statusbar" | "sidebar" }
   | { type: "segment"; id: StatusLineSegmentId }
-  | { type: "status_visibility"; key: string; surface: "statusbar" | "sidebar" }
+  | { type: "status_visibility"; key: string }
   | { type: "tool"; name: string }
   | { type: "rename_session" }
   | { type: "compact_session" }
   | { type: "sidebar_panel"; id: SidebarPanelId }
-  | { type: "sidebar_tool_names" }
   | { type: "sidebar_default" }
   | { type: "notifications" }
   | { type: "save" };
@@ -184,7 +182,8 @@ function sameSidebarPanelLayout(left: PiStatusConfig, right: PiStatusConfig): bo
     left.sidebarPanelLayout.every(
       (entry, index) =>
         entry.id === right.sidebarPanelLayout[index]?.id &&
-        entry.visible === right.sidebarPanelLayout[index]?.visible,
+        entry.visible === right.sidebarPanelLayout[index]?.visible &&
+        sameArray(entry.segments, right.sidebarPanelLayout[index]?.segments ?? []),
     )
   );
 }
@@ -193,11 +192,10 @@ export function configsEqual(left: PiStatusConfig, right: PiStatusConfig): boole
   return (
     STATUS_LINE_ZONE_ORDER.every((zone) => sameArray(left.zones[zone], right.zones[zone])) &&
     sameArray(left.extensionSegments.hidden, right.extensionSegments.hidden) &&
-    sameArray(left.sidebarExtensionSegments.hidden, right.sidebarExtensionSegments.hidden) &&
+    sameArray(left.sidebarHiddenSegments, right.sidebarHiddenSegments) &&
     left.extensionStatusZone === right.extensionStatusZone &&
     sameSidebarPanelLayout(left, right) &&
-    left.completionNotifications === right.completionNotifications &&
-    left.showSidebarToolNames === right.showSidebarToolNames
+    left.completionNotifications === right.completionNotifications
   );
 }
 
@@ -246,7 +244,6 @@ const emptyNavigation = (): TabNavigation => ({
   selectedIndex: 0,
   query: "",
   offset: 0,
-  surface: "statusbar",
 });
 
 export function initDashboardState(
@@ -303,12 +300,10 @@ export function selectableRows(
   }
   if (tab === "statuses") {
     const query = state.navigation.statuses.query;
-    const surface = state.navigation.statuses.surface;
     return [
-      { type: "surface_picker", surface },
       ...state.discoveredStatuses
         .filter((key) => includesFuzzy(key, query))
-        .map((key) => ({ type: "status_visibility" as const, key, surface })),
+        .map((key) => ({ type: "status_visibility" as const, key })),
       { type: "save" },
     ];
   }
@@ -333,8 +328,7 @@ export function selectableRows(
       { type: "save" },
     ];
   }
-  if (tab === "settings")
-    return [{ type: "notifications" }, { type: "sidebar_tool_names" }, { type: "save" }];
+  if (tab === "settings") return [{ type: "notifications" }, { type: "save" }];
   return [];
 }
 
@@ -411,7 +405,13 @@ function currentRow(state: DashboardState): DashboardSelectableRow | undefined {
 }
 
 function toggleSidebarPanel(layout: SidebarPanelLayout, id: SidebarPanelId): SidebarPanelLayout {
-  return layout.map((entry) => (entry.id === id ? { ...entry, visible: !entry.visible } : entry));
+  return layout.map((entry) =>
+    entry.id === id ? { ...entry, visible: !entry.visible, segments: [...entry.segments] } : entry,
+  );
+}
+
+function cloneSidebarPanelLayout(layout: SidebarPanelLayout): SidebarPanelLayout {
+  return layout.map((entry) => ({ ...entry, segments: [...entry.segments] }));
 }
 
 function moveSidebarPanel(
@@ -423,17 +423,11 @@ function moveSidebarPanel(
   if (index < 0) return layout;
   const target = index + direction;
   if (target < 0 || target >= layout.length) return layout;
-  const next = layout.slice();
+  const next = cloneSidebarPanelLayout(layout);
   const [moved] = next.splice(index, 1);
   if (!moved) return layout;
   next.splice(target, 0, moved);
   return next;
-}
-
-function flipStatusesSurface(state: DashboardState): void {
-  state.navigation.statuses.surface =
-    state.navigation.statuses.surface === "statusbar" ? "sidebar" : "statusbar";
-  state.navigation.statuses.selectedIndex = 0;
 }
 
 function keepSegmentSelected(state: DashboardState, id: StatusLineSegmentId): DashboardState {
@@ -535,10 +529,6 @@ export function reduceDashboardState(
         ];
       return { state: clampSelection(state) };
     }
-    if (row.type === "surface_picker") {
-      flipStatusesSurface(state);
-      return { state: clampSelection(state) };
-    }
     if (row.type === "preset") {
       const index =
         state.preset === "custom"
@@ -591,25 +581,21 @@ export function reduceDashboardState(
     }
     return { state, effect: { type: "save", config: structuredClone(state.draft) } };
   }
-  if (row.type === "surface_picker") {
-    flipStatusesSurface(state);
-    return { state: clampSelection(state) };
-  }
   if (row.type === "notifications") {
     state.draft.completionNotifications = !state.draft.completionNotifications;
   } else if (row.type === "sidebar_panel") {
     state.draft.sidebarPanelLayout = toggleSidebarPanel(state.draft.sidebarPanelLayout, row.id);
-  } else if (row.type === "sidebar_tool_names") {
-    state.draft.showSidebarToolNames = !state.draft.showSidebarToolNames;
   } else if (row.type === "sidebar_default") {
-    state.draft.sidebarPanelLayout = BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
-      id,
-      visible: true,
-    }));
+    state.draft.sidebarPanelLayout = cloneSidebarPanelLayout(
+      BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
+        id,
+        visible: true,
+        segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]],
+      })),
+    );
   } else if (row.type === "status_visibility") {
-    const field = row.surface === "statusbar" ? "extensionSegments" : "sidebarExtensionSegments";
-    const hidden = state.draft[field].hidden;
-    state.draft[field] = {
+    const hidden = state.draft.extensionSegments.hidden;
+    state.draft.extensionSegments = {
       hidden: hidden.includes(row.key)
         ? hidden.filter((key) => key !== row.key)
         : [...hidden, row.key],

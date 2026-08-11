@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   BUILTIN_SIDEBAR_PANEL_IDS,
+  SIDEBAR_BUILTIN_ASSIGNMENTS,
   type PiStatusConfig,
   type StatusLineZones,
 } from "../../src/shared/types.ts";
@@ -28,11 +29,14 @@ function config(overrides: Partial<PiStatusConfig> = {}): PiStatusConfig {
   return {
     zones: zones(),
     extensionSegments: { hidden: [] },
-    sidebarExtensionSegments: { hidden: [] },
     extensionStatusZone: "bottomRight",
     completionNotifications: false,
-    showSidebarToolNames: false,
-    sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
+    sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
+      id,
+      visible: true,
+      segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]],
+    })),
+    sidebarHiddenSegments: [],
     ...overrides,
   };
 }
@@ -111,10 +115,7 @@ describe("dashboard draft initialization", () => {
     if (!firstPanel) throw new Error("expected default sidebar panel");
     expect(configsEqual(first, structuredClone(first))).toBe(true);
     expect(configsEqual(first, config({ completionNotifications: true }))).toBe(false);
-    expect(configsEqual(first, config({ showSidebarToolNames: true }))).toBe(false);
-    expect(configsEqual(first, config({ sidebarExtensionSegments: { hidden: ["alpha"] } }))).toBe(
-      false,
-    );
+    expect(configsEqual(first, config({ sidebarHiddenSegments: ["alpha"] }))).toBe(false);
     expect(configsEqual(first, config({ extensionStatusZone: "topLeft" }))).toBe(false);
     expect(configsEqual(first, config({ extensionSegments: { hidden: ["alpha"] } }))).toBe(false);
     expect(
@@ -167,10 +168,7 @@ describe("dashboard draft initialization", () => {
     const state = initDashboardState(config(), ["alpha"], true);
     state.activeTab = "statuses";
     state.navigation.statuses.query = "zzz";
-    expect(selectableRows(state)).toEqual([
-      { type: "surface_picker", surface: "statusbar" },
-      { type: "save" },
-    ]);
+    expect(selectableRows(state)).toEqual([{ type: "save" }]);
   });
 });
 
@@ -191,13 +189,12 @@ describe("dashboard Statusbar tab initialization", () => {
     expect(state.activeTab).toBe("statusbar");
   });
 
-  it("initializes Statuses navigation with surface='statusbar' by default", () => {
+  it("initializes Statuses navigation without a surface field", () => {
     const state = initDashboardState(config(), [], true);
     expect(state.navigation.statuses).toEqual({
       selectedIndex: 0,
       query: "",
       offset: 0,
-      surface: "statusbar",
     });
   });
 
@@ -227,14 +224,13 @@ describe("dashboard Statusbar tab initialization", () => {
     ]);
   });
 
-  it("exposes show tool names on the Settings tab only", () => {
+  it("omits sidebar tool names from the Settings tab", () => {
     const state = initDashboardState(config(), [], true);
     expect(selectableRows(state, "settings")).toEqual([
       { type: "notifications" },
-      { type: "sidebar_tool_names" },
       { type: "save" },
     ]);
-    expect(selectableRows(state, "sidebar").some((row) => row.type === "sidebar_tool_names")).toBe(
+    expect(selectableRows(state, "settings").some((row) => row.type === "sidebar_panel")).toBe(
       false,
     );
   });
@@ -269,7 +265,6 @@ describe("dashboard Statusbar tab initialization", () => {
       selectedIndex: 0,
       query: "",
       offset: 0,
-      surface: "statusbar",
     });
   });
 });
@@ -291,65 +286,28 @@ describe("statuses surface picker", () => {
     const state = initDashboardState(config(), ["alpha", "beta"], true);
     const rows = selectableRows(state, "statuses");
     expect(rows).toEqual([
-      { type: "surface_picker", surface: "statusbar" },
-      { type: "status_visibility", key: "alpha", surface: "statusbar" },
-      { type: "status_visibility", key: "beta", surface: "statusbar" },
+      { type: "status_visibility", key: "alpha" },
+      { type: "status_visibility", key: "beta" },
       { type: "save" },
     ]);
   });
 
-  it("search filter narrows the discovered statuses regardless of surface", () => {
+  it("search filter narrows the discovered statuses (statusbar surface only)", () => {
     const state = initDashboardState(config(), ["alpha", "beta"], true);
     state.navigation.statuses.query = "alp";
-    state.navigation.statuses.surface = "sidebar";
     const rows = selectableRows(state, "statuses");
-    expect(rows).toEqual([
-      { type: "surface_picker", surface: "sidebar" },
-      { type: "status_visibility", key: "alpha", surface: "sidebar" },
-      { type: "save" },
-    ]);
+    expect(rows).toEqual([{ type: "status_visibility", key: "alpha" }, { type: "save" }]);
   });
 
-  it("adjust flips the surface and resets selectedIndex", () => {
+  it("activate on a status_visibility row toggles extensionSegments.hidden", () => {
     let state = initDashboardState(config(), ["alpha"], true);
     state.activeTab = "statuses";
-    state.navigation.statuses.selectedIndex = 0; // surface_picker row
-    expect(state.navigation.statuses.surface).toBe("statusbar");
-    state = reduceDashboardState(state, { type: "adjust", delta: 1 }).state;
-    expect(state.navigation.statuses.surface).toBe("sidebar");
-    expect(state.navigation.statuses.selectedIndex).toBe(0);
-  });
-
-  it("activate flips the surface and resets selectedIndex", () => {
-    let state = initDashboardState(config(), ["alpha"], true);
-    state.activeTab = "statuses";
-    state.navigation.statuses.selectedIndex = 0; // surface_picker row
-    expect(state.navigation.statuses.surface).toBe("statusbar");
+    state.navigation.statuses.selectedIndex = 0; // alpha row
+    const before = state.draft.extensionSegments.hidden;
     state = reduceDashboardState(state, { type: "activate" }).state;
-    expect(state.navigation.statuses.surface).toBe("sidebar");
-    expect(state.navigation.statuses.selectedIndex).toBe(0);
-  });
-
-  it("activate on a status_visibility row toggles the matching hidden list", () => {
-    let state = initDashboardState(config(), ["alpha"], true);
-    state.activeTab = "statuses";
-    state.navigation.statuses.surface = "sidebar";
-    state.navigation.statuses.selectedIndex = 1; // alpha row
-    const before = state.draft.sidebarExtensionSegments.hidden;
+    expect(state.draft.extensionSegments.hidden).toEqual([...before, "alpha"]);
     state = reduceDashboardState(state, { type: "activate" }).state;
-    expect(state.draft.sidebarExtensionSegments.hidden).toEqual([...before, "alpha"]);
-    state = reduceDashboardState(state, { type: "activate" }).state;
-    expect(state.draft.sidebarExtensionSegments.hidden).toEqual(before);
-  });
-
-  it("activate on status_visibility uses the correct list per surface", () => {
-    let state = initDashboardState(config(), ["alpha"], true);
-    state.activeTab = "statuses";
-    state.navigation.statuses.surface = "statusbar";
-    state.navigation.statuses.selectedIndex = 1;
-    state = reduceDashboardState(state, { type: "activate" }).state;
-    expect(state.draft.extensionSegments.hidden).toContain("alpha");
-    expect(state.draft.sidebarExtensionSegments.hidden).not.toContain("alpha");
+    expect(state.draft.extensionSegments.hidden).toEqual(before);
   });
 });
 
@@ -446,21 +404,19 @@ describe("dashboard transitions", () => {
   it("keeps or resets status selection safely when filtering", () => {
     let state = initDashboardState(config(), ["alpha", "beta"], true);
     state.activeTab = "statuses";
-    // After the surface_picker was added, beta lives at index 2 (picker(0), alpha(1), beta(2)).
-    state.navigation.statuses.selectedIndex = 2;
+    // Statuses emits one row per key. beta lives at index 1 (alpha(0), beta(1)).
+    state.navigation.statuses.selectedIndex = 1;
 
     state = dispatch(state, { type: "type_char", char: "b" });
     expect(selectableRows(state)[state.navigation.statuses.selectedIndex]).toEqual({
       type: "status_visibility",
       key: "beta",
-      surface: "statusbar",
     });
 
     state = dispatch(state, { type: "type_char", char: "z" });
-    // After filter "bz" the list is [picker, save]; reconcile moves selection to 0.
+    // After filter "bz" the list is [save]; reconcile moves selection to 0.
     expect(selectableRows(state)[state.navigation.statuses.selectedIndex]).toEqual({
-      type: "surface_picker",
-      surface: "statusbar",
+      type: "save",
     });
     expect(state.navigation.statuses.selectedIndex).toBe(0);
   });
@@ -488,53 +444,23 @@ describe("dashboard transitions", () => {
     );
     state.activeTab = "statuses";
     state.navigation.statuses.query = "ab";
-    // After the picker, statuses emit one row per key. selectedIndex=1 is the alpha-build row.
-    state.navigation.statuses.selectedIndex = 1;
+    state.navigation.statuses.selectedIndex = 0; // alpha-build row
     expect(selectableRows(state)).toEqual([
-      { type: "surface_picker", surface: "statusbar" },
-      { type: "status_visibility", key: "alpha-build", surface: "statusbar" },
+      { type: "status_visibility", key: "alpha-build" },
       { type: "save" },
     ]);
     state = dispatch(state, { type: "activate" });
     expect(state.draft.extensionSegments.hidden).toEqual(["missing-extension"]);
   });
 
-  it("Statuses tab rows expose both statusbar and sidebar visibility toggles", () => {
-    // Each surface produces its own status_visibility row; the picker selects which one is active.
-    const stateStatusbar = initDashboardState(config(), ["alpha"], true);
-    const stateSidebar = initDashboardState(config(), ["alpha"], true);
-    stateSidebar.navigation.statuses.surface = "sidebar";
-    expect(selectableRows(stateStatusbar, "statuses")).toContainEqual({
-      type: "status_visibility",
-      key: "alpha",
-      surface: "statusbar",
-    });
-    expect(selectableRows(stateSidebar, "statuses")).toContainEqual({
-      type: "status_visibility",
-      key: "alpha",
-      surface: "sidebar",
-    });
-  });
-
-  it("activating status_visibility (statusbar) toggles extensionSegments.hidden", () => {
+  it("activating status_visibility toggles extensionSegments.hidden", () => {
     let state = initDashboardState(config(), ["alpha"], true);
     state.activeTab = "statuses";
-    // picker(0), status_visibility(1) — activate the alpha row.
-    state.navigation.statuses.selectedIndex = 1;
+    state.navigation.statuses.selectedIndex = 0; // alpha row
     state = reduceDashboardState(state, { type: "activate" }).state;
     expect(state.draft.extensionSegments.hidden).toEqual(["alpha"]);
     state = reduceDashboardState(state, { type: "activate" }).state;
     expect(state.draft.extensionSegments.hidden).toEqual([]);
-  });
-
-  it("activating status_visibility (sidebar) toggles sidebarExtensionSegments.hidden", () => {
-    let state = initDashboardState(config(), ["alpha"], true);
-    state.activeTab = "statuses";
-    state.navigation.statuses.surface = "sidebar";
-    // picker(0), status_visibility(1) — activate the alpha row on the sidebar surface.
-    state.navigation.statuses.selectedIndex = 1;
-    state = reduceDashboardState(state, { type: "activate" }).state;
-    expect(state.draft.sidebarExtensionSegments.hidden).toEqual(["alpha"]);
   });
 
   it("toggles notification draft without saving", () => {
@@ -593,7 +519,7 @@ describe("dashboard transitions", () => {
     expect(moved.state).not.toBe(state);
 
     moved.state.activeTab = "settings";
-    moved.state.navigation.settings.selectedIndex = 2; // Save row
+    moved.state.navigation.settings.selectedIndex = 1; // Save row
     const saved = reduceDashboardState(moved.state, { type: "activate" });
     if (saved.effect?.type !== "save") throw new Error("expected save effect");
     saved.effect.config.zones.topLeft.push("model");
@@ -626,9 +552,9 @@ describe("dashboard transitions", () => {
 
 describe("dashboard Sidebar tab transitions", () => {
   const layout = [
-    { id: "agent" as const, visible: true },
-    { id: "activity" as const, visible: false },
-    { id: "todos" as const, visible: true },
+    { id: "agent" as const, visible: true, segments: [] },
+    { id: "activity" as const, visible: false, segments: [] },
+    { id: "todos" as const, visible: true, segments: [] },
   ];
 
   it("activate on a sidebar_panel flips its visibility and dirties", () => {
@@ -659,7 +585,7 @@ describe("dashboard Sidebar tab transitions", () => {
 
   it("activate on sidebar_default rebuilds the layout to all built-ins visible", () => {
     const state = initDashboardState(
-      config({ sidebarPanelLayout: [{ id: "agent", visible: false }] }),
+      config({ sidebarPanelLayout: [{ id: "agent", visible: false, segments: [] }] }),
       [],
       true,
     );
@@ -670,20 +596,12 @@ describe("dashboard Sidebar tab transitions", () => {
     state.navigation.sidebar.selectedIndex = defaultIndex;
     const next = dispatch(state, { type: "activate" });
     expect(next.draft.sidebarPanelLayout).toEqual(
-      BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
+      BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
+        id,
+        visible: true,
+        segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]],
+      })),
     );
-    expect(isDashboardDirty(next)).toBe(true);
-  });
-
-  it("activate on sidebar_tool_names flips showSidebarToolNames and dirties", () => {
-    const state = initDashboardState(config(), [], true);
-    state.activeTab = "settings";
-    const toolNamesIndex = selectableRows(state, "settings").findIndex(
-      (row) => row.type === "sidebar_tool_names",
-    );
-    state.navigation.settings.selectedIndex = toolNamesIndex;
-    const next = dispatch(state, { type: "activate" });
-    expect(next.draft.showSidebarToolNames).toBe(true);
     expect(isDashboardDirty(next)).toBe(true);
   });
 
@@ -694,6 +612,7 @@ describe("dashboard Sidebar tab transitions", () => {
     state.draft.sidebarPanelLayout = BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
       id,
       visible: false,
+      segments: [],
     }));
     state.navigation.sidebar.selectedIndex = selectableRows(state, "sidebar").length - 1;
     const result = reduceDashboardState(state, { type: "activate" });
@@ -713,7 +632,6 @@ describe("dashboard Sidebar tab transitions", () => {
     expect(result.effect?.type).toBe("save");
     if (result.effect?.type !== "save") throw new Error("expected save effect");
     expect(result.effect.config.sidebarPanelLayout).toEqual(state.draft.sidebarPanelLayout);
-    expect(result.effect.config.showSidebarToolNames).toEqual(state.draft.showSidebarToolNames);
   });
 
   it("adjust on a sidebar_panel clamps at edges without changing layout", () => {

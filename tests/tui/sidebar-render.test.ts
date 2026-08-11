@@ -13,7 +13,7 @@ import type { SidebarSnapshot } from "../../src/tui/sidebar-render.ts";
 import { buildSidebarSnapshot, renderSidebarLines } from "../../src/tui/sidebar-render.ts";
 import { noTheme, type StatusLineTheme } from "../../src/tui/theme.ts";
 import { buildSidebarSegmentCatalog } from "../../src/tui/sidebar-segments.ts";
-import { createLegacySidebarEffectiveLayout } from "../../src/core/sidebar-layout.ts";
+import { seedSidebarEffectiveLayout } from "../../src/core/sidebar-layout.ts";
 import { withDefaults } from "../helpers.ts";
 
 type SidebarRenderFixtureInput = Parameters<typeof buildSidebarSnapshot>[0] & {
@@ -47,11 +47,10 @@ function makeInput(overrides: Partial<SidebarRenderFixtureInput> = {}): SidebarR
     config: {
       zones: footer.zones,
       extensionSegments: { hidden: [] },
-      sidebarExtensionSegments: { hidden: [] },
       extensionStatusZone: "bottomRight",
       completionNotifications: false,
-      showSidebarToolNames: false,
       sidebarPanelLayout: [...DEFAULT_SIDEBAR_PANEL_LAYOUT],
+      sidebarHiddenSegments: [],
     },
     persisted: true,
     branchEntryCount: 3,
@@ -173,12 +172,12 @@ describe("buildSidebarSnapshot", () => {
       config: {
         ...makeInput().config,
         extensionSegments: { hidden: ["err"] },
-        sidebarExtensionSegments: { hidden: ["lsp"] },
+        sidebarHiddenSegments: ["status:lsp"],
       },
     });
     const snapshot = buildSidebarSnapshot(input);
     const catalog = buildSidebarSegmentCatalog(snapshot);
-    const layout = createLegacySidebarEffectiveLayout(input.config, catalog);
+    const layout = seedSidebarEffectiveLayout(input.config, catalog);
 
     expect(catalog.some(({ id }) => id === "status:lsp")).toBe(true);
     expect(layout.hiddenSegments).toContain("status:lsp");
@@ -339,7 +338,7 @@ function render(
 ): string[] {
   const snapshot = buildSidebarSnapshot(input);
   const catalog = buildSidebarSegmentCatalog(snapshot);
-  const layout = createLegacySidebarEffectiveLayout(input.config, catalog);
+  const layout = seedSidebarEffectiveLayout(input.config, catalog);
   return renderSidebarLines(snapshot, catalog, layout, theme, width, height, options);
 }
 
@@ -351,7 +350,7 @@ function renderWithLayout(
 ): string[] {
   const snapshot = buildSidebarSnapshot(input);
   const catalog = buildSidebarSegmentCatalog(snapshot);
-  const layout = mutate(createLegacySidebarEffectiveLayout(input.config, catalog));
+  const layout = mutate(seedSidebarEffectiveLayout(input.config, catalog));
   return renderSidebarLines(snapshot, catalog, layout, noTheme, width, height, {
     colorEnabled: false,
   });
@@ -524,7 +523,7 @@ describe("renderSidebarLines panel composition", () => {
     const input = makeInput();
     const layout = [
       ...input.config.sidebarPanelLayout,
-      { id: "ext:sample" as never, visible: true },
+      { id: "ext:sample" as never, visible: true, segments: [] },
     ];
     const text = render(
       {
@@ -539,11 +538,56 @@ describe("renderSidebarLines panel composition", () => {
     expect(text).toContain("row one");
   });
 
+  it("renders every identity class from its destination assignment", () => {
+    const base = makeInput();
+    const input = makeInput({
+      footer: {
+        ...base.footer,
+        model: { id: "model-x", name: "model-x", provider: "test" },
+        activity: liveActivity(),
+      },
+      todos: [{ id: 7, text: "Ship it", status: "in_progress" }],
+      sidebarPanels: [contributedPanel()],
+    });
+    const text = renderWithLayout(
+      input,
+      (layout) => ({
+        panels: layout.panels.map((panel) => ({
+          ...panel,
+          visible: panel.id === "agent",
+          segments:
+            panel.id === "agent"
+              ? [
+                  "builtin:model",
+                  "status:lsp",
+                  "tool:bash",
+                  "session:todo:7",
+                  "session:contribution:ext%3Asample:1:0",
+                ]
+              : [],
+        })),
+        hiddenSegments: [],
+      }),
+      44,
+      40,
+    ).join("\n");
+
+    expect(text).toContain("model-x");
+    expect(text).toContain("• ready");
+    expect(text).toContain("bash ×2");
+    expect(text).toContain("#7 Ship it");
+    expect(text).toContain("row one");
+    expect(text).not.toContain("STATUSES");
+    expect(text).not.toContain("TOOLS");
+    expect(text).not.toContain("TODOS");
+    expect(text).not.toContain("SAMPLE");
+  });
+
   it("skips a contributed layout entry whose panel is not registered", () => {
     const input = makeInput();
     const layout = [
       ...input.config.sidebarPanelLayout,
-      { id: "ext:missing" as never, visible: true },
+      { id: "ext:missing" as never, visible: true, segments: [] },
     ];
     const lines = render(
       { ...input, config: { ...input.config, sidebarPanelLayout: layout }, sidebarPanels: [] },
@@ -556,9 +600,9 @@ describe("renderSidebarLines panel composition", () => {
 
   it("returns a blank dock when no assigned entry produces content", () => {
     const input = makeInput();
-    const layout = input.config.sidebarPanelLayout.map((entry) => ({ ...entry, visible: false }));
-    const lines = render(
-      { ...input, config: { ...input.config, sidebarPanelLayout: layout } },
+    const lines = renderWithLayout(
+      input,
+      () => ({ panels: [{ id: "agent", visible: true, segments: [] }], hiddenSegments: [] }),
       44,
       12,
     );
@@ -678,7 +722,7 @@ describe("renderSidebarLines semantic roles", () => {
     const fg = vi.fn((_color: string, text: string) => text);
     const snapshot = buildSidebarSnapshot(input);
     const catalog = buildSidebarSegmentCatalog(snapshot);
-    const layout = onlyPanel("activity")(createLegacySidebarEffectiveLayout(input.config, catalog));
+    const layout = onlyPanel("activity")(seedSidebarEffectiveLayout(input.config, catalog));
     const output = renderSidebarLines(snapshot, catalog, layout, { ...noTheme, fg }, 44, 12).join(
       "\n",
     );
@@ -700,7 +744,7 @@ describe("renderSidebarLines semantic roles", () => {
     const fg = vi.fn((_color: string, text: string) => text);
     const snapshot = buildSidebarSnapshot(input);
     const catalog = buildSidebarSegmentCatalog(snapshot);
-    const layout = onlyPanel("activity")(createLegacySidebarEffectiveLayout(input.config, catalog));
+    const layout = onlyPanel("activity")(seedSidebarEffectiveLayout(input.config, catalog));
     renderSidebarLines(snapshot, catalog, layout, { ...noTheme, fg }, 44, 12);
     expect(fg).toHaveBeenCalledWith("error", "ACTIVITY");
     expect(fg).toHaveBeenCalledWith("mdHeading", "Working");
@@ -711,7 +755,7 @@ describe("renderSidebarLines semantic roles", () => {
     const input = agentInput();
     const snapshot = buildSidebarSnapshot(input);
     const catalog = buildSidebarSegmentCatalog(snapshot);
-    const layout = onlyPanel("agent")(createLegacySidebarEffectiveLayout(input.config, catalog));
+    const layout = onlyPanel("agent")(seedSidebarEffectiveLayout(input.config, catalog));
     renderSidebarLines(snapshot, catalog, layout, { ...noTheme, fg }, 52, 12);
     expect(fg).toHaveBeenCalledWith("accent", "AGENT");
   });

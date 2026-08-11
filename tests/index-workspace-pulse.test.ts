@@ -160,9 +160,9 @@ describe("workspace pulse wiring", () => {
     expect(execFileMock.mock.calls.length).toBe(callsAfterStart);
   });
 
-  it("stops lifecycle refreshes when workspace-pulse is removed", async () => {
+  it("preserves the current pulse configuration across a session-tree update", async () => {
     withEnabledZone({ bottomLeft: ["workspace-pulse"] });
-    fourCommandMock((options) => options.cwd);
+    const refreshableMock = fourCommandMock((options) => options.cwd);
 
     const { pi, handlers } = buildPiWithHandlers();
     createExtension(pi);
@@ -174,6 +174,7 @@ describe("workspace pulse wiring", () => {
     withEnabledZone({ bottomLeft: ["model"] });
     for (const h of handlers.get("session_tree") ?? []) h({}, ctx);
     const callsAfterRemoval = execFileMock.mock.calls.length;
+    refreshableMock();
 
     for (const h of handlers.get("turn_start") ?? []) {
       h({ turnIndex: 0, timestamp: Date.now() }, ctx);
@@ -182,7 +183,7 @@ describe("workspace pulse wiring", () => {
       h({ toolCallId: "t1", isError: false }, ctx);
     }
     await new Promise((r) => setTimeout(r, 260));
-    expect(execFileMock).toHaveBeenCalledTimes(callsAfterRemoval);
+    expect(execFileMock.mock.calls.length).toBeGreaterThan(callsAfterRemoval);
   });
 
   it("schedules a debounced refresh on tool_execution_end", async () => {
@@ -258,7 +259,6 @@ describe("workspace pulse sidebar demand", () => {
       JSON.stringify({
         zones: { topLeft: [], topRight: [], bottomLeft: [], bottomRight: [] },
         extensionSegments: { hidden: [] },
-        sidebarExtensionSegments: { hidden: [] },
         extensionStatusZone: "bottomRight",
         sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
           id,
@@ -291,6 +291,44 @@ describe("workspace pulse sidebar demand", () => {
     await new Promise((r) => setImmediate(r));
     await new Promise((r) => setImmediate(r));
     expect(execFileMock).toHaveBeenCalled();
+  });
+
+  it("does not start Workspace Pulse when the visible sidebar has no pulse-demanding assignment", () => {
+    const { writeFileSync, mkdirSync } = require("node:fs") as typeof import("node:fs");
+    mkdirSync(join(agentDir, "extensions"), { recursive: true });
+    writeFileSync(
+      join(agentDir, "extensions", "statusline.json"),
+      JSON.stringify({
+        zones: { topLeft: [], topRight: [], bottomLeft: [], bottomRight: [] },
+        extensionSegments: { hidden: [] },
+        sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
+          id,
+          visible: id === "workspace",
+          segments: id === "workspace" ? ["builtin:project"] : [],
+        })),
+        sidebarHiddenSegments: [
+          "builtin:directory",
+          "builtin:branch",
+          "builtin:changes",
+          "builtin:sync-state",
+        ],
+      }),
+      "utf8",
+    );
+    const { pi, handlers } = buildPiWithHandlers();
+    const customMock = vi.fn(<T>(factory: (...args: unknown[]) => T) => {
+      factory(
+        { terminal: { columns: 120, rows: 30 }, requestRender: () => {} },
+        null,
+        {},
+        () => {},
+      );
+      return Promise.resolve(null) as Promise<unknown>;
+    });
+    createExtension(pi);
+    const ctx = createContext({ ui: { ...createContext().ui, custom: customMock as never } });
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+    expect(execFileMock).not.toHaveBeenCalled();
   });
 
   it("does not start Workspace Pulse when the sidebar workspace panel is hidden", () => {

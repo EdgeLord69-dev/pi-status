@@ -1,10 +1,17 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
-  createLegacySidebarEffectiveLayout,
+  applySidebarPanelControls,
+  createSidebarLayoutRuntime,
   curatedSidebarSegmentsForPanel,
+  persistSidebarLayout,
+  projectStableSidebarLayout,
+  reconcileSidebarEffectiveLayout,
+  restoreDefaultSidebarLayout,
+  seedSidebarEffectiveLayout,
   SIDEBAR_PANEL_ROW_ID_PATTERN,
   sidebarAnonymousContributionSegmentId,
   sidebarContributionSegmentId,
+  sidebarLayoutDemandsWorkspacePulse,
   sidebarStatusSegmentId,
   sidebarTodoSegmentId,
   sidebarToolSegmentId,
@@ -20,11 +27,13 @@ function config(overrides: Partial<PiStatusConfig> = {}): PiStatusConfig {
   return {
     zones: structuredClone(DEFAULT_ZONES),
     extensionSegments: { hidden: [] },
-    sidebarExtensionSegments: { hidden: [] },
     extensionStatusZone: "bottomRight",
     completionNotifications: false,
-    showSidebarToolNames: false,
-    sidebarPanelLayout: DEFAULT_SIDEBAR_PANEL_LAYOUT.map((entry) => ({ ...entry })),
+    sidebarPanelLayout: DEFAULT_SIDEBAR_PANEL_LAYOUT.map((entry) => ({
+      ...entry,
+      segments: [...entry.segments],
+    })),
+    sidebarHiddenSegments: [],
     ...overrides,
   };
 }
@@ -99,80 +108,416 @@ describe("bounded sidebar segment identities", () => {
   });
 });
 
-describe("createLegacySidebarEffectiveLayout", () => {
-  it("preserves configured panel order and visibility", () => {
-    const layout = createLegacySidebarEffectiveLayout(
+describe("Phase 3 layout API", () => {
+  it("seeds missing built-in panels alongside the configured panel", () => {
+    const layout = seedSidebarEffectiveLayout(
+      config({ sidebarPanelLayout: [{ id: "agent", visible: true, segments: [] }] }),
+      [],
+    );
+
+    expect(layout.panels.map((panel) => panel.id)).toEqual([
+      "agent",
+      "activity",
+      "alerts",
+      "statuses",
+      "todos",
+      "context",
+      "workspace",
+      "usage",
+      "tools",
+    ]);
+  });
+
+  it("caps assignments globally when it appends missing built-in panels", () => {
+    const layout = seedSidebarEffectiveLayout(
       config({
         sidebarPanelLayout: [
-          { id: "usage", visible: false },
-          { id: "agent", visible: true },
+          {
+            id: "agent",
+            visible: true,
+            segments: Array.from({ length: 2_048 }, (_, index) => `status:${index}`),
+          },
         ],
       }),
-      [entry({ id: "builtin:model", defaultPanelId: "agent" })],
+      [],
     );
-    expect(layout.panels.slice(0, 2)).toEqual([
-      { id: "usage", visible: false, segments: [] },
-      { id: "agent", visible: true, segments: ["builtin:model"] },
-    ]);
+
+    expect(layout.panels.flatMap((panel) => panel.segments)).toHaveLength(2_048);
   });
 
-  it("appends missing catalog homes as hidden panels", () => {
-    const layout = createLegacySidebarEffectiveLayout(
-      config({ sidebarPanelLayout: [{ id: "agent", visible: true }] }),
-      [entry({ id: "ext:row", defaultPanelId: "ext:panel" })],
+  it("uses hidden IDs, not an empty home array, as catalog removal signals", () => {
+    const model = entry({ id: "builtin:model", defaultPanelId: "agent" });
+    const enabled = seedSidebarEffectiveLayout(
+      config({ sidebarPanelLayout: [{ id: "agent", visible: true, segments: [] }] }),
+      [model],
     );
-    expect(layout.panels).toEqual([
-      { id: "agent", visible: true, segments: [] },
-      { id: "ext:panel", visible: false, segments: ["ext:row"] },
-    ]);
+    const hidden = seedSidebarEffectiveLayout(
+      config({
+        sidebarPanelLayout: [{ id: "agent", visible: true, segments: [] }],
+        sidebarHiddenSegments: [model.id],
+      }),
+      [model],
+    );
+
+    expect(enabled.panels.find((panel) => panel.id === "agent")?.segments).toEqual([model.id]);
+    expect(hidden.panels.find((panel) => panel.id === "agent")?.segments).toEqual([]);
+    expect(hidden.hiddenSegments).toContain(model.id);
   });
 
-  it("hides segments whose catalog default is disabled", () => {
-    const layout = createLegacySidebarEffectiveLayout(config(), [
-      entry({ id: "builtin:model", defaultPanelId: "agent" }),
-      entry({ id: "builtin:provider", defaultPanelId: "agent", defaultEnabled: false }),
-    ]);
-    expect(layout.panels.find((panel) => panel.id === "agent")?.segments).toEqual([
-      "builtin:model",
-    ]);
-    expect(layout.hiddenSegments).toEqual(["builtin:provider"]);
+  it("adds dynamic entries to canonical empty built-in homes", () => {
+    const status = entry({ id: "status:lsp", defaultPanelId: "statuses" });
+    const alert = entry({ id: "status:error", defaultPanelId: "alerts" });
+
+    const layout = seedSidebarEffectiveLayout(config(), [status, alert]);
+
+    expect(layout.panels.find((panel) => panel.id === "statuses")?.segments).toContain(status.id);
+    expect(layout.panels.find((panel) => panel.id === "alerts")?.segments).toContain(alert.id);
   });
 
-  it("maps legacy hidden status keys onto encoded status segment IDs", () => {
-    const layout = createLegacySidebarEffectiveLayout(
-      config({ sidebarExtensionSegments: { hidden: ["usage:weekly"] } }),
+  it("expands the legacy tool sentinel in stable catalog order", () => {
+    const layout = seedSidebarEffectiveLayout(config({ sidebarHiddenSegments: ["tool:all"] }), [
+      entry({ id: "tool:bash", defaultPanelId: "tools", defaultEnabled: false }),
+      entry({ id: "tool:read", defaultPanelId: "tools", defaultEnabled: false }),
+    ]);
+
+    expect(layout.panels.find((panel) => panel.id === "tools")?.segments).toEqual([
+      "builtin:active-tool-count",
+      "tool:bash",
+      "tool:read",
+    ]);
+    expect(layout.hiddenSegments).not.toContain("tool:all");
+  });
+
+  it("repairs Agent visibility after applying hidden panel controls", () => {
+    const layout = applySidebarPanelControls(
       [
-        entry({ id: "status:usage%3Aweekly", defaultPanelId: "statuses" }),
-        entry({ id: "status:lsp", defaultPanelId: "statuses" }),
+        { id: "agent", visible: false, segments: [] },
+        { id: "usage", visible: false, segments: [] },
       ],
+      {
+        panels: [
+          { id: "agent", visible: true, segments: ["builtin:model"] },
+          { id: "usage", visible: true, segments: ["builtin:cost"] },
+        ],
+        hiddenSegments: [],
+      },
     );
-    expect(layout.panels.find((panel) => panel.id === "statuses")?.segments).toEqual([
-      "status:lsp",
-    ]);
-    expect(layout.hiddenSegments).toContain("status:usage%3Aweekly");
+
+    expect(layout.panels.find((panel) => panel.id === "agent")?.visible).toBe(true);
   });
 
-  it("enables tool segments only when showSidebarToolNames is true", () => {
-    const tool = entry({
-      id: "tool:bash",
-      defaultPanelId: "tools",
+  it("keeps the global cap while reconciliation appends missing built-in panels", () => {
+    const reconciled = reconcileSidebarEffectiveLayout(
+      {
+        panels: [
+          {
+            id: "agent",
+            visible: true,
+            segments: Array.from({ length: 2_048 }, (_, index) => `status:${index}`),
+          },
+        ],
+        hiddenSegments: [],
+      },
+      [],
+    );
+
+    expect(reconciled.panels.map((panel) => panel.id)).toHaveLength(9);
+    expect(reconciled.panels.flatMap((panel) => panel.segments)).toHaveLength(2_048);
+  });
+
+  it("shares the effective-layout cap with hidden IDs", () => {
+    const normalized = reconcileSidebarEffectiveLayout(
+      {
+        panels: DEFAULT_SIDEBAR_PANEL_LAYOUT.map((panel) => ({
+          id: panel.id,
+          visible: true,
+          segments:
+            panel.id === "agent"
+              ? Array.from({ length: 2_047 }, (_, index) => `status:${index}`)
+              : [],
+        })),
+        hiddenSegments: ["status:hidden", "status:overflow"],
+      },
+      [],
+    );
+
+    expect(normalized.hiddenSegments).toEqual(["status:hidden"]);
+    expect([
+      ...normalized.panels.flatMap((panel) => panel.segments),
+      ...normalized.hiddenSegments,
+    ]).toHaveLength(2_048);
+  });
+
+  it("does not let catalog additions evict existing choices at the cap", () => {
+    const current = {
+      panels: DEFAULT_SIDEBAR_PANEL_LAYOUT.map((panel) => ({
+        id: panel.id,
+        visible: true,
+        segments:
+          panel.id === "agent"
+            ? Array.from({ length: 2_047 }, (_, index) => `status:${index}`)
+            : [],
+      })),
+      hiddenSegments: ["status:keep-hidden"],
+    };
+    const added = entry({ id: "status:new", defaultPanelId: "agent" });
+
+    const reconciled = reconcileSidebarEffectiveLayout(current, [added]);
+
+    expect(reconciled.panels.flatMap((panel) => panel.segments)).not.toContain(added.id);
+    expect(reconciled.hiddenSegments).toEqual(["status:keep-hidden"]);
+  });
+
+  it("reconciles catalog churn while retaining stable order", () => {
+    const current = {
+      panels: [
+        {
+          id: "agent" as const,
+          visible: true,
+          segments: ["unknown:stable", "session:todo:1", "builtin:model"],
+        },
+      ],
+      hiddenSegments: ["status:hidden"],
+    };
+    const catalog = [
+      entry({ id: "builtin:model", defaultPanelId: "agent" }),
+      entry({ id: "builtin:provider", defaultPanelId: "agent" }),
+    ];
+
+    const reconciled = reconcileSidebarEffectiveLayout(current, catalog);
+
+    expect(reconciled.panels[0]?.segments).toEqual([
+      "unknown:stable",
+      "builtin:model",
+      "builtin:provider",
+    ]);
+    expect(reconciled.hiddenSegments).toEqual(["status:hidden"]);
+  });
+
+  it("projects config-shaped stable fields using catalog persistence metadata", () => {
+    const sessionEntry = entry({
+      id: "volatile:catalog-owned",
+      persistence: "session",
+    });
+    expect(
+      projectStableSidebarLayout(
+        {
+          panels: [
+            {
+              id: "usage",
+              visible: false,
+              segments: ["builtin:model", "session:todo:1", sessionEntry.id],
+            },
+          ],
+          hiddenSegments: ["status:hidden", "session:contribution:x:1:0"],
+        },
+        [sessionEntry],
+      ),
+    ).toEqual({
+      sidebarPanelLayout: [{ id: "usage", visible: false, segments: ["builtin:model"] }],
+      sidebarHiddenSegments: ["status:hidden"],
+    });
+  });
+
+  it("restores known defaults without deleting unavailable stable IDs", () => {
+    const status = entry({
+      id: "status:lsp",
+      defaultPanelId: "statuses",
       defaultEnabled: false,
     });
-    const hidden = createLegacySidebarEffectiveLayout(config(), [tool]);
-    expect(hidden.panels.find((panel) => panel.id === "tools")?.segments).toEqual([]);
+    const todo = entry({
+      id: "session:todo:7",
+      defaultPanelId: "todos",
+      persistence: "session",
+    });
+    const restored = restoreDefaultSidebarLayout(
+      {
+        panels: [
+          {
+            id: "usage",
+            visible: false,
+            segments: ["builtin:model", "stable:missing"],
+          },
+        ],
+        hiddenSegments: ["stable:hidden"],
+      },
+      [status, todo],
+    );
 
-    const shown = createLegacySidebarEffectiveLayout(config({ showSidebarToolNames: true }), [
-      tool,
-    ]);
-    expect(shown.panels.find((panel) => panel.id === "tools")?.segments).toEqual(["tool:bash"]);
+    expect(restored.panels.find((panel) => panel.id === "agent")?.segments).toContain(
+      "builtin:model",
+    );
+    expect(restored.panels.find((panel) => panel.id === "usage")?.segments).toContain(
+      "stable:missing",
+    );
+    expect(restored.panels.find((panel) => panel.id === "todos")?.segments).toContain(todo.id);
+    expect(restored.hiddenSegments).toEqual(["stable:hidden", status.id]);
   });
 
-  it("returns arrays that do not alias the configuration", () => {
-    const source = config();
-    const layout = createLegacySidebarEffectiveLayout(source, []);
-    layout.panels[0]?.segments.push("builtin:mutated");
-    layout.panels.pop();
-    expect(source.sidebarPanelLayout).toHaveLength(DEFAULT_SIDEBAR_PANEL_LAYOUT.length);
-    expect(source.sidebarPanelLayout[0]).toEqual({ id: "agent", visible: true });
+  it("preserves unavailable stable assignments during restore", () => {
+    const unavailable = entry({
+      id: "contribution:old%3Apanel:row",
+      defaultPanelId: "old:panel",
+      available: false,
+    });
+    const restored = restoreDefaultSidebarLayout(
+      {
+        panels: [
+          {
+            id: "usage",
+            visible: true,
+            segments: [unavailable.id],
+          },
+        ],
+        hiddenSegments: [],
+      },
+      [unavailable],
+    );
+
+    expect(restored.panels.find((panel) => panel.id === "usage")?.segments).toContain(
+      unavailable.id,
+    );
+    expect(restored.panels.find((panel) => panel.id === "old:panel")).toBeUndefined();
+  });
+
+  it("retains dormant stable IDs before defaults at the assignment cap", () => {
+    const dormant = Array.from({ length: 2_048 }, (_, index) => `stable:${index}`);
+    const restored = restoreDefaultSidebarLayout(
+      {
+        panels: [{ id: "usage", visible: true, segments: dormant }],
+        hiddenSegments: [],
+      },
+      [],
+    );
+
+    expect(restored.panels.flatMap((panel) => panel.segments)).toEqual(dormant);
+  });
+
+  it("retains contributed panel order and visibility while appending new homes hidden", () => {
+    const contribution = entry({
+      id: "contribution:new%3Apanel:row",
+      defaultPanelId: "new:panel",
+    });
+    const restored = restoreDefaultSidebarLayout(
+      {
+        panels: [
+          { id: "old:second", visible: false, segments: [] },
+          { id: "agent", visible: true, segments: ["builtin:model"] },
+          { id: "old:first", visible: true, segments: [] },
+        ],
+        hiddenSegments: [],
+      },
+      [contribution],
+    );
+
+    expect(restored.panels.slice(9)).toEqual([
+      { id: "old:second", visible: false, segments: [] },
+      { id: "old:first", visible: true, segments: [] },
+      { id: "new:panel", visible: false, segments: [contribution.id] },
+    ]);
+  });
+
+  it("persists before committing and never commits a failed write", () => {
+    const order: string[] = [];
+    const layout = seedSidebarEffectiveLayout(config(), []);
+    persistSidebarLayout({
+      config: config(),
+      effective: layout,
+      catalog: [],
+      persist: () => order.push("persist"),
+      commit: (_persisted, committedLayout) => {
+        order.push("commit");
+        expect(committedLayout).toEqual(layout);
+        expect(committedLayout).not.toBe(layout);
+      },
+    });
+    expect(order).toEqual(["persist", "commit"]);
+
+    const commit = vi.fn();
+    expect(() =>
+      persistSidebarLayout({
+        config: config(),
+        effective: layout,
+        catalog: [],
+        persist: () => {
+          throw new Error("disk full");
+        },
+        commit,
+      }),
+    ).toThrow("disk full");
+    expect(commit).not.toHaveBeenCalled();
+  });
+
+  it("normalizes runtime replacements against their catalog", () => {
+    const runtime = createSidebarLayoutRuntime({ config: config(), catalog: [] });
+    runtime.replace(
+      {
+        panels: [
+          {
+            id: "agent",
+            visible: true,
+            segments: ["session:missing", "builtin:model"],
+          },
+          { id: "usage", visible: true, segments: ["builtin:model"] },
+        ],
+        hiddenSegments: [],
+      },
+      [],
+    );
+
+    expect(runtime.snapshot().panels[0]?.segments).toEqual(["builtin:model"]);
+    expect(runtime.snapshot().panels[1]?.segments).toEqual([]);
+    expect(runtime.snapshot().panels).toHaveLength(9);
+  });
+
+  it("returns runtime clones and reset discards session-only moves", () => {
+    const todo = entry({
+      id: "session:todo:1",
+      defaultPanelId: "todos",
+      persistence: "session",
+    });
+    const runtime = createSidebarLayoutRuntime({ config: config(), catalog: [todo] });
+    const moved = runtime.snapshot();
+    const todos = moved.panels.find((panel) => panel.id === "todos");
+    const agent = moved.panels.find((panel) => panel.id === "agent");
+    if (!todos || !agent) throw new Error("expected built-in panels");
+    todos.segments = todos.segments.filter((id) => id !== todo.id);
+    agent.segments.push(todo.id);
+    runtime.replace(moved, [todo]);
+
+    const clone = runtime.snapshot();
+    clone.panels[0]?.segments.push("mutated:clone");
+    expect(runtime.snapshot().panels[0]?.segments).not.toContain("mutated:clone");
+
+    runtime.reset({ config: config(), catalog: [todo] });
+    expect(runtime.snapshot().panels.find((panel) => panel.id === "todos")?.segments).toContain(
+      todo.id,
+    );
+  });
+
+  it("derives Workspace Pulse demand from visible assigned catalog metadata", () => {
+    const pulseEntry = entry({
+      id: "builtin:branch",
+      defaultPanelId: "workspace",
+      requiresWorkspacePulse: true,
+    });
+    expect(
+      sidebarLayoutDemandsWorkspacePulse(
+        {
+          panels: [{ id: "agent", visible: true, segments: [pulseEntry.id] }],
+          hiddenSegments: [],
+        },
+        [pulseEntry],
+      ),
+    ).toBe(true);
+    expect(
+      sidebarLayoutDemandsWorkspacePulse(
+        {
+          panels: [{ id: "agent", visible: false, segments: [pulseEntry.id] }],
+          hiddenSegments: [],
+        },
+        [pulseEntry],
+      ),
+    ).toBe(false);
   });
 });

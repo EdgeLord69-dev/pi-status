@@ -166,18 +166,11 @@ function logicalBody(
     );
   } else if (tab === "statuses") {
     const rows = selectableRows(state, "statuses");
-    const surface = renderState.navigation.statuses.surface;
-    const surfaceLabel = surface === "statusbar" ? "Statusbar" : "Sidebar";
     lines.push(`Search: ${renderState.navigation.statuses.query}`);
     let visibilityCount = 0;
     for (const row of rows) {
-      if (row.type === "surface_picker") {
-        pushSelectable(" ", "Surface", surfaceLabel);
-      } else if (row.type === "status_visibility") {
-        const hidden =
-          surface === "statusbar"
-            ? state.draft.extensionSegments.hidden
-            : state.draft.sidebarExtensionSegments.hidden;
+      if (row.type === "status_visibility") {
+        const hidden = state.draft.extensionSegments.hidden;
         pushSelectable(hidden.includes(row.key) ? "[ ]" : "[•]", "", row.key);
         visibilityCount += 1;
       }
@@ -242,11 +235,6 @@ function logicalBody(
         state.draft.completionNotifications ? "[•]" : "[ ]",
         "Completion notifications",
         "Notify when Pi finishes a response",
-      );
-      pushSelectable(
-        state.draft.showSidebarToolNames ? "[•]" : "[ ]",
-        "Show tool names",
-        "Reveal active tool names in the Sidebar (when not compact)",
       );
     }
   }

@@ -2,15 +2,18 @@ import type { OverlayHandle, TUI } from "@earendil-works/pi-tui";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createSplitPaneController, type SplitPaneController } from "./split-pane.ts";
 import { renderSidebarLines, type SidebarSnapshot } from "./sidebar-render.ts";
-import { buildSidebarSegmentCatalog } from "./sidebar-segments.ts";
-import { createLegacySidebarEffectiveLayout } from "../core/sidebar-layout.ts";
 import type { StatusLineTheme } from "./theme.ts";
-import type { PiStatusConfig } from "../shared/types.ts";
+import type { SidebarCatalogEntry, SidebarEffectiveLayout } from "../shared/types.ts";
+
+export interface SidebarView {
+  snapshot: SidebarSnapshot;
+  catalog: readonly SidebarCatalogEntry[];
+  layout: SidebarEffectiveLayout;
+}
 
 export interface SidebarControllerOptions {
   ctx: ExtensionContext;
-  getSnapshot(): SidebarSnapshot;
-  getConfig(): PiStatusConfig;
+  getView(): SidebarView;
   colorEnabled?: boolean;
   shouldAnimate?(): boolean;
   animationIntervalMs?: number;
@@ -100,13 +103,11 @@ export function createSidebarController(options: SidebarControllerOptions): Side
             render(width: number) {
               currentColumns = tui.terminal.columns;
               try {
-                const snapshot = options.getSnapshot();
-                const catalog = buildSidebarSegmentCatalog(snapshot);
-                const layout = createLegacySidebarEffectiveLayout(options.getConfig(), catalog);
+                const view = options.getView();
                 return renderSidebarLines(
-                  snapshot,
-                  catalog,
-                  layout,
+                  view.snapshot,
+                  view.catalog,
+                  view.layout,
                   statusTheme,
                   width,
                   tui.terminal.rows,

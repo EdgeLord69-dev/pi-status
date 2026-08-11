@@ -300,11 +300,15 @@ function collectPanels(
   const panels: RenderPanel[] = [];
   for (const panel of layout.panels) {
     if (!panel.visible) continue;
-    const entries = panel.segments
-      .map((id) => byId.get(id))
-      .filter(
-        (entry): entry is SidebarCatalogEntry => entry !== undefined && entry.content !== null,
-      );
+    const seen = new Set<string>();
+    const entries: SidebarCatalogEntry[] = [];
+    for (const id of panel.segments) {
+      if (seen.has(id)) continue;
+      const entry = byId.get(id);
+      if (entry === undefined || entry.content === null) continue;
+      seen.add(id);
+      entries.push(entry);
+    }
     if (entries.length === 0) continue;
     const { title, role } = panelPresentation(panel.id, snapshot);
     panels.push({ title, role, entries });
