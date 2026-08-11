@@ -282,14 +282,19 @@ export class StatusLineDashboardComponent implements Component, Focusable {
         this.close();
       } else if (dialog.kind === "save") {
         const draft = structuredClone(this.state.draft);
+        const sidebarLayout = structuredClone(this.state.draftSidebarLayout);
         try {
-          this.options.save(draft, structuredClone(this.state.draftSidebarLayout));
-          this.state.baseline = structuredClone(draft);
+          this.options.save(draft, sidebarLayout);
         } catch {
           this.warn("Failed to save statusline config");
           this.dismissDialog();
           return;
         }
+        this.state = reduceDashboardState(this.state, {
+          type: "saved",
+          config: draft,
+          sidebarLayout,
+        }).state;
         this.dismissDialog();
       } else {
         this.close();

@@ -16,8 +16,11 @@ import {
 } from "../shared/types.ts";
 import {
   cloneSidebarEffectiveLayout,
+  flattenSidebarEffectiveLayout,
+  restoreDefaultSidebarLayout,
   sidebarStatusSegmentId,
 } from "../core/sidebar-layout.ts";
+import { projectStableSidebarLayout } from "../core/sidebar-layout.ts";
 import type { SessionDetails } from "./session-actions.ts";
 import type { DashboardTool } from "./tool-controls.ts";
 import { DISPLAY_PRESET_NAMES, displayPreset } from "./preset-actions.ts";
@@ -69,7 +72,10 @@ export type DashboardSelectableRow =
   | { type: "tool"; name: string }
   | { type: "rename_session" }
   | { type: "compact_session" }
-  | { type: "sidebar_panel"; id: SidebarPanelId }
+  | { type: "sidebar_active_panel" }
+  | { type: "sidebar_panel_visibility" }
+  | { type: "sidebar_panel_position" }
+  | { type: "sidebar_segment"; id: string }
   | { type: "sidebar_default" }
   | { type: "notifications" }
   | { type: "save" };
@@ -373,11 +379,21 @@ export function selectableRows(
       .map(({ name }) => ({ type: "tool" as const, name }));
   }
   if (tab === "sidebar") {
+    const query = state.navigation.sidebar.query;
+    const segments = flattenSidebarEffectiveLayout(state.draftSidebarLayout);
+    const filteredSegments = segments.filter((id) => {
+      const meta = sidebarSegmentMetadata(state, id);
+      return (
+        includesFuzzy(meta.id, query) ||
+        includesFuzzy(meta.label, query) ||
+        includesFuzzy(meta.description, query)
+      );
+    });
     return [
-      ...state.draft.sidebarPanelLayout.map((entry) => ({
-        type: "sidebar_panel" as const,
-        id: entry.id,
-      })),
+      { type: "sidebar_active_panel" },
+      { type: "sidebar_panel_visibility" },
+      { type: "sidebar_panel_position" },
+      ...filteredSegments.map((id) => ({ type: "sidebar_segment" as const, id })),
       { type: "sidebar_default" },
       { type: "save" },
     ];
@@ -398,10 +414,10 @@ export type DashboardAction =
   | { type: "set_offset"; tab: DashboardTabId; offset: number }
   | { type: "replace_tools"; tools: DashboardTool[] }
   | { type: "replace_session"; session: SessionDetails }
-  | { type: "saved"; config: PiStatusConfig };
+  | { type: "saved"; config: PiStatusConfig; sidebarLayout: SidebarEffectiveLayout };
 
 export type DashboardEffect =
-  | { type: "save"; config: PiStatusConfig }
+  | { type: "save"; config: PiStatusConfig; sidebarLayout: SidebarEffectiveLayout }
   | { type: "toggle_tool"; name: string; enabled: boolean }
   | { type: "rename_session" }
   | { type: "compact_session" }
@@ -421,8 +437,10 @@ function clampSelection(state: DashboardState): DashboardState {
   return state;
 }
 
-function isSearchableTab(tab: DashboardTabId): tab is "statuses" | "tools" {
-  return tab === "statuses" || tab === "tools";
+function isSearchableTab(
+  tab: DashboardTabId,
+): tab is "statuses" | "tools" | "sidebar" {
+  return tab === "statuses" || tab === "tools" || tab === "sidebar";
 }
 
 function reconcileToolSelection(
@@ -450,7 +468,32 @@ function reconcileSearchSelection(
     ? reconcileStatusSelection(state, previous)
     : state.activeTab === "tools"
       ? reconcileToolSelection(state, previous)
-      : clampSelection(state);
+      : state.activeTab === "sidebar"
+        ? reconcileSidebarSelection(state, previous)
+        : clampSelection(state);
+}
+
+function reconcileSidebarSelection(
+  state: DashboardState,
+  previous: DashboardSelectableRow | undefined,
+): DashboardState {
+  const rows = selectableRows(state, "sidebar");
+  let index = -1;
+  if (previous?.type === "sidebar_segment" && previous.id) {
+    index = rows.findIndex(
+      (row) => row.type === "sidebar_segment" && row.id === previous.id,
+    );
+  } else if (
+    previous?.type === "sidebar_active_panel" ||
+    previous?.type === "sidebar_panel_visibility" ||
+    previous?.type === "sidebar_panel_position" ||
+    previous?.type === "sidebar_default" ||
+    previous?.type === "save"
+  ) {
+    index = rows.findIndex((row) => row.type === previous.type);
+  }
+  state.navigation.sidebar.selectedIndex = index >= 0 ? index : 0;
+  return clampSelection(state);
 }
 
 function currentRow(state: DashboardState): DashboardSelectableRow | undefined {
@@ -518,6 +561,35 @@ function assignSidebarSegment(
 function disableSidebarSegment(layout: SidebarEffectiveLayout, id: string): void {
   removeSidebarSegment(layout, id);
   layout.hiddenSegments.push(id);
+}
+
+export function sidebarSegmentMetadata(
+  state: DashboardState,
+  id: string,
+): SidebarCatalogEntry {
+  const found = state.sidebarCatalog.find((entry) => entry.id === id);
+  if (found) return found;
+  return {
+    id,
+    label: id,
+    description: "Unavailable saved segment",
+    defaultPanelId: "agent",
+    persistence: "stable",
+    defaultEnabled: true,
+    available: false,
+    requiresWorkspacePulse: false,
+    priority: "normal",
+    dropOrder: 0,
+    content: null,
+  };
+}
+
+function activeSidebarPanel(state: DashboardState) {
+  return (
+    state.draftSidebarLayout.panels.find(
+      (panel) => panel.id === state.activeSidebarPanelId,
+    ) ?? state.draftSidebarLayout.panels[0]
+  );
 }
 
 function keepSegmentSelected(state: DashboardState, id: StatusLineSegmentId): DashboardState {
@@ -591,6 +663,15 @@ export function reduceDashboardState(
   if (action.type === "saved") {
     state.baseline = structuredClone(action.config);
     state.draft = structuredClone(action.config);
+    state.baselineSidebarLayout = cloneSidebarEffectiveLayout(action.sidebarLayout);
+    state.draftSidebarLayout = cloneSidebarEffectiveLayout(action.sidebarLayout);
+    if (
+      !state.draftSidebarLayout.panels.some(
+        ({ id }) => id === state.activeSidebarPanelId,
+      )
+    ) {
+      state.activeSidebarPanelId = state.draftSidebarLayout.panels[0]?.id;
+    }
     state.preset = presetForZones(action.config.zones, state.visibleSegmentIds);
     return { state: clampSelection(state) };
   }
@@ -598,17 +679,54 @@ export function reduceDashboardState(
   const row = currentRow(state);
   if (!row) return { state };
   if (action.type === "adjust") {
-    if (row.type === "sidebar_panel") {
+    if (row.type === "sidebar_active_panel") {
       const direction: -1 | 1 = action.delta === 1 ? 1 : -1;
-      state.draft.sidebarPanelLayout = moveSidebarPanel(
-        state.draft.sidebarPanelLayout,
-        row.id,
-        direction,
+      const panels = state.draftSidebarLayout.panels;
+      if (panels.length === 0) return { state: clampSelection(state) };
+      const currentIndex = panels.findIndex(
+        (panel) => panel.id === state.activeSidebarPanelId,
       );
-      const index = selectableRows(state).findIndex(
-        (r) => r.type === "sidebar_panel" && r.id === row.id,
+      const startIndex = currentIndex >= 0 ? currentIndex : 0;
+      const nextIndex =
+        (startIndex + direction + panels.length) % panels.length;
+      state.activeSidebarPanelId = panels[nextIndex]?.id;
+      return { state: clampSelection(state) };
+    }
+    if (row.type === "sidebar_panel_position") {
+      const panels = state.draftSidebarLayout.panels;
+      const activeIndex = panels.findIndex(
+        (panel) => panel.id === state.activeSidebarPanelId,
       );
-      if (index >= 0) state.navigation.sidebar.selectedIndex = index;
+      if (activeIndex < 0) return { state: clampSelection(state) };
+      const target = activeIndex + action.delta;
+      if (target < 0 || target >= panels.length) {
+        return { state: clampSelection(state) };
+      }
+      const next = [...panels];
+      const [moved] = next.splice(activeIndex, 1);
+      if (!moved) return { state: clampSelection(state) };
+      next.splice(target, 0, moved);
+      state.draftSidebarLayout.panels = next;
+      return { state: clampSelection(state) };
+    }
+    if (row.type === "sidebar_segment") {
+      const active = activeSidebarPanel(state);
+      if (!active) return { state: clampSelection(state) };
+      const assignment = findSidebarSegmentAssignment(state.draftSidebarLayout, row.id);
+      if (assignment?.panelId !== active.id) {
+        return { state: clampSelection(state) };
+      }
+      const segments = active.segments;
+      const currentIndex = segments.indexOf(row.id);
+      const target = currentIndex + action.delta;
+      if (target < 0 || target >= segments.length) {
+        return { state: clampSelection(state) };
+      }
+      const reordered = [...segments];
+      const [moved] = reordered.splice(currentIndex, 1);
+      if (!moved) return { state: clampSelection(state) };
+      reordered.splice(target, 0, moved);
+      active.segments = reordered;
       return { state: clampSelection(state) };
     }
     if (row.type === "surface_picker") {
@@ -663,7 +781,7 @@ export function reduceDashboardState(
   if (row.type === "save") {
     if (
       state.activeTab === "sidebar" &&
-      state.draft.sidebarPanelLayout.every((entry) => !entry.visible)
+      state.draftSidebarLayout.panels.every((entry) => !entry.visible)
     ) {
       return {
         state,
@@ -674,20 +792,60 @@ export function reduceDashboardState(
         },
       };
     }
-    return { state, effect: { type: "save", config: structuredClone(state.draft) } };
+    const sidebarLayout = cloneSidebarEffectiveLayout(state.draftSidebarLayout);
+    return {
+      state,
+      effect: {
+        type: "save",
+        config: {
+          ...structuredClone(state.draft),
+          ...projectStableSidebarLayout(sidebarLayout, state.sidebarCatalog),
+        },
+        sidebarLayout,
+      },
+    };
   }
   if (row.type === "notifications") {
     state.draft.completionNotifications = !state.draft.completionNotifications;
-  } else if (row.type === "sidebar_panel") {
-    state.draft.sidebarPanelLayout = toggleSidebarPanel(state.draft.sidebarPanelLayout, row.id);
-  } else if (row.type === "sidebar_default") {
-    state.draft.sidebarPanelLayout = cloneSidebarPanelLayout(
-      BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
-        id,
-        visible: true,
-        segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]],
-      })),
+  } else if (row.type === "sidebar_panel_visibility") {
+    const active = activeSidebarPanel(state);
+    if (!active) return { state: clampSelection(state) };
+    const wouldHide = active.visible;
+    const anyVisible = state.draftSidebarLayout.panels.some(
+      (panel) => panel.id !== active.id && panel.visible,
     );
+    if (wouldHide && !anyVisible) {
+      return {
+        state,
+        effect: {
+          type: "notify",
+          message: "At least one Sidebar panel must remain visible",
+          kind: "warning",
+        },
+      };
+    }
+    active.visible = !active.visible;
+  } else if (row.type === "sidebar_segment") {
+    const active = activeSidebarPanel(state);
+    if (!active) return { state: clampSelection(state) };
+    const assignment = findSidebarSegmentAssignment(state.draftSidebarLayout, row.id);
+    if (assignment?.panelId === active.id) {
+      disableSidebarSegment(state.draftSidebarLayout, row.id);
+    } else {
+      assignSidebarSegment(state.draftSidebarLayout, row.id, active.id);
+    }
+  } else if (row.type === "sidebar_default") {
+    state.draftSidebarLayout = restoreDefaultSidebarLayout(
+      state.draftSidebarLayout,
+      state.sidebarCatalog,
+    );
+    if (
+      !state.draftSidebarLayout.panels.some(
+        ({ id }) => id === state.activeSidebarPanelId,
+      )
+    ) {
+      state.activeSidebarPanelId = state.draftSidebarLayout.panels[0]?.id;
+    }
   } else if (row.type === "status_visibility") {
     if (row.surface === "sidebar") {
       const id = sidebarStatusSegmentId(row.key);

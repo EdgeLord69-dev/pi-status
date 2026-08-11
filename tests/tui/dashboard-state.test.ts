@@ -163,7 +163,11 @@ describe("dashboard draft initialization", () => {
       id: "five-hour-limit",
     });
 
-    state = reduceDashboardState(state, { type: "saved", config: state.draft }).state;
+    state = reduceDashboardState(state, {
+      type: "saved",
+      config: state.draft,
+      sidebarLayout: state.draftSidebarLayout,
+    }).state;
     expect(state.baseline.zones.topLeft).toEqual(["five-hour-limit", "model"]);
     expect(state.draft.zones.topLeft).toEqual(["five-hour-limit", "model"]);
   });
@@ -220,16 +224,14 @@ describe("dashboard Statusbar tab initialization", () => {
     expect(state.activeTab).toBe("statusbar");
   });
 
-  it("builds Sidebar rows in layout order then control rows", () => {
-    const layout = config().sidebarPanelLayout.map((entry, index) =>
-      index % 2 === 0 ? entry : { ...entry, visible: false },
-    );
-    const state = initDashboardState(config({ sidebarPanelLayout: layout }), [], true);
-    expect(selectableRows(state, "sidebar")).toEqual([
-      ...layout.map((entry) => ({ type: "sidebar_panel" as const, id: entry.id })),
-      { type: "sidebar_default" },
-      { type: "save" },
-    ]);
+  it("builds Sidebar rows with active controls first then segment rows", () => {
+    const state = initDashboardState(config(), [], true);
+    const rows = selectableRows(state, "sidebar");
+    expect(rows[0]).toEqual({ type: "sidebar_active_panel" });
+    expect(rows[1]).toEqual({ type: "sidebar_panel_visibility" });
+    expect(rows[2]).toEqual({ type: "sidebar_panel_position" });
+    expect(rows.at(-1)).toEqual({ type: "save" });
+    expect(rows.at(-2)).toEqual({ type: "sidebar_default" });
   });
 
   it("omits sidebar tool names from the Settings tab", () => {
@@ -238,7 +240,7 @@ describe("dashboard Statusbar tab initialization", () => {
       { type: "notifications" },
       { type: "save" },
     ]);
-    expect(selectableRows(state, "settings").some((row) => row.type === "sidebar_panel")).toBe(
+    expect(selectableRows(state, "settings").some((row) => row.type === "sidebar_segment")).toBe(
       false,
     );
   });
@@ -555,109 +557,17 @@ describe("dashboard transitions", () => {
       const result = reduceDashboardState(state, { type: "activate" });
       expect(result.effect?.type).toBe("save");
       if (result.effect?.type !== "save") throw new Error("expected save effect");
-      expect(result.effect.config).toEqual(result.state.draft);
+      expect(result.effect.sidebarLayout).toEqual(result.state.draftSidebarLayout);
       expect(isDashboardDirty(result.state)).toBe(true);
 
       const saved = reduceDashboardState(result.state, {
         type: "saved",
         config: result.effect.config,
+        sidebarLayout: result.effect.sidebarLayout,
       }).state;
       expect(isDashboardDirty(saved)).toBe(false);
     },
   );
-});
-
-describe("dashboard Sidebar tab transitions", () => {
-  const layout = [
-    { id: "agent" as const, visible: true, segments: [] },
-    { id: "activity" as const, visible: false, segments: [] },
-    { id: "todos" as const, visible: true, segments: [] },
-  ];
-
-  it("activate on a sidebar_panel flips its visibility and dirties", () => {
-    let state = initDashboardState(config({ sidebarPanelLayout: layout }), [], true);
-    state.activeTab = "sidebar";
-    state.navigation.sidebar.selectedIndex = 1;
-    expect(state.draft.sidebarPanelLayout[1]?.visible).toBe(false);
-    state = dispatch(state, { type: "activate" });
-    expect(state.draft.sidebarPanelLayout[1]?.visible).toBe(true);
-    expect(isDashboardDirty(state)).toBe(true);
-  });
-
-  it("adjust swaps sidebar_panel neighbors and clamps at edges", () => {
-    let state = initDashboardState(config({ sidebarPanelLayout: layout }), [], true);
-    state.activeTab = "sidebar";
-    state.navigation.sidebar.selectedIndex = 0;
-    state = dispatch(state, { type: "adjust", delta: -1 });
-    expect(state.draft.sidebarPanelLayout.map((e) => e.id)).toEqual(["agent", "activity", "todos"]);
-
-    state.navigation.sidebar.selectedIndex = 2;
-    state = dispatch(state, { type: "adjust", delta: 1 });
-    expect(state.draft.sidebarPanelLayout.map((e) => e.id)).toEqual(["agent", "activity", "todos"]);
-
-    state.navigation.sidebar.selectedIndex = 0;
-    state = dispatch(state, { type: "adjust", delta: 1 });
-    expect(state.draft.sidebarPanelLayout.map((e) => e.id)).toEqual(["activity", "agent", "todos"]);
-  });
-
-  it("activate on sidebar_default rebuilds the layout to all built-ins visible", () => {
-    const state = initDashboardState(
-      config({ sidebarPanelLayout: [{ id: "agent", visible: false, segments: [] }] }),
-      [],
-      true,
-    );
-    state.activeTab = "sidebar";
-    const defaultIndex = selectableRows(state, "sidebar").findIndex(
-      (row) => row.type === "sidebar_default",
-    );
-    state.navigation.sidebar.selectedIndex = defaultIndex;
-    const next = dispatch(state, { type: "activate" });
-    expect(next.draft.sidebarPanelLayout).toEqual(
-      BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
-        id,
-        visible: true,
-        segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]],
-      })),
-    );
-    expect(isDashboardDirty(next)).toBe(true);
-  });
-
-  it("save emits notify and skips save effect when no panel is visible", () => {
-    const state = initDashboardState(config(), [], true);
-    state.activeTab = "sidebar";
-    // Toggle every built-in panel off so the draft has zero visible panels.
-    state.draft.sidebarPanelLayout = BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
-      id,
-      visible: false,
-      segments: [],
-    }));
-    state.navigation.sidebar.selectedIndex = selectableRows(state, "sidebar").length - 1;
-    const result = reduceDashboardState(state, { type: "activate" });
-    expect(result.effect).toEqual({
-      type: "notify",
-      message: "At least one Sidebar panel must remain visible",
-      kind: "warning",
-    });
-    expect(isDashboardDirty(result.state)).toBe(true);
-  });
-
-  it("save on a draft with at least one visible panel emits the save effect", () => {
-    const state = initDashboardState(config(), [], true);
-    state.activeTab = "sidebar";
-    state.navigation.sidebar.selectedIndex = selectableRows(state, "sidebar").length - 1;
-    const result = reduceDashboardState(state, { type: "activate" });
-    expect(result.effect?.type).toBe("save");
-    if (result.effect?.type !== "save") throw new Error("expected save effect");
-    expect(result.effect.config.sidebarPanelLayout).toEqual(state.draft.sidebarPanelLayout);
-  });
-
-  it("adjust on a sidebar_panel clamps at edges without changing layout", () => {
-    let state = initDashboardState(config(), [], true);
-    state.activeTab = "sidebar";
-    state.navigation.sidebar.selectedIndex = 0;
-    state = dispatch(state, { type: "adjust", delta: -1 });
-    expect(state.draft.sidebarPanelLayout.map((e) => e.id)).toEqual(BUILTIN_SIDEBAR_PANEL_IDS);
-  });
 });
 
 describe("dashboard live snapshots", () => {
@@ -920,5 +830,189 @@ describe("dashboard Sidebar ownership", () => {
     state.navigation.statuses.selectedIndex = 1;
     const next = reduceDashboardState(state, { type: "activate" }).state;
     expect(next.draftSidebarLayout).toEqual(snapshot);
+  });
+});
+
+describe("searchable Sidebar reducer", () => {
+  function selectSidebarRow(
+    state: DashboardState,
+    row: { type: string; id?: string },
+  ): void {
+    state.activeTab = "sidebar";
+    state.navigation.sidebar.selectedIndex = selectableRows(state, "sidebar").findIndex(
+      (candidate) =>
+        candidate.type === row.type &&
+        ("id" in candidate ? candidate.id === row.id : true),
+    );
+  }
+
+  it("flattens assigned segments in panel order followed by hidden IDs", () => {
+    const state = initDashboardState(config(), [], true, sidebarOptions());
+    expect(selectableRows(state, "sidebar")).toEqual([
+      { type: "sidebar_active_panel" },
+      { type: "sidebar_panel_visibility" },
+      { type: "sidebar_panel_position" },
+      { type: "sidebar_segment", id: "builtin:model" },
+      { type: "sidebar_segment", id: "stable:missing" },
+      { type: "sidebar_segment", id: "session:todo:7" },
+      { type: "sidebar_segment", id: STATUS_ID },
+      { type: "sidebar_segment", id: "builtin:recent-tools" },
+      { type: "sidebar_default" },
+      { type: "save" },
+    ]);
+  });
+
+  it("fuzzy-searches Sidebar ID, label, and description without hiding controls", () => {
+    const state = initDashboardState(config(), [], true, sidebarOptions());
+    state.navigation.sidebar.query = "rctls";
+    expect(selectableRows(state, "sidebar")).toEqual([
+      { type: "sidebar_active_panel" },
+      { type: "sidebar_panel_visibility" },
+      { type: "sidebar_panel_position" },
+      { type: "sidebar_segment", id: "builtin:recent-tools" },
+      { type: "sidebar_default" },
+      { type: "save" },
+    ]);
+  });
+
+  it("wraps Active panel through every retained panel ID", () => {
+    let state = initDashboardState(config(), [], true, sidebarOptions());
+    state.activeTab = "sidebar";
+    const start = state.navigation.sidebar.selectedIndex;
+    state = reduceDashboardState(state, { type: "adjust", delta: 1 }).state;
+    expect(state.activeSidebarPanelId).toBeDefined();
+    for (let i = 0; i < 10; i += 1) {
+      state = reduceDashboardState(state, { type: "adjust", delta: 1 }).state;
+    }
+    expect(state.activeSidebarPanelId).toBeDefined();
+    expect(state.navigation.sidebar.selectedIndex).toBe(start);
+  });
+
+  it("hiding the last visible panel emits exactly At least one Sidebar panel must remain visible", () => {
+    const single = initDashboardState(
+      config(),
+      [],
+      true,
+      {
+        ...sidebarOptions(),
+        sidebarLayout: {
+          panels: [
+            { id: "agent", visible: true, segments: [] },
+            { id: "activity", visible: false, segments: [] },
+          ],
+          hiddenSegments: [],
+        },
+      },
+    );
+    single.activeTab = "sidebar";
+    selectSidebarRow(single, { type: "sidebar_panel_visibility" });
+    const result = reduceDashboardState(single, { type: "activate" });
+    expect(result.effect).toEqual({
+      type: "notify",
+      message: "At least one Sidebar panel must remain visible",
+      kind: "warning",
+    });
+    expect(
+      result.state.draftSidebarLayout.panels.find((p) => p.id === "agent")?.visible,
+    ).toBe(true);
+  });
+
+  it("Activate on a hidden segment appends it to Active", () => {
+    const state = initDashboardState(config(), [], true, sidebarOptions());
+    state.activeTab = "sidebar";
+    selectSidebarRow(state, { type: "sidebar_segment", id: "builtin:recent-tools" });
+    const next = reduceDashboardState(state, { type: "activate" }).state;
+    const active = next.draftSidebarLayout.panels.find(
+      (p) => p.id === next.activeSidebarPanelId,
+    );
+    expect(active?.segments).toContain("builtin:recent-tools");
+    expect(next.draftSidebarLayout.hiddenSegments).not.toContain("builtin:recent-tools");
+  });
+
+  it("Activate on a segment assigned elsewhere moves it to Active", () => {
+    const state = initDashboardState(config(), [], true, sidebarOptions());
+    state.activeTab = "sidebar";
+    selectSidebarRow(state, { type: "sidebar_segment", id: "session:todo:7" });
+    const next = reduceDashboardState(state, { type: "activate" }).state;
+    const activity = next.draftSidebarLayout.panels.find((p) => p.id === "activity");
+    expect(activity?.segments).not.toContain("session:todo:7");
+    const active = next.draftSidebarLayout.panels.find(
+      (p) => p.id === next.activeSidebarPanelId,
+    );
+    expect(active?.segments).toContain("session:todo:7");
+  });
+
+  it("Activate on a segment already in Active disables it", () => {
+    const state = initDashboardState(config(), [], true, sidebarOptions());
+    state.activeTab = "sidebar";
+    selectSidebarRow(state, { type: "sidebar_segment", id: "builtin:model" });
+    const next = reduceDashboardState(state, { type: "activate" }).state;
+    const active = next.draftSidebarLayout.panels.find(
+      (p) => p.id === next.activeSidebarPanelId,
+    );
+    expect(active?.segments).not.toContain("builtin:model");
+    expect(next.draftSidebarLayout.hiddenSegments).toContain("builtin:model");
+  });
+
+  it("deduplicates segment assignments across all panels and hidden", () => {
+    let state = initDashboardState(config(), [], true, sidebarOptions());
+    state.activeTab = "sidebar";
+    selectSidebarRow(state, { type: "sidebar_segment", id: "builtin:model" });
+    state = reduceDashboardState(state, { type: "activate" }).state;
+    selectSidebarRow(state, { type: "sidebar_segment", id: "builtin:model" });
+    state = reduceDashboardState(state, { type: "activate" }).state;
+    selectSidebarRow(state, { type: "sidebar_segment", id: "builtin:model" });
+    state = reduceDashboardState(state, { type: "activate" }).state;
+    const seen = new Set<string>();
+    for (const panel of state.draftSidebarLayout.panels) {
+      for (const seg of panel.segments) {
+        expect(seen.has(seg)).toBe(false);
+        seen.add(seg);
+      }
+    }
+    expect(state.draftSidebarLayout.hiddenSegments.filter((s) => s === "builtin:model")).toEqual(
+      ["builtin:model"],
+    );
+  });
+
+  it("search edits preserve the selected segment ID while it matches and clamp otherwise", () => {
+    const state = initDashboardState(config(), [], true, sidebarOptions());
+    state.activeTab = "sidebar";
+    selectSidebarRow(state, { type: "sidebar_segment", id: "builtin:recent-tools" });
+    const next = reduceDashboardState(state, { type: "type_char", char: "r" }).state;
+    const rowsAfter = selectableRows(next, "sidebar");
+    const expectedIndex = rowsAfter.findIndex(
+      (row) => row.type === "sidebar_segment" && row.id === "builtin:recent-tools",
+    );
+    expect(next.navigation.sidebar.selectedIndex).toBe(expectedIndex);
+    const overtyped = reduceDashboardState(next, { type: "type_char", char: "z" }).state;
+    expect(overtyped.navigation.sidebar.selectedIndex).toBe(0);
+  });
+
+  it("Restore equals restoreDefaultSidebarLayout and does not mutate config draft", () => {
+    const state = initDashboardState(config(), [], true, sidebarOptions());
+    state.draftSidebarLayout.hiddenSegments.push("stable:extra");
+    const before = structuredClone(state.draft);
+    state.activeTab = "sidebar";
+    selectSidebarRow(state, { type: "sidebar_default" });
+    const next = reduceDashboardState(state, { type: "activate" }).state;
+    expect(next.draft).toEqual(before);
+    expect(next.draftSidebarLayout.panels.find((p) => p.id === "agent")?.visible).toBe(true);
+    expect(isDashboardDirty(next)).toBe(true);
+  });
+
+  it("Save effect carries stable projected config plus complete effective draft", () => {
+    const state = initDashboardState(config(), [], true, sidebarOptions());
+    state.draftSidebarLayout.panels[0]!.segments.push("session:todo:8");
+    state.activeTab = "sidebar";
+    selectSidebarRow(state, { type: "save" });
+    const result = reduceDashboardState(state, { type: "activate" });
+    expect(result.effect).toBeDefined();
+    if (result.effect?.type !== "save") throw new Error("expected save effect");
+    const persisted = result.effect.sidebarLayout.panels[0]?.segments ?? [];
+    expect(persisted).toContain("session:todo:8");
+    expect(JSON.stringify(result.effect)).not.toContain(
+      '"sidebarPanelLayout":[{"id":"agent","visible":true,"segments":["builtin:model","stable:missing","session:todo:8"',
+    );
   });
 });

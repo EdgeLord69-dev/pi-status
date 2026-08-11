@@ -8,7 +8,7 @@ import {
   type PiStatusConfig,
 } from "../../src/shared/types.ts";
 import { openStatusLineDashboard, StatusLineDashboardComponent } from "../../src/tui/dashboard.ts";
-import { isDashboardDirty } from "../../src/tui/dashboard-state.ts";
+import { isDashboardDirty, selectableRows } from "../../src/tui/dashboard-state.ts";
 import type { FooterRenderInput } from "../../src/tui/render.ts";
 import { noTheme } from "../../src/tui/theme.ts";
 
@@ -157,6 +157,10 @@ function dirtySettings(component: StatusLineDashboardComponent): void {
   component.handleInput("\r"); // toggle notifications (row 0)
   component.handleInput("\x1b[B"); // → Save (row 1)
   component.handleInput("\r"); // open Save dialog
+}
+
+function selectableRowsForTests(component: StatusLineDashboardComponent) {
+  return selectableRows(component.getState(), "sidebar");
 }
 
 describe("StatusLineDashboardComponent", () => {
@@ -547,58 +551,68 @@ describe("StatusLineDashboardComponent", () => {
 });
 
 describe("StatusLineDashboardComponent Sidebar tab", () => {
-  it("toggles a sidebar_panel visibility through activate", () => {
-    const { component } = makeDashboard();
-    // Default tab is statusbar; one forward cycle reaches sidebar.
-    component.handleInput("\t");
-    const initial = component.getState().draft.sidebarPanelLayout;
-    expect(initial[0]?.visible).toBe(true);
-    component.handleInput("\r");
-    expect(component.getState().draft.sidebarPanelLayout[0]?.visible).toBe(false);
-  });
-
-  it("moves a sidebar_panel left/right through ←/→", () => {
+  it("wraps the active panel through ←/→", () => {
     const { component } = makeDashboard();
     component.handleInput("\t");
-    const before = component.getState().draft.sidebarPanelLayout.map((e) => e.id);
+    const before = component.getState().activeSidebarPanelId;
     component.handleInput("\x1b[C"); // → right
-    const after = component.getState().draft.sidebarPanelLayout.map((e) => e.id);
-    expect(after).toEqual([before[1], before[0], ...before.slice(2)]);
+    const after = component.getState().activeSidebarPanelId;
+    expect(after).not.toBe(before);
+    expect(component.getState().activeSidebarPanelId).toBeDefined();
   });
 
-  it("reorders clamped at edges", () => {
+  it("toggles the active panel visibility through activate", () => {
     const { component } = makeDashboard();
-    component.handleInput("\t");
-    component.handleInput("\x1b[D"); // ← at top row, no-op
-    const before = component.getState().draft.sidebarPanelLayout.map((e) => e.id);
-    expect(before).toEqual(BUILTIN_SIDEBAR_PANEL_IDS);
-  });
-
-  it("restores default layout through activate", () => {
-    const { component } = makeDashboard();
-    component.handleInput("\t");
+    component.handleInput("\t"); // sidebar
+    component.handleInput("\x1b[B"); // → sidebar_panel_visibility
+    const id = component.getState().activeSidebarPanelId;
+    const before = component.getState().draftSidebarLayout.panels.find(
+      (p) => p.id === id,
+    )?.visible;
     component.handleInput("\r");
-    const panelCount = BUILTIN_SIDEBAR_PANEL_IDS.length;
-    for (let i = 0; i < panelCount; i += 1) component.handleInput("\x1b[B");
-    component.handleInput("\r"); // activate restore_default
-    expect(component.getState().draft.sidebarPanelLayout).toEqual(
-      BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
-        id,
-        visible: true,
-        segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]],
-      })),
-    );
+    const after = component.getState().draftSidebarLayout.panels.find(
+      (p) => p.id === id,
+    )?.visible;
+    expect(after).toBe(!before);
+  });
+
+  it("swaps the active panel position through ←/→ on the panel position row", () => {
+    const { component } = makeDashboard();
+    component.handleInput("\t");
+    component.handleInput("\x1b[B"); // → sidebar_panel_visibility
+    component.handleInput("\x1b[B"); // → sidebar_panel_position
+    const id = component.getState().activeSidebarPanelId;
+    const initialIndex = component
+      .getState()
+      .draftSidebarLayout.panels.findIndex((p) => p.id === id);
+    component.handleInput("\x1b[C"); // → swap with next
+    const nextIndex = component
+      .getState()
+      .draftSidebarLayout.panels.findIndex((p) => p.id === id);
+    expect(nextIndex).toBe(initialIndex + 1);
+    expect(component.getState().activeSidebarPanelId).toBe(id);
+  });
+
+  it("clamps panel position swap at edges without changing layout", () => {
+    const { component } = makeDashboard();
+    component.handleInput("\t");
+    component.handleInput("\x1b[B");
+    component.handleInput("\x1b[B"); // panel position
+    const before = component.getState().draftSidebarLayout.panels.map((p) => p.id);
+    component.handleInput("\x1b[D"); // ← at first panel, no-op
+    expect(component.getState().draftSidebarLayout.panels.map((p) => p.id)).toEqual(before);
   });
 
   it("warns and stays dirty when saving with no visible panels", () => {
     const { component, ctx } = makeDashboard();
+    // Force every panel to hidden so the save guard fires.
     component.handleInput("\t");
-    for (let i = 0; i < BUILTIN_SIDEBAR_PANEL_IDS.length; i += 1) {
-      component.handleInput("\r"); // toggle each panel off
-      component.handleInput("\x1b[B"); // move to next panel
+    const state = component.getState();
+    for (const panel of state.draftSidebarLayout.panels) {
+      panel.visible = false;
     }
-    // Now navigate to Save (last row).
-    component.handleInput("\x1b[B"); // skip sidebar_default
+    const total = selectableRowsForTests(component).length;
+    for (let i = 0; i < total; i += 1) component.handleInput("\x1b[B");
     component.handleInput("\r"); // activate save
     expect(ctx.ui.notify).toHaveBeenCalledWith(
       "At least one Sidebar panel must remain visible",
@@ -610,6 +624,7 @@ describe("StatusLineDashboardComponent Sidebar tab", () => {
   it("persists sidebarPanelLayout through Save", () => {
     const { component, save } = makeDashboard();
     component.handleInput("\t");
+    component.handleInput("\x1b[B"); // → sidebar_panel_visibility
     component.handleInput("\r"); // toggle first panel off
     // Navigate to Settings tab (four forward tabs from Sidebar) and toggle notifications.
     component.handleInput("\t"); // sidebar → statuses
@@ -622,8 +637,8 @@ describe("StatusLineDashboardComponent Sidebar tab", () => {
     component.handleInput("\x1b[B"); // → Save
     component.handleInput("\r"); // confirm Save
     expect(save).toHaveBeenCalledOnce();
-    const savedArg = save.mock.calls[0]?.[0];
-    expect(savedArg?.sidebarPanelLayout[0]).toEqual({
+    const sidebarLayout = save.mock.calls[0]?.[1];
+    expect(sidebarLayout?.panels[0]).toEqual({
       id: BUILTIN_SIDEBAR_PANEL_IDS[0],
       visible: false,
       segments: expect.any(Array),
