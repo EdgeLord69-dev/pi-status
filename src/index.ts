@@ -382,7 +382,6 @@ export default function createExtension(pi: ExtensionAPI): void {
           ctx,
           getConfig: () => runtimeState.snapshot().config,
           getSnapshot: () => {
-            const config = runtimeState.snapshot().config;
             const activeCtx = runtimeState.snapshot().ctx ?? ctx;
             const safeSessionName = safeRead(() => pi.getSessionName());
             const safeAvailableToolNames = safeRead(() => pi.getAllTools().map(({ name }) => name));
@@ -390,7 +389,6 @@ export default function createExtension(pi: ExtensionAPI): void {
             const branchEntries = safeRead(() => activeCtx.sessionManager.getBranch().length);
             return buildSidebarSnapshot({
               footer: currentFooterInput(ctx),
-              config,
               ...(safeSessionName !== undefined ? { sessionName: safeSessionName } : {}),
               persisted: sessionFile !== undefined,
               branchEntryCount: branchEntries ?? 0,

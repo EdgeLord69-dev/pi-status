@@ -60,6 +60,11 @@ describe("bounded sidebar segment identities", () => {
     expect(sidebarContributionSegmentId("ext:panel", "r".repeat(250))).toBeUndefined();
   });
 
+  it("rejects malformed UTF-16 identity parts without throwing", () => {
+    expect(sidebarStatusSegmentId("\ud800")).toBeUndefined();
+    expect(sidebarToolSegmentId("\ud800")).toBeUndefined();
+  });
+
   it("builds session identities that always resolve", () => {
     expect(sidebarTodoSegmentId(17)).toBe("session:todo:17");
     expect(sidebarAnonymousContributionSegmentId("build:panel", 3, 2)).toBe(

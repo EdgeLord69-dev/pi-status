@@ -27,16 +27,22 @@ const encodeSidebarIdentityPart = (value: string): string =>
 const boundedSidebarSegmentId = (value: string): string | undefined =>
   value.length <= SIDEBAR_SEGMENT_MAX_ID_CHARS ? value : undefined;
 
+const stableSidebarSegmentId = (prefix: string, ...parts: string[]): string | undefined => {
+  try {
+    return boundedSidebarSegmentId(`${prefix}:${parts.map(encodeSidebarIdentityPart).join(":")}`);
+  } catch {
+    return undefined;
+  }
+};
+
 export const sidebarStatusSegmentId = (key: string): string | undefined =>
-  boundedSidebarSegmentId(`status:${encodeSidebarIdentityPart(key)}`);
+  stableSidebarSegmentId("status", key);
 
 export const sidebarToolSegmentId = (name: string): string | undefined =>
-  boundedSidebarSegmentId(`tool:${encodeSidebarIdentityPart(name)}`);
+  stableSidebarSegmentId("tool", name);
 
 export const sidebarContributionSegmentId = (panelId: string, rowId: string): string | undefined =>
-  boundedSidebarSegmentId(
-    `contribution:${encodeSidebarIdentityPart(panelId)}:${encodeSidebarIdentityPart(rowId)}`,
-  );
+  stableSidebarSegmentId("contribution", panelId, rowId);
 
 export const sidebarTodoSegmentId = (id: number): string => `session:todo:${id}`;
 

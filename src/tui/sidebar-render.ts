@@ -1,17 +1,14 @@
+import { basename } from "node:path";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type {
   AccessType,
   LiveActivitySnapshot,
   NormalizedTodo,
-  PiStatusConfig,
   SessionMetrics,
   SidebarCatalogEntry,
   SidebarEffectiveLayout,
   SidebarPanelId,
-  SidebarSegmentRole,
   SidebarSegmentSpan,
-  StatusLineSegmentId,
-  ToolActivity,
 } from "../shared/types.ts";
 import { sanitizeSidebarPanelText, type SidebarPanelData } from "./sidebar-panels.ts";
 import type { FooterRenderInput } from "./render.ts";
@@ -26,20 +23,11 @@ import {
 import type { StatusLineTheme } from "./theme.ts";
 
 export interface WorkspacePulseAggregates {
-  status: "clean" | "changed" | "conflict" | "not-repository" | "unavailable" | "stale";
   branch?: string;
   ahead: number;
   behind: number;
-  trackedFiles: number;
-  linesAdded: number;
-  linesRemoved: number;
-  binaryFiles: number;
   staged: number;
   unstaged: number;
-  untracked: number;
-  conflicts: number;
-  submodules: number;
-  root: string;
   relativeCwd?: string;
 }
 
@@ -72,39 +60,14 @@ export interface SidebarSnapshot {
 
 export interface SidebarSnapshotInput {
   footer: Omit<FooterRenderInput, "zones" | "extensionSegments">;
-  config: PiStatusConfig;
   sessionName?: string;
   persisted: boolean;
   branchEntryCount: number;
   availableToolNames: readonly string[];
+  /** Optional normalized input; production TODO ingestion is outside Phase 2. */
   todos?: readonly NormalizedTodo[];
   sidebarPanels?: readonly SidebarPanelData[];
 }
-
-export const SIDEBAR_SEGMENT_PANELS: Readonly<Record<StatusLineSegmentId, SidebarPanelId>> = {
-  model: "agent",
-  "model-with-reasoning": "agent",
-  "project-name": "workspace",
-  "current-dir": "workspace",
-  "git-branch": "workspace",
-  "workspace-pulse": "workspace",
-  "run-state": "activity",
-  "context-remaining": "context",
-  "context-used": "context",
-  "used-tokens": "agent",
-  "total-input-tokens": "usage",
-  "total-output-tokens": "usage",
-  "session-id": "agent",
-  "five-hour-limit": "usage",
-  "weekly-limit": "usage",
-  "cache-read-tokens": "usage",
-  "cache-write-tokens": "usage",
-  "cache-hit": "usage",
-  "session-cost": "usage",
-  "access-type": "agent",
-  "turn-progress": "activity",
-  "response-performance": "activity",
-};
 
 const EXCEPTION_PATTERN =
   /\b(error|failed?|failure|warn(?:ing)?|offline|unavailable|blocked|degraded)\b/i;
@@ -119,51 +82,32 @@ function sanitizeText(value: string): string {
   return sanitizeSidebarPanelText(value, 160);
 }
 
-function basenameOf(path: string): string {
-  const idx = path.lastIndexOf("/");
-  return idx === -1 ? path : path.slice(idx + 1) || path;
-}
-
 function deriveProjectName(footer: Omit<FooterRenderInput, "zones" | "extensionSegments">): {
   projectName: string;
   pulse?: WorkspacePulseAggregates;
 } {
   const pulse = footer.workspacePulse;
-  if (!pulse) return { projectName: basenameOf(footer.cwd) };
+  if (!pulse) return { projectName: basename(footer.cwd) };
   const aggregates: WorkspacePulseAggregates = {
-    status: pulse.status,
     branch: pulse.branch,
     ahead: pulse.ahead,
     behind: pulse.behind,
-    trackedFiles: pulse.trackedFiles,
-    linesAdded: pulse.linesAdded,
-    linesRemoved: pulse.linesRemoved,
-    binaryFiles: pulse.binaryFiles,
-    untracked: pulse.counts.untracked,
     staged: pulse.counts.staged,
     unstaged: pulse.counts.unstaged,
-    conflicts: pulse.counts.conflicts,
-    submodules: pulse.submodules,
-    root: pulse.root ?? footer.cwd,
     relativeCwd: pulse.relativeCwd,
   };
   return {
-    projectName: pulse.root ? basenameOf(pulse.root) : basenameOf(footer.cwd),
+    projectName: basename(pulse.root || footer.cwd),
     pulse: aggregates,
   };
 }
 
-function splitStatuses(
-  statuses: ReadonlyMap<string, string>,
-  hidden: readonly string[],
-): {
+function splitStatuses(statuses: ReadonlyMap<string, string>): {
   alerts: { key: string; text: string }[];
   statuses: { key: string; text: string }[];
 } {
-  const blocked = new Set(hidden);
   const entries = [...statuses.entries()]
-    .filter(([key]) => !blocked.has(key))
-    .map(([key, value]) => ({ key, text: sanitizeText(removeLeadingStatusKey(key, value)) }))
+    .map(([key, value]) => ({ key, text: removeLeadingStatusKey(key, sanitizeText(value)) }))
     .filter(({ text }) => text.length > 0)
     .sort((a, b) => a.key.localeCompare(b.key));
   const alerts: { key: string; text: string }[] = [];
@@ -175,37 +119,13 @@ function splitStatuses(
   return { alerts, statuses: rest };
 }
 
-function cloneToolActivity(tool: ToolActivity): ToolActivity {
-  return { ...tool };
-}
-
-function cloneActivity(
-  activity: LiveActivitySnapshot | undefined,
-): LiveActivitySnapshot | undefined {
-  if (!activity) return undefined;
-  return {
-    run: { ...activity.run },
-    turn: { ...activity.turn },
-    activeTools: activity.activeTools.map(cloneToolActivity),
-    recentTools: activity.recentTools.map(cloneToolActivity),
-    completedToolCount: activity.completedToolCount,
-    failedToolCount: activity.failedToolCount,
-    response: { ...activity.response },
-    updatedAt: activity.updatedAt,
-  };
-}
-
 export function buildSidebarSnapshot(input: SidebarSnapshotInput): SidebarSnapshot {
-  const { footer, config } = input;
+  const { footer } = input;
   const { projectName, pulse } = deriveProjectName(footer);
-  const { alerts, statuses } = splitStatuses(
-    footer.extensionStatuses ?? new Map<string, string>(),
-    config.sidebarExtensionSegments.hidden,
-  );
-  const activity = cloneActivity(footer.activity);
+  const { alerts, statuses } = splitStatuses(footer.extensionStatuses ?? new Map<string, string>());
   const fiveHour = getRateWindow(footer, "fiveHour");
   const weekly = getRateWindow(footer, "weekly");
-  return {
+  return structuredClone({
     modelLabel: footer.model?.name ?? footer.model?.id ?? DEFAULT_TEXT,
     provider: footer.model?.provider,
     thinkingLevel: footer.thinkingLevel,
@@ -222,14 +142,14 @@ export function buildSidebarSnapshot(input: SidebarSnapshotInput): SidebarSnapsh
     accessType: footer.accessType,
     pulse,
     branchEntryCount: input.branchEntryCount,
-    availableToolNames: [...input.availableToolNames],
+    availableToolNames: input.availableToolNames,
     runState: footer.runState,
-    activity,
+    activity: footer.activity,
     alerts,
     statuses,
     todos: input.todos ?? [],
     sidebarPanels: input.sidebarPanels ?? [],
-  };
+  } satisfies SidebarSnapshot);
 }
 
 function padToWidth(text: string, width: number): string {
@@ -272,12 +192,11 @@ function panelRows(
   palette: Palette,
   theme: StatusLineTheme,
   role: PaletteRole,
-  jewel: "✦" | "✧",
 ): string[] {
   const safeWidth = Math.max(4, Math.trunc(width));
   const innerWidth = Math.max(0, safeWidth - 4);
   const safeTitle = sanitizeText(title).toUpperCase();
-  const crownPrefix = `╭─ ${jewel} `;
+  const crownPrefix = "╭─ ✦ ";
   const crownFill = "─".repeat(
     Math.max(0, safeWidth - visibleWidth(crownPrefix) - visibleWidth(safeTitle) - 2),
   );
@@ -367,7 +286,6 @@ const PRIORITY_RANK: Readonly<Record<SidebarCatalogEntry["priority"], number>> =
 };
 
 interface RenderPanel {
-  id: SidebarPanelId;
   title: string;
   role: PaletteRole;
   entries: SidebarCatalogEntry[];
@@ -389,7 +307,7 @@ function collectPanels(
       );
     if (entries.length === 0) continue;
     const { title, role } = panelPresentation(panel.id, snapshot);
-    panels.push({ id: panel.id, title, role, entries });
+    panels.push({ title, role, entries });
   }
   return panels;
 }
@@ -456,13 +374,13 @@ function renderPanels(
   for (const panel of panels) {
     const rows = entryRows(panel.entries, panelContentWidth, palette);
     if (rows.length === 0) continue;
-    rendered.push(...panelRows(panel.title, rows, width, palette, theme, panel.role, "✦"));
+    rendered.push(...panelRows(panel.title, rows, width, palette, theme, panel.role));
   }
   return rendered;
 }
 
 /** Remove the least important optional entry; returns false when none remain. */
-function dropOneEntry(panels: RenderPanel[]): boolean {
+function dropOneEntry(panels: RenderPanel[], catalogOrder: ReadonlyMap<string, number>): boolean {
   let target: { panel: RenderPanel; index: number; entry: SidebarCatalogEntry } | undefined;
   for (const panel of panels) {
     for (const [index, entry] of panel.entries.entries()) {
@@ -471,7 +389,9 @@ function dropOneEntry(panels: RenderPanel[]): boolean {
         target === undefined ||
         PRIORITY_RANK[entry.priority] < PRIORITY_RANK[target.entry.priority] ||
         (PRIORITY_RANK[entry.priority] === PRIORITY_RANK[target.entry.priority] &&
-          entry.dropOrder < target.entry.dropOrder)
+          (entry.dropOrder < target.entry.dropOrder ||
+            (entry.dropOrder === target.entry.dropOrder &&
+              (catalogOrder.get(entry.id) ?? -1) > (catalogOrder.get(target.entry.id) ?? -1))))
       ) {
         target = { panel, index, entry };
       }
@@ -497,9 +417,10 @@ function renderSidebarLinesInner(
     ? [palette.paint("warning", "RESIZE · drag divider"), ""]
     : ([] as string[]);
   const panels = collectPanels(snapshot, catalog, layout);
+  const catalogOrder = new Map(catalog.map((entry, index) => [entry.id, index]));
 
   let rendered = renderPanels(panels, contentWidth, palette, theme, banner);
-  while (rendered.length > safeHeight && dropOneEntry(panels)) {
+  while (rendered.length > safeHeight && dropOneEntry(panels, catalogOrder)) {
     rendered = renderPanels(panels, contentWidth, palette, theme, banner);
   }
   return renderDock(rendered, safeWidth, safeHeight, palette, options.resizing ?? false);
@@ -539,5 +460,3 @@ export function renderSidebarLines(
     return renderUnavailableDock(safeWidth, safeHeight);
   }
 }
-
-export type { SidebarSegmentRole };

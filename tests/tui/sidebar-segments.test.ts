@@ -62,20 +62,11 @@ function snapshot(overrides: Partial<SidebarSnapshot> = {}): SidebarSnapshot {
     weeklyPercent: 62,
     accessType: "subscription",
     pulse: {
-      status: "changed",
       branch: "main",
       ahead: 2,
       behind: 1,
-      trackedFiles: 9,
-      linesAdded: 30,
-      linesRemoved: 4,
-      binaryFiles: 0,
       staged: 3,
       unstaged: 5,
-      untracked: 1,
-      conflicts: 0,
-      submodules: 0,
-      root: "/home/user/pi-status",
       relativeCwd: "src/tui",
     },
     branchEntryCount: 17,
@@ -369,6 +360,25 @@ function contributedPanel(overrides: Partial<SidebarPanelData> = {}): SidebarPan
 }
 
 describe("sidebar catalog dynamic identities", () => {
+  it("sanitizes dynamic labels before they reach editor metadata", () => {
+    const catalog = buildSidebarSegmentCatalog(
+      snapshot({
+        alerts: [],
+        statuses: [{ key: "\u001b[31mlsp\u001b[0m", text: "ready" }],
+        availableToolNames: ["\u001b[31mbash\u001b[0m"],
+        todos: [{ id: 1, text: "\u001b[31mship\u001b[0m", status: "pending" }],
+        sidebarPanels: [
+          contributedPanel({ title: "\u001b[31mBuild\u001b[0m", rows: [{ text: "passing" }] }),
+        ],
+      }),
+    );
+    const dynamicLabels = catalog
+      .filter(({ id }) => !id.startsWith("builtin:"))
+      .map(({ label }) => label);
+
+    expect(dynamicLabels).toEqual(["lsp", "bash", "ship", "Build"]);
+  });
+
   it("gives statuses and alerts stable encoded identities", () => {
     const catalog = byId(
       buildSidebarSegmentCatalog(

@@ -665,7 +665,7 @@ function statusSegments(snapshot: SidebarSnapshot): SegmentDefinition[] {
     if (id === undefined) return;
     definitions.push({
       id,
-      label: entry.key,
+      label: text(entry.key),
       description: "Status published by another extension.",
       defaultPanelId: panelId,
       priority: panelId === "alerts" ? "important" : "optional",
@@ -694,7 +694,7 @@ function toolNameSegments(snapshot: SidebarSnapshot): SegmentDefinition[] {
     if (id === undefined) continue;
     definitions.push({
       id,
-      label: name,
+      label: text(name),
       description: "Configured tool; shows live calls while it runs.",
       defaultPanelId: "tools",
       defaultEnabled: false,
@@ -720,7 +720,7 @@ function toolNameSegments(snapshot: SidebarSnapshot): SegmentDefinition[] {
 function todoRowSegments(snapshot: SidebarSnapshot): SegmentDefinition[] {
   return snapshot.todos.map((todo) => ({
     id: sidebarTodoSegmentId(todo.id),
-    label: todo.text,
+    label: text(todo.text),
     description: "One TODO row for this session.",
     defaultPanelId: "todos" as SidebarPanelId,
     persistence: "session" as const,
@@ -747,8 +747,8 @@ function contributionSegments(snapshot: SidebarSnapshot): SegmentDefinition[] {
         explicitId ?? sidebarAnonymousContributionSegmentId(panel.id, panel.generation, index);
       definitions.push({
         id,
-        label: panel.title,
-        description: `Row contributed by ${panel.source}.`,
+        label: text(panel.title),
+        description: `Row contributed by ${text(panel.source)}.`,
         defaultPanelId: panel.id,
         persistence: explicitId === undefined ? "session" : "stable",
         priority: "optional",

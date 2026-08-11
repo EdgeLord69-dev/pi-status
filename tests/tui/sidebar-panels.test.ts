@@ -1317,6 +1317,24 @@ describe("contributed row identity and generation", () => {
     registry.dispose();
   });
 
+  it("keeps only the first occurrence of a duplicate row ID", () => {
+    const registry = createSidebarPanelRegistry();
+    registry.register({
+      id: "vendor:queue",
+      title: "Queue",
+      rows: [
+        { text: "first", id: "same_row" },
+        { text: "second", id: "same_row" },
+      ],
+    });
+
+    expect(registry.get("vendor:queue")?.rows).toEqual([
+      { text: "first", id: "same_row" },
+      { text: "second" },
+    ]);
+    registry.dispose();
+  });
+
   it("increments the generation only when sanitized content changes", () => {
     const registry = createSidebarPanelRegistry();
     registry.register({ id: "vendor:queue", title: "Queue", rows: ["one"] });

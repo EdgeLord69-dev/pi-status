@@ -245,6 +245,7 @@ function sanitizeContribution(value: unknown): SanitizedSidebarPanelContribution
   )
     return undefined;
   const rows: SidebarPanelRow[] = [];
+  const rowIds = new Set<string>();
   for (const row of value.rows) {
     const text =
       typeof row === "string"
@@ -258,12 +259,13 @@ function sanitizeContribution(value: unknown): SanitizedSidebarPanelContribution
       !fitsSidebarPanelText(text, SIDEBAR_PANEL_MAX_ROW_CHARS)
     )
       return undefined;
+    const id = isRecord(row) && typeof row.id === "string" ? row.id : undefined;
+    const keepId = id !== undefined && SIDEBAR_PANEL_ROW_ID_PATTERN.test(id) && !rowIds.has(id);
+    if (keepId) rowIds.add(id);
     rows.push({
       text: sanitizeSidebarPanelText(text, SIDEBAR_PANEL_MAX_ROW_CHARS),
       ...(isRecord(row) && isSidebarPanelRole(row.role) ? { role: row.role } : {}),
-      ...(isRecord(row) && typeof row.id === "string" && SIDEBAR_PANEL_ROW_ID_PATTERN.test(row.id)
-        ? { id: row.id }
-        : {}),
+      ...(keepId ? { id } : {}),
     });
   }
   return {
@@ -376,13 +378,6 @@ export function registerSidebarPanel(
     },
   };
 }
-function copyPanelData(data: SidebarPanelData): SidebarPanelData {
-  return {
-    ...data,
-    rows: data.rows.map((row) => ({ ...row })),
-  };
-}
-
 export function createSidebarPanelRegistry(
   options: SidebarPanelRegistryOptions = {},
 ): SidebarPanelRegistry {
@@ -514,11 +509,8 @@ export function createSidebarPanelRegistry(
   return {
     register,
     unregister,
-    getAvailable: () => [...panels.values()].map(copyPanelData),
-    get: (id) => {
-      const panel = panels.get(id);
-      return panel ? copyPanelData(panel) : undefined;
-    },
+    getAvailable: () => structuredClone([...panels.values()]),
+    get: (id) => structuredClone(panels.get(id)),
     handleEvent,
     requestDiscovery,
     dispose: () => {

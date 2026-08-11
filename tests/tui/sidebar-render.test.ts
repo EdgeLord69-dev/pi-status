@@ -1,28 +1,26 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import {
-  BUILTIN_SIDEBAR_PANEL_IDS,
   DEFAULT_SIDEBAR_PANEL_LAYOUT,
-  KNOWN_SEGMENTS,
   type LiveActivitySnapshot,
   type NormalizedTodo,
+  type PiStatusConfig,
+  type SidebarCatalogEntry,
   type SidebarEffectiveLayout,
 } from "../../src/shared/types.ts";
 import type { SidebarPanelData } from "../../src/tui/sidebar-panels.ts";
 import type { SidebarSnapshot } from "../../src/tui/sidebar-render.ts";
-import {
-  buildSidebarSnapshot,
-  renderSidebarLines,
-  SIDEBAR_SEGMENT_PANELS,
-} from "../../src/tui/sidebar-render.ts";
+import { buildSidebarSnapshot, renderSidebarLines } from "../../src/tui/sidebar-render.ts";
 import { noTheme, type StatusLineTheme } from "../../src/tui/theme.ts";
 import { buildSidebarSegmentCatalog } from "../../src/tui/sidebar-segments.ts";
 import { createLegacySidebarEffectiveLayout } from "../../src/core/sidebar-layout.ts";
 import { withDefaults } from "../helpers.ts";
 
-function makeInput(
-  overrides: Partial<Parameters<typeof buildSidebarSnapshot>[0]> = {},
-): Parameters<typeof buildSidebarSnapshot>[0] {
+type SidebarRenderFixtureInput = Parameters<typeof buildSidebarSnapshot>[0] & {
+  config: PiStatusConfig;
+};
+
+function makeInput(overrides: Partial<SidebarRenderFixtureInput> = {}): SidebarRenderFixtureInput {
   const footer = withDefaults({
     cwd: "/home/user/repo",
     thinkingLevel: "off",
@@ -149,30 +147,6 @@ describe("SidebarSnapshot", () => {
   });
 });
 
-describe("SIDEBAR_SEGMENT_PANELS", () => {
-  it("covers every known segment", () => {
-    for (const id of KNOWN_SEGMENTS) {
-      expect(SIDEBAR_SEGMENT_PANELS[id]).toBeDefined();
-    }
-  });
-
-  it("only maps to builtin panel ids", () => {
-    const builtins = new Set<string>(BUILTIN_SIDEBAR_PANEL_IDS);
-    for (const id of KNOWN_SEGMENTS) {
-      expect(builtins.has(SIDEBAR_SEGMENT_PANELS[id] as string)).toBe(true);
-    }
-  });
-
-  it("explicitly maps the six segments that drive a sidebar-specific view", () => {
-    expect(SIDEBAR_SEGMENT_PANELS["used-tokens"]).toBe("agent");
-    expect(SIDEBAR_SEGMENT_PANELS["cache-write-tokens"]).toBe("usage");
-    expect(SIDEBAR_SEGMENT_PANELS["session-id"]).toBe("agent");
-    expect(SIDEBAR_SEGMENT_PANELS["five-hour-limit"]).toBe("usage");
-    expect(SIDEBAR_SEGMENT_PANELS["weekly-limit"]).toBe("usage");
-    expect(SIDEBAR_SEGMENT_PANELS["run-state"]).toBe("activity");
-  });
-});
-
 describe("buildSidebarSnapshot", () => {
   it("splits statuses into alerts and statuses by the exception pattern", () => {
     const snap = buildSidebarSnapshot(makeInput());
@@ -180,7 +154,21 @@ describe("buildSidebarSnapshot", () => {
     expect(snap.statuses.map((s) => s.key)).toEqual(["lsp"]);
   });
 
-  it("filters out statuses whose key is in sidebarExtensionSegments.hidden", () => {
+  it("normalizes a repeated status key after removing ANSI", () => {
+    const base = makeInput();
+    const snapshot = buildSidebarSnapshot(
+      makeInput({
+        footer: {
+          ...base.footer,
+          extensionStatuses: new Map([["lsp", "\u001b[31mlsp: down\u001b[0m"]]),
+        },
+      }),
+    );
+
+    expect(snapshot.statuses).toEqual([{ key: "lsp", text: "down" }]);
+  });
+
+  it("keeps sidebar-hidden statuses in the catalog and lets the effective layout hide them", () => {
     const input = makeInput({
       config: {
         ...makeInput().config,
@@ -188,11 +176,19 @@ describe("buildSidebarSnapshot", () => {
         sidebarExtensionSegments: { hidden: ["lsp"] },
       },
     });
-    const snap = buildSidebarSnapshot(input);
-    expect(snap.alerts.find((a) => a.key === "lsp")).toBeUndefined();
-    expect(snap.statuses.find((s) => s.key === "lsp")).toBeUndefined();
+    const snapshot = buildSidebarSnapshot(input);
+    const catalog = buildSidebarSegmentCatalog(snapshot);
+    const layout = createLegacySidebarEffectiveLayout(input.config, catalog);
+
+    expect(catalog.some(({ id }) => id === "status:lsp")).toBe(true);
+    expect(layout.hiddenSegments).toContain("status:lsp");
+    expect(
+      renderSidebarLines(snapshot, catalog, layout, noTheme, 44, 36, { colorEnabled: false }).join(
+        "\n",
+      ),
+    ).not.toContain("• ready");
     // extensionSegments.hidden does not affect sidebar — "err" still shows.
-    expect(snap.alerts.find((a) => a.key === "err")).toBeDefined();
+    expect(snapshot.alerts.find((a) => a.key === "err")).toBeDefined();
   });
 
   it("clones the complete live activity into the snapshot", () => {
@@ -273,6 +269,35 @@ describe("buildSidebarSnapshot", () => {
     expect(structuredClone(snap)).toEqual(snap);
   });
 
+  it("does not retain mutable snapshot input objects", () => {
+    const base = makeInput();
+    const sessionMetrics = { ...base.footer.sessionMetrics } as NonNullable<
+      typeof base.footer.sessionMetrics
+    >;
+    const todo: NormalizedTodo = { id: 1, text: "original todo", status: "pending" };
+    const row = { text: "original row" };
+    const panel = { ...contributedPanel(), rows: [row] };
+    const availableToolNames = ["bash"];
+    const snapshot = buildSidebarSnapshot(
+      makeInput({
+        footer: { ...base.footer, sessionMetrics },
+        availableToolNames,
+        todos: [todo],
+        sidebarPanels: [panel],
+      }),
+    );
+
+    sessionMetrics.totalTokens = 999;
+    todo.text = "mutated todo";
+    row.text = "mutated row";
+    availableToolNames[0] = "mutated-tool";
+
+    expect(snapshot.sessionMetrics?.totalTokens).toBe(150);
+    expect(snapshot.todos[0]?.text).toBe("original todo");
+    expect(snapshot.sidebarPanels[0]?.rows[0]?.text).toBe("original row");
+    expect(snapshot.availableToolNames).toEqual(["bash"]);
+  });
+
   it("derives the project label from the workspace pulse root when present", () => {
     const footer = withDefaults({
       cwd: "/home/user/repo",
@@ -299,7 +324,6 @@ describe("buildSidebarSnapshot", () => {
     });
     const snap = buildSidebarSnapshot(makeInput({ footer }));
     expect(snap.projectName).toBe("elsewhere");
-    expect(snap.pulse?.root).toBe("/home/user/elsewhere");
     expect(snap.pulse?.relativeCwd).toBe("subdir");
   });
 });
@@ -307,7 +331,7 @@ describe("buildSidebarSnapshot", () => {
 type RenderOptions = { colorEnabled?: boolean; resizing?: boolean };
 
 function render(
-  input: Parameters<typeof buildSidebarSnapshot>[0],
+  input: SidebarRenderFixtureInput,
   width: number,
   height: number,
   options: RenderOptions = { colorEnabled: false },
@@ -320,7 +344,7 @@ function render(
 }
 
 function renderWithLayout(
-  input: Parameters<typeof buildSidebarSnapshot>[0],
+  input: SidebarRenderFixtureInput,
   mutate: (layout: SidebarEffectiveLayout) => SidebarEffectiveLayout,
   width: number,
   height: number,
@@ -340,7 +364,7 @@ function onlyPanel(id: string) {
   });
 }
 
-function agentInput(): Parameters<typeof buildSidebarSnapshot>[0] {
+function agentInput(): SidebarRenderFixtureInput {
   const base = makeInput();
   return {
     ...base,
@@ -549,7 +573,7 @@ describe("renderSidebarLines panel composition", () => {
 });
 
 describe("renderSidebarLines height priority", () => {
-  function busyInput(): Parameters<typeof buildSidebarSnapshot>[0] {
+  function busyInput(): SidebarRenderFixtureInput {
     const base = makeInput();
     return {
       ...base,
@@ -583,6 +607,34 @@ describe("renderSidebarLines height priority", () => {
     const text = renderWithLayout(makeInput(), onlyPanel("context"), 44, 5).join("\n");
     expect(text).toContain("used");
     expect(text).toContain("left");
+  });
+
+  it("uses reverse catalog order to break equal drop ties", () => {
+    const snapshot = buildSidebarSnapshot(makeInput());
+    const catalog: SidebarCatalogEntry[] = ["A", "B", "C"].map((text) => ({
+      id: `tie:${text}`,
+      label: text,
+      description: text,
+      defaultPanelId: "agent",
+      persistence: "stable",
+      defaultEnabled: true,
+      available: true,
+      requiresWorkspacePulse: false,
+      priority: "optional",
+      dropOrder: 1,
+      content: { kind: "block", rows: [[{ text: `ROW-${text}`, role: "primary" }]] },
+    }));
+    const layout: SidebarEffectiveLayout = {
+      panels: [{ id: "agent", visible: true, segments: ["tie:B", "tie:A", "tie:C"] }],
+      hiddenSegments: [],
+    };
+    const text = renderSidebarLines(snapshot, catalog, layout, noTheme, 44, 5, {
+      colorEnabled: false,
+    }).join("\n");
+
+    expect(text).toContain("ROW-A");
+    expect(text).toContain("ROW-B");
+    expect(text).not.toContain("ROW-C");
   });
 });
 
