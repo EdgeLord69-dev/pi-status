@@ -61,7 +61,11 @@ function printableAscii(data: string): string | undefined {
 }
 
 function isSearchable(state: DashboardState): boolean {
-  return state.activeTab === "statuses" || state.activeTab === "tools";
+  return (
+    state.activeTab === "sidebar" ||
+    state.activeTab === "statuses" ||
+    state.activeTab === "tools"
+  );
 }
 
 export class StatusLineDashboardComponent implements Component, Focusable {
@@ -196,7 +200,7 @@ export class StatusLineDashboardComponent implements Component, Focusable {
       return;
     }
     if (effect.type === "save") {
-      this.openConfirmDialog("save");
+      this.openSaveDialog(effect);
       return;
     }
     if (effect.type === "toggle_tool") {
@@ -252,6 +256,16 @@ export class StatusLineDashboardComponent implements Component, Focusable {
     this.options.tui.requestRender();
   }
 
+  private openSaveDialog(payload: Extract<DashboardEffect, { type: "save" }>): void {
+    this.dialog = {
+      type: "confirm",
+      kind: "save",
+      selectedIndex: 0,
+      payload: structuredClone(payload),
+    };
+    this.options.tui.requestRender();
+  }
+
   private handleDialogInput(data: string): void {
     const dialog = this.dialog;
     if (!dialog) return;
@@ -280,11 +294,10 @@ export class StatusLineDashboardComponent implements Component, Focusable {
         this.dismissDialog();
       } else if (dialog.kind === "discard") {
         this.close();
-      } else if (dialog.kind === "save") {
-        const draft = structuredClone(this.state.draft);
-        const sidebarLayout = structuredClone(this.state.draftSidebarLayout);
+      } else if (dialog.kind === "save" && dialog.payload) {
+        const payload = structuredClone(dialog.payload);
         try {
-          this.options.save(draft, sidebarLayout);
+          this.options.save(payload.config, payload.sidebarLayout);
         } catch {
           this.warn("Failed to save statusline config");
           this.dismissDialog();
@@ -292,8 +305,8 @@ export class StatusLineDashboardComponent implements Component, Focusable {
         }
         this.state = reduceDashboardState(this.state, {
           type: "saved",
-          config: draft,
-          sidebarLayout,
+          config: payload.config,
+          sidebarLayout: payload.sidebarLayout,
         }).state;
         this.dismissDialog();
       } else {

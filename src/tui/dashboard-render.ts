@@ -15,6 +15,7 @@ import {
   findSegmentAssignment,
   findSidebarSegmentAssignment,
   SEGMENT_METADATA,
+  sidebarSegmentMetadata,
   selectableRows,
 } from "./dashboard-state.ts";
 import {
@@ -36,9 +37,19 @@ export interface DashboardRenderResult {
   offset: number;
 }
 
+type SaveEffect = Extract<
+  ReturnType<typeof import("./dashboard-state.ts").reduceDashboardState>["effect"],
+  { type: "save" }
+>;
+
 export type DashboardDialog =
   | { type: "rename"; input: Input }
-  | { type: "confirm"; kind: "discard" | "compact" | "save"; selectedIndex: 0 | 1 };
+  | {
+      type: "confirm";
+      kind: "discard" | "compact" | "save";
+      selectedIndex: 0 | 1;
+      payload?: SaveEffect;
+    };
 
 type LogicalBody = {
   lines: string[];
@@ -65,7 +76,7 @@ const FOOTERS: Record<DashboardTabId, string> = {
   session: "↑/↓ Select  •  Space/Enter Open  •  Tab Switch  •  q/Esc Close",
   tools: "Type Search  •  ↑/↓ Select  •  Space/Enter Toggle  •  Esc Clear/Close",
   sidebar:
-    "↑/↓ Select  •  ←/→ Reorder  •  Space/Enter Toggle/Restore/Save  •  Tab Switch  •  q/Esc Close",
+    "Type Search  •  ↑/↓ Select  •  ←/→ Adjust/Reorder  •  Space/Enter Apply  •  Esc Clear/Close",
   settings: "↑/↓ Select  •  Space/Enter Toggle/Save  •  Tab Switch  •  q/Esc Close",
 };
 
@@ -99,7 +110,7 @@ function stateForNaturalHeight(
   tab: DashboardTabId,
   ignoreQuery: boolean,
 ): DashboardState {
-  if (!ignoreQuery || (tab !== "statuses" && tab !== "tools")) return state;
+  if (!ignoreQuery || !["sidebar", "statuses", "tools"].includes(tab)) return state;
   return {
     ...state,
     navigation: {
@@ -207,28 +218,57 @@ function logicalBody(
       );
     }
   } else if (tab === "sidebar") {
-    const available = new Map(state.sidebarPanels.map((entry) => [entry.id, entry.title]));
-    state.draft.sidebarPanelLayout.forEach((entry, index) => {
-      const title = available.get(entry.id) ?? entry.id;
-      const unavailable = !available.has(entry.id);
-      const suffix = unavailable ? "  unavailable" : "";
-      pushSelectable(
-        entry.visible ? "[•]" : "[ ]",
-        `${String(index + 1).padStart(2)}  ${title}${suffix}`,
-      );
-    });
-    pushSelectable(" ", "Restore default", "Reset Sidebar to the built-in visible layout");
-    const visibleIds = state.draftSidebarLayout.panels
-      .filter((entry) => entry.visible)
-      .map((entry) => entry.id);
-    if (visibleIds.length > 0 && width >= 24) {
-      lines.push("");
-      lines.push(theme.dim(truncateToWidth(`Sidebar: ${visibleIds.join(", ")}`, width, "…")));
-    }
-    lines.push(
-      "",
-      ...buildFooterRowsFromResolved(resolveFooter(previewInput, state.draft, theme), theme, width),
+    const panels = new Map(renderState.sidebarPanels.map(({ id, title }) => [id, title]));
+    const activePanel = renderState.draftSidebarLayout.panels.find(
+      ({ id }) => id === renderState.activeSidebarPanelId,
     );
+    const activeIndex = activePanel
+      ? renderState.draftSidebarLayout.panels.findIndex(({ id }) => id === activePanel.id)
+      : -1;
+    lines.push(`Search: ${renderState.navigation.sidebar.query}`);
+    for (const row of rows) {
+      if (row.type === "sidebar_active_panel") {
+        pushSelectable(
+          "↔",
+          "Active panel",
+          activePanel ? (panels.get(activePanel.id) ?? activePanel.id) : "None",
+        );
+      } else if (row.type === "sidebar_panel_visibility") {
+        pushSelectable(
+          activePanel?.visible ? "[•]" : "[ ]",
+          "Panel visible",
+          activePanel?.visible ? "visible" : "hidden",
+        );
+      } else if (row.type === "sidebar_panel_position") {
+        pushSelectable(
+          "↔",
+          "Panel position",
+          activeIndex >= 0
+            ? `${activeIndex + 1} of ${renderState.draftSidebarLayout.panels.length}`
+            : "unavailable",
+        );
+      } else if (row.type === "sidebar_segment") {
+        const metadata = sidebarSegmentMetadata(renderState, row.id);
+        const assignment = findSidebarSegmentAssignment(renderState.draftSidebarLayout, row.id);
+        const assignedPanel = assignment
+          ? renderState.draftSidebarLayout.panels.find(({ id }) => id === assignment.panelId)
+          : undefined;
+        const location = assignment
+          ? `${assignedPanel ? (panels.get(assignedPanel.id) ?? assignedPanel.id) : assignment.panelId} ${assignment.index + 1}`
+          : "Disabled";
+        pushSelectable(
+          assignment ? "[•]" : "[ ]",
+          `${metadata.label} (${location})${metadata.available ? "" : "  unavailable"}`,
+          metadata.description,
+        );
+      } else if (row.type === "sidebar_default") {
+        pushSelectable(
+          " ",
+          "Restore default",
+          "Reset known items to catalog defaults",
+        );
+      }
+    }
   } else {
     const notifications = rows[0];
     if (notifications?.type === "notifications") {
@@ -267,7 +307,7 @@ function dialogBody(dialog: DashboardDialog, width: number, theme: StatusLineThe
     ? "Pi will summarize older context."
     : save
       ? "Apply draft Statusbar, Statuses, Sidebar, and Settings changes."
-      : "Unsaved Statusbar, Statuses, or Settings changes will be lost.";
+      : "Unsaved Statusbar, Statuses, Sidebar, or Settings changes will be lost.";
   return {
     lines: [
       heading,
