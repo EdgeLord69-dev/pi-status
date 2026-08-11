@@ -67,9 +67,7 @@ describe("TODO snapshots", () => {
       result({ malformed: true }),
       result({ tasks: [{ id: 3, subject: "latest", status: "completed" }] }),
     ];
-    expect(reconstructTodos(branch)).toEqual([
-      { id: 3, text: "latest", status: "completed" },
-    ]);
+    expect(reconstructTodos(branch)).toEqual([{ id: 3, text: "latest", status: "completed" }]);
   });
 
   it("treats a valid empty latest result as authoritative", () => {

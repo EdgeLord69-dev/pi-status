@@ -157,10 +157,7 @@ export default function createExtension(pi: ExtensionAPI): void {
     },
   });
 
-  function saveAndApplyConfig(
-    next: PiStatusConfig,
-    sidebarLayout: SidebarEffectiveLayout,
-  ): void {
+  function saveAndApplyConfig(next: PiStatusConfig, sidebarLayout: SidebarEffectiveLayout): void {
     const ctx = runtimeState.snapshot().ctx;
     if (ctx?.mode === "tui") {
       const view = previewSidebarView(ctx);
@@ -220,9 +217,7 @@ export default function createExtension(pi: ExtensionAPI): void {
   }
 
   function readCurrentTodos(ctx: ExtensionContext): NormalizedTodo[] {
-    return (
-      safeRead(() => reconstructTodos(ctx.sessionManager.getBranch())) ?? []
-    );
+    return safeRead(() => reconstructTodos(ctx.sessionManager.getBranch())) ?? [];
   }
 
   function currentFooterInput(ctx: ExtensionContext) {

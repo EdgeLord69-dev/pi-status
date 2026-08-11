@@ -818,12 +818,7 @@ describe("dashboard Sidebar ownership", () => {
   });
 
   it("leaves effective draft byte-for-byte unchanged when a status ID is unencodable", () => {
-    const state = initDashboardState(
-      config(),
-      ["x".repeat(300)],
-      true,
-      sidebarOptions(),
-    );
+    const state = initDashboardState(config(), ["x".repeat(300)], true, sidebarOptions());
     const snapshot = structuredClone(state.draftSidebarLayout);
     state.activeTab = "statuses";
     state.navigation.statuses.surface = "sidebar";
@@ -834,15 +829,11 @@ describe("dashboard Sidebar ownership", () => {
 });
 
 describe("searchable Sidebar reducer", () => {
-  function selectSidebarRow(
-    state: DashboardState,
-    row: { type: string; id?: string },
-  ): void {
+  function selectSidebarRow(state: DashboardState, row: { type: string; id?: string }): void {
     state.activeTab = "sidebar";
     state.navigation.sidebar.selectedIndex = selectableRows(state, "sidebar").findIndex(
       (candidate) =>
-        candidate.type === row.type &&
-        ("id" in candidate ? candidate.id === row.id : true),
+        candidate.type === row.type && ("id" in candidate ? candidate.id === row.id : true),
     );
   }
 
@@ -889,21 +880,16 @@ describe("searchable Sidebar reducer", () => {
   });
 
   it("hiding the last visible panel emits exactly At least one Sidebar panel must remain visible", () => {
-    const single = initDashboardState(
-      config(),
-      [],
-      true,
-      {
-        ...sidebarOptions(),
-        sidebarLayout: {
-          panels: [
-            { id: "agent", visible: true, segments: [] },
-            { id: "activity", visible: false, segments: [] },
-          ],
-          hiddenSegments: [],
-        },
+    const single = initDashboardState(config(), [], true, {
+      ...sidebarOptions(),
+      sidebarLayout: {
+        panels: [
+          { id: "agent", visible: true, segments: [] },
+          { id: "activity", visible: false, segments: [] },
+        ],
+        hiddenSegments: [],
       },
-    );
+    });
     single.activeTab = "sidebar";
     selectSidebarRow(single, { type: "sidebar_panel_visibility" });
     const result = reduceDashboardState(single, { type: "activate" });
@@ -912,9 +898,9 @@ describe("searchable Sidebar reducer", () => {
       message: "At least one Sidebar panel must remain visible",
       kind: "warning",
     });
-    expect(
-      result.state.draftSidebarLayout.panels.find((p) => p.id === "agent")?.visible,
-    ).toBe(true);
+    expect(result.state.draftSidebarLayout.panels.find((p) => p.id === "agent")?.visible).toBe(
+      true,
+    );
   });
 
   it("Activate on a hidden segment appends it to Active", () => {
@@ -922,9 +908,7 @@ describe("searchable Sidebar reducer", () => {
     state.activeTab = "sidebar";
     selectSidebarRow(state, { type: "sidebar_segment", id: "builtin:recent-tools" });
     const next = reduceDashboardState(state, { type: "activate" }).state;
-    const active = next.draftSidebarLayout.panels.find(
-      (p) => p.id === next.activeSidebarPanelId,
-    );
+    const active = next.draftSidebarLayout.panels.find((p) => p.id === next.activeSidebarPanelId);
     expect(active?.segments).toContain("builtin:recent-tools");
     expect(next.draftSidebarLayout.hiddenSegments).not.toContain("builtin:recent-tools");
   });
@@ -936,9 +920,7 @@ describe("searchable Sidebar reducer", () => {
     const next = reduceDashboardState(state, { type: "activate" }).state;
     const activity = next.draftSidebarLayout.panels.find((p) => p.id === "activity");
     expect(activity?.segments).not.toContain("session:todo:7");
-    const active = next.draftSidebarLayout.panels.find(
-      (p) => p.id === next.activeSidebarPanelId,
-    );
+    const active = next.draftSidebarLayout.panels.find((p) => p.id === next.activeSidebarPanelId);
     expect(active?.segments).toContain("session:todo:7");
   });
 
@@ -947,9 +929,7 @@ describe("searchable Sidebar reducer", () => {
     state.activeTab = "sidebar";
     selectSidebarRow(state, { type: "sidebar_segment", id: "builtin:model" });
     const next = reduceDashboardState(state, { type: "activate" }).state;
-    const active = next.draftSidebarLayout.panels.find(
-      (p) => p.id === next.activeSidebarPanelId,
-    );
+    const active = next.draftSidebarLayout.panels.find((p) => p.id === next.activeSidebarPanelId);
     expect(active?.segments).not.toContain("builtin:model");
     expect(next.draftSidebarLayout.hiddenSegments).toContain("builtin:model");
   });
@@ -970,9 +950,9 @@ describe("searchable Sidebar reducer", () => {
         seen.add(seg);
       }
     }
-    expect(state.draftSidebarLayout.hiddenSegments.filter((s) => s === "builtin:model")).toEqual(
-      ["builtin:model"],
-    );
+    expect(state.draftSidebarLayout.hiddenSegments.filter((s) => s === "builtin:model")).toEqual([
+      "builtin:model",
+    ]);
   });
 
   it("search edits preserve the selected segment ID while it matches and clamp otherwise", () => {

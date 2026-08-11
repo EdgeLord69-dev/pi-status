@@ -683,13 +683,9 @@ describe("StatusLineDashboardComponent Sidebar tab", () => {
     component.handleInput("\t"); // sidebar
     component.handleInput("\x1b[B"); // → sidebar_panel_visibility
     const id = component.getState().activeSidebarPanelId;
-    const before = component.getState().draftSidebarLayout.panels.find(
-      (p) => p.id === id,
-    )?.visible;
+    const before = component.getState().draftSidebarLayout.panels.find((p) => p.id === id)?.visible;
     component.handleInput("\r");
-    const after = component.getState().draftSidebarLayout.panels.find(
-      (p) => p.id === id,
-    )?.visible;
+    const after = component.getState().draftSidebarLayout.panels.find((p) => p.id === id)?.visible;
     expect(after).toBe(!before);
   });
 
@@ -703,9 +699,7 @@ describe("StatusLineDashboardComponent Sidebar tab", () => {
       .getState()
       .draftSidebarLayout.panels.findIndex((p) => p.id === id);
     component.handleInput("\x1b[C"); // → swap with next
-    const nextIndex = component
-      .getState()
-      .draftSidebarLayout.panels.findIndex((p) => p.id === id);
+    const nextIndex = component.getState().draftSidebarLayout.panels.findIndex((p) => p.id === id);
     expect(nextIndex).toBe(initialIndex + 1);
     expect(component.getState().activeSidebarPanelId).toBe(id);
   });

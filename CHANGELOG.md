@@ -12,6 +12,12 @@ All notable changes to `@pi-vault/pi-status` are documented in this file.
 
 ### Added
 
+- Sidebar TODO rows now reflect live TODO results (`session:todo:<id>` segments) reconstructed from the session branch and updated by `tool_result` events for the `todo` tool.
+- Searchable Active-panel Sidebar editor with stable segment rows, hidden placeholder, Restore default, and Save changes.
+- Independent Statusbar and Sidebar surfaces on the Statuses tab; both Statusbar visibility and Sidebar assignment are reachable from a single editor.
+- Transactional stable/session effective-layout save: disk persistence precedes runtime replacement, and the dashboard dispatches the saved action only after `save()` returns.
+- Frozen catalog and panel metadata: re-open the dashboard to see live catalog or registry changes.
+- Per-tool Sidebar rows replace the old global tool-name switch and default disabled.
 - Added the opt-in `workspace-pulse` footer segment for a bounded, read-only Git workspace summary without retaining or displaying changed-file paths.
 - Added opt-in `turn-progress` and `response-performance` footer segments for current-turn tool activity, time-to-first-token, and response throughput.
 - Added opt-in direct-terminal completion notifications through Ghostty OSC 9; Herdr panes defer settlement delivery to the official Herdr integration and bridge questionnaire waits through `herdr:blocked`.

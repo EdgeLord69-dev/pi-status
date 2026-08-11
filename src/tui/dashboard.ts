@@ -62,9 +62,7 @@ function printableAscii(data: string): string | undefined {
 
 function isSearchable(state: DashboardState): boolean {
   return (
-    state.activeTab === "sidebar" ||
-    state.activeTab === "statuses" ||
-    state.activeTab === "tools"
+    state.activeTab === "sidebar" || state.activeTab === "statuses" || state.activeTab === "tools"
   );
 }
 

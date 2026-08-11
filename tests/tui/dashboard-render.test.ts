@@ -528,8 +528,9 @@ describe("dashboard Sidebar render", () => {
   it("keeps the selected segment visible while controls/actions stay in the body", () => {
     const state = sidebarState();
     state.activeTab = "sidebar";
-    state.draftSidebarLayout.hiddenSegments = Array.from({ length: 4 }, (_, index) =>
-      `builtin:filler-${index}`,
+    state.draftSidebarLayout.hiddenSegments = Array.from(
+      { length: 4 },
+      (_, index) => `builtin:filler-${index}`,
     );
     state.navigation.sidebar.selectedIndex = 3;
     const result = renderDashboard(state, preview, noTheme, 100, 30);

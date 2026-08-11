@@ -265,7 +265,62 @@ Nine built-in panels ship in this default order:
 
 ### Sidebar dashboard tab
 
-`/statusline` exposes a `Sidebar` tab at index 1, immediately after `Statusbar` and before `Statuses`. The tab lets you reorder panels, toggle visibility per panel, and restore the built-in default layout. Layout changes live as a draft and apply only when you Save.
+`/statusline` exposes a `Sidebar` tab at index 1, immediately after `Statusbar` and before `Statuses`. The tab renders an Active-panel editor: choose a panel with `←` / `→`, toggle visibility, reorder panel position, and search/assign/disable segments.
+
+Editor order is fixed: **Active panel**, **Panel visible**, **Panel position**, searchable segment rows, **Restore default**, **Save changes**. Every action targets a specific segment ID; no row index is preserved across mutations or filter changes. Search matches segment ID, label, or description fuzzily; the search input is shared with Statuses and Tools (`q`, printable ASCII, Backspace, Esc clears).
+
+Segment action rules:
+
+- Activating a hidden segment appends it to the active panel.
+- Activating a segment assigned elsewhere moves it to the active panel.
+- Activating a segment already in the active panel disables it.
+- `←` / `→` reorders only segments assigned to the active panel; wrong-panel and boundary reorders are no-ops.
+
+Layout rules:
+
+- Built-in panel order, visibility, and segment assignment are independent from Statusbar zones.
+- Statuses has independent Statusbar and Sidebar surfaces (`Surface - Statusbar` / `Surface - Sidebar`); the picker toggles them in place. Statusbar changes only config; Sidebar changes only the effective layout.
+- Stable built-ins, statuses, tools, identified contributions, and unknown stable IDs persist.
+- TODO IDs (`session:todo:<id>`) and anonymous contributed IDs are session-only; they never reach disk.
+- Unavailable stable IDs remain visible as editable placeholders but their live segment never appears.
+- Catalog and panel metadata are frozen when the dashboard opens; re-open to see changes.
+- Valid stable row IDs match `^[a-z][a-z0-9_-]{0,63}$`.
+- Failed saves leave the live layout, dashboard drafts, query, and selection unchanged and can be retried.
+
+Sample nested layout:
+
+```json
+{
+  "sidebarPanelLayout": [
+    {
+      "id": "agent",
+      "visible": true,
+      "segments": [
+        "builtin:model",
+        "builtin:thinking",
+        "builtin:provider",
+        "builtin:access"
+      ]
+    },
+    {
+      "id": "activity",
+      "visible": true,
+      "segments": [
+        "builtin:run-state",
+        "builtin:run-timing",
+        "builtin:turn-progress"
+      ]
+    }
+  ],
+  "sidebarHiddenSegments": ["tool:read"]
+}
+```
+
+Per-tool rows replace the old global tool-name switch and default to disabled. Disk persistence precedes runtime replacement; a failed write leaves the live layout, Workspace Pulse demand, both baselines/drafts, query, selection, dirty state, and retryability intact.
+
+### Migration note
+
+The legacy `showSidebarToolNames`, `sidebarExtensionSegments`, and Settings `Show tool names` rows are no longer current. They are honored during config load only when no `sidebarPanelLayout` is present. New configurations should use the nested format above.
 
 ### Contribution channel and protocol
 
@@ -291,7 +346,7 @@ The TODOS panel accepts a `NormalizedTodo[]` snapshot with `status: "pending" | 
 
 ### Width breakpoints
 
-- **39-column compact breakpoint** (`COMPACT_SIDEBAR_MAX_WIDTH = 39` in `src/tui/sidebar-render.ts`). Sidebar widths ≤ 39 collapse to the compact layout; tool names collapse behind the count regardless of `showSidebarToolNames`.
+- **39-column compact breakpoint** (`COMPACT_SIDEBAR_MAX_WIDTH = 39` in `src/tui/sidebar-render.ts`). Sidebar widths ≤ 39 collapse to the compact layout; tool names collapse behind the count.
 - **92-column auto-hide threshold** (`MIN_MAIN_WIDTH(64) + MIN_SIDEBAR_WIDTH(28)` in `src/tui/split-pane.ts`). Terminal widths < 92 hide the sidebar to preserve the main viewport.
 
 ### Resize shortcut and controls

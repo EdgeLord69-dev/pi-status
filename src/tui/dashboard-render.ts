@@ -262,11 +262,7 @@ function logicalBody(
           metadata.description,
         );
       } else if (row.type === "sidebar_default") {
-        pushSelectable(
-          " ",
-          "Restore default",
-          "Reset known items to catalog defaults",
-        );
+        pushSelectable(" ", "Restore default", "Reset known items to catalog defaults");
       }
     }
   } else {

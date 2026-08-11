@@ -276,9 +276,7 @@ describe("sidebar layout lifecycle", () => {
   });
 
   it("rebuilds TODOs on session_tree without resetting the effective layout", async () => {
-    let branch = [
-      result({ todos: [{ id: 1, text: "first", done: false }] }),
-    ];
+    let branch = [result({ todos: [{ id: 1, text: "first", done: false }] })];
     const current = configWithPanelsVisible(["agent", "todos"]);
     vi.doMock("../src/core/config.ts", () => ({
       loadConfig: vi.fn(() => structuredClone(current)),
