@@ -25,15 +25,17 @@ import {
   type StatusLineSegmentId,
   type StatusLineZones,
 } from "../shared/types.ts";
+import {
+  isPersistedSidebarSegmentId,
+  SIDEBAR_LAYOUT_MAX_ASSIGNMENTS,
+  SIDEBAR_LAYOUT_TOOL_SENTINEL,
+} from "./sidebar-layout.ts";
 
-export const SIDEBAR_LAYOUT_MAX_ASSIGNMENTS = 2048;
-export const SIDEBAR_LAYOUT_TOOL_SENTINEL = "tool:all";
-
-export const isPersistedSidebarSegmentId = (value: string): boolean =>
-  typeof value === "string" &&
-  value.length > 0 &&
-  value.length <= 256 &&
-  !value.startsWith("session:");
+export {
+  isPersistedSidebarSegmentId,
+  SIDEBAR_LAYOUT_MAX_ASSIGNMENTS,
+  SIDEBAR_LAYOUT_TOOL_SENTINEL,
+};
 
 export const DEFAULT_CONFIG: PiStatusConfig = {
   zones: cloneZones(DEFAULT_ZONES),
@@ -269,20 +271,17 @@ export function normalizeSidebarLayout(input: Record<string, unknown>): {
   for (const entry of layout) {
     for (const segment of entry.segments) assigned.add(segment);
   }
-  const rawHidden = (input.sidebarHiddenSegments as unknown) ??
+  const rawHidden =
+    (input.sidebarHiddenSegments as unknown) ??
     (input.sidebarExtensionSegments &&
-      typeof input.sidebarExtensionSegments === "object" &&
-      !Array.isArray(input.sidebarExtensionSegments)
+    typeof input.sidebarExtensionSegments === "object" &&
+    !Array.isArray(input.sidebarExtensionSegments)
       ? (input.sidebarExtensionSegments as { hidden?: unknown }).hidden
       : undefined);
-  const hiddenCandidates = [
-    ...normalizeLegacyHiddenSegments(rawHidden),
-    ...toolSentinel,
-  ];
+  const hiddenCandidates = [...normalizeLegacyHiddenSegments(rawHidden), ...toolSentinel];
   const hiddenWithoutAssigned = hiddenCandidates.filter(
     (id) =>
-      !assigned.has(id) &&
-      (id === SIDEBAR_LAYOUT_TOOL_SENTINEL || isPersistedSidebarSegmentId(id)),
+      !assigned.has(id) && (id === SIDEBAR_LAYOUT_TOOL_SENTINEL || isPersistedSidebarSegmentId(id)),
   );
   const dedupedHidden: string[] = [];
   const seen = new Set<string>();

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  applySidebarPanelControls,
   createLegacySidebarEffectiveLayout,
   curatedSidebarSegmentsForPanel,
   SIDEBAR_PANEL_ROW_ID_PATTERN,
@@ -101,6 +102,96 @@ describe("bounded sidebar segment identities", () => {
   });
 });
 
+describe("Phase 3 layout API", () => {
+  it("exports a nested-layout seeder", async () => {
+    const module = await import("../../src/core/sidebar-layout.ts");
+    expect(module).toHaveProperty("seedSidebarEffectiveLayout", expect.any(Function));
+  });
+
+  it("seeds missing built-in panels alongside the configured panel", async () => {
+    const { seedSidebarEffectiveLayout } = await import("../../src/core/sidebar-layout.ts");
+    const layout = seedSidebarEffectiveLayout(
+      config({ sidebarPanelLayout: [{ id: "agent", visible: true, segments: [] }] }),
+      [],
+    );
+
+    expect(layout.panels.map((panel) => panel.id)).toEqual([
+      "agent",
+      "activity",
+      "alerts",
+      "statuses",
+      "todos",
+      "context",
+      "workspace",
+      "usage",
+      "tools",
+    ]);
+  });
+
+  it("caps assignments globally when it appends missing built-in panels", async () => {
+    const { seedSidebarEffectiveLayout } = await import("../../src/core/sidebar-layout.ts");
+    const layout = seedSidebarEffectiveLayout(
+      config({
+        sidebarPanelLayout: [
+          {
+            id: "agent",
+            visible: true,
+            segments: Array.from({ length: 2_048 }, (_, index) => `status:${index}`),
+          },
+        ],
+      }),
+      [],
+    );
+
+    expect(layout.panels.flatMap((panel) => panel.segments)).toHaveLength(2_048);
+  });
+
+  it("retains an explicit empty configured panel when seeding the catalog", async () => {
+    const { seedSidebarEffectiveLayout } = await import("../../src/core/sidebar-layout.ts");
+    const layout = seedSidebarEffectiveLayout(
+      config({ sidebarPanelLayout: [{ id: "agent", visible: true, segments: [] }] }),
+      [entry({ id: "builtin:model", defaultPanelId: "agent" })],
+    );
+
+    expect(layout.panels.find((panel) => panel.id === "agent")?.segments).toEqual([]);
+  });
+
+  it("repairs Agent visibility after applying hidden panel controls", () => {
+    const layout = applySidebarPanelControls(
+      [
+        { id: "agent", visible: false, segments: [] },
+        { id: "usage", visible: false, segments: [] },
+      ],
+      {
+        panels: [
+          { id: "agent", visible: true, segments: ["builtin:model"] },
+          { id: "usage", visible: true, segments: ["builtin:cost"] },
+        ],
+        hiddenSegments: [],
+      },
+    );
+
+    expect(layout.panels.find((panel) => panel.id === "agent")?.visible).toBe(true);
+  });
+
+  it("exports the remaining effective-layout operations", async () => {
+    const module = await import("../../src/core/sidebar-layout.ts");
+    for (const name of [
+      "cloneSidebarEffectiveLayout",
+      "flattenSidebarEffectiveLayout",
+      "reconcileSidebarEffectiveLayout",
+      "projectStableSidebarLayout",
+      "restoreDefaultSidebarLayout",
+      "sidebarLayoutDemandsWorkspacePulse",
+      "applySidebarPanelControls",
+      "persistSidebarLayout",
+      "createSidebarLayoutRuntime",
+    ]) {
+      expect(module).toHaveProperty(name, expect.any(Function));
+    }
+  });
+});
+
 describe("createLegacySidebarEffectiveLayout", () => {
   it("preserves configured panel order and visibility", () => {
     const layout = createLegacySidebarEffectiveLayout(
@@ -132,9 +223,7 @@ describe("createLegacySidebarEffectiveLayout", () => {
   it("hides segments whose catalog default is disabled", () => {
     const layout = createLegacySidebarEffectiveLayout(
       config({
-        sidebarPanelLayout: [
-          { id: "agent", visible: true, segments: ["builtin:model"] },
-        ],
+        sidebarPanelLayout: [{ id: "agent", visible: true, segments: ["builtin:model"] }],
       }),
       [
         entry({ id: "builtin:model", defaultPanelId: "agent" }),
@@ -150,9 +239,7 @@ describe("createLegacySidebarEffectiveLayout", () => {
   it("treats hidden segments as removal hints after assignment", () => {
     const layout = createLegacySidebarEffectiveLayout(
       config({
-        sidebarPanelLayout: [
-          { id: "statuses", visible: true, segments: ["status:lsp"] },
-        ],
+        sidebarPanelLayout: [{ id: "statuses", visible: true, segments: ["status:lsp"] }],
         sidebarHiddenSegments: ["status:usage%3Aweekly"],
       }),
       [
@@ -175,9 +262,7 @@ describe("createLegacySidebarEffectiveLayout", () => {
     });
     const hidden = createLegacySidebarEffectiveLayout(
       config({
-        sidebarPanelLayout: [
-          { id: "tools", visible: true, segments: [] },
-        ],
+        sidebarPanelLayout: [{ id: "tools", visible: true, segments: [] }],
       }),
       [tool],
     );
@@ -185,9 +270,7 @@ describe("createLegacySidebarEffectiveLayout", () => {
 
     const shown = createLegacySidebarEffectiveLayout(
       config({
-        sidebarPanelLayout: [
-          { id: "tools", visible: true, segments: [] },
-        ],
+        sidebarPanelLayout: [{ id: "tools", visible: true, segments: [] }],
         sidebarHiddenSegments: ["tool:all"],
       }),
       [tool],
@@ -203,5 +286,19 @@ describe("createLegacySidebarEffectiveLayout", () => {
     expect(source.sidebarPanelLayout).toHaveLength(DEFAULT_SIDEBAR_PANEL_LAYOUT.length);
     expect(source.sidebarPanelLayout[0]?.id).toBe("agent");
     expect(source.sidebarPanelLayout[0]?.visible).toBe(true);
+  });
+
+  it("repairs the Agent panel when every configured panel is hidden", () => {
+    const layout = createLegacySidebarEffectiveLayout(
+      config({
+        sidebarPanelLayout: [
+          { id: "usage", visible: false, segments: [] },
+          { id: "agent", visible: false, segments: [] },
+        ],
+      }),
+      [],
+    );
+
+    expect(layout.panels.find((panel) => panel.id === "agent")?.visible).toBe(true);
   });
 });
