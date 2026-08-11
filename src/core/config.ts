@@ -15,43 +15,56 @@ import {
   DEFAULT_ZONES,
   isKnownSegment,
   isSidebarPanelId,
+  SIDEBAR_BUILTIN_ASSIGNMENTS,
   type ConfigStore,
   type ExtensionSegments,
   type PiStatusConfig,
   type SidebarPanelId,
   type SidebarPanelLayout,
+  type SidebarPanelLayoutEntry,
   type StatusLineSegmentId,
   type StatusLineZones,
 } from "../shared/types.ts";
 
+export const SIDEBAR_LAYOUT_MAX_ASSIGNMENTS = 2048;
+export const SIDEBAR_LAYOUT_TOOL_SENTINEL = "tool:all";
+
+export const isPersistedSidebarSegmentId = (value: string): boolean =>
+  typeof value === "string" &&
+  value.length > 0 &&
+  value.length <= 256 &&
+  !value.startsWith("session:");
+
 export const DEFAULT_CONFIG: PiStatusConfig = {
   zones: cloneZones(DEFAULT_ZONES),
   extensionSegments: { hidden: [] },
-  sidebarExtensionSegments: { hidden: [] },
   extensionStatusZone: "bottomRight",
   completionNotifications: false,
-  showSidebarToolNames: false,
   sidebarPanelLayout: cloneSidebarPanelLayout(DEFAULT_SIDEBAR_PANEL_LAYOUT),
+  sidebarHiddenSegments: [],
 };
 
 function cloneDefaultConfig(): PiStatusConfig {
   return {
     zones: cloneZones(DEFAULT_CONFIG.zones),
     extensionSegments: { hidden: [...DEFAULT_CONFIG.extensionSegments.hidden] },
-    sidebarExtensionSegments: {
-      hidden: [...DEFAULT_CONFIG.sidebarExtensionSegments.hidden],
-    },
     extensionStatusZone: DEFAULT_CONFIG.extensionStatusZone,
     completionNotifications: DEFAULT_CONFIG.completionNotifications,
-    showSidebarToolNames: DEFAULT_CONFIG.showSidebarToolNames,
     sidebarPanelLayout: cloneSidebarPanelLayout(DEFAULT_CONFIG.sidebarPanelLayout),
+    sidebarHiddenSegments: [...DEFAULT_CONFIG.sidebarHiddenSegments],
   };
 }
 
 function cloneSidebarPanelLayout(
-  layout: readonly Readonly<{ id: SidebarPanelId; visible: boolean }>[],
+  layout: readonly Readonly<SidebarPanelLayoutEntry>[],
 ): SidebarPanelLayout {
-  return layout.map(({ id, visible }) => ({ id, visible }));
+  return layout.map(({ id, visible, segments }) => ({
+    id,
+    visible,
+    segments: segments.filter(
+      (segment) => isPersistedSidebarSegmentId(segment) && segment !== SIDEBAR_LAYOUT_TOOL_SENTINEL,
+    ),
+  }));
 }
 
 function cloneZones(zones: StatusLineZones): StatusLineZones {
@@ -151,21 +164,53 @@ export function normalizeExtensionSegments(input: unknown): ExtensionSegments {
   return { hidden: normalizeFilterValues((input as { hidden?: unknown }).hidden) };
 }
 
+function normalizePanelEntry(value: unknown): SidebarPanelLayoutEntry | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const entry = value as { id?: unknown; visible?: unknown; segments?: unknown };
+  if (!isSidebarPanelId(entry.id)) return undefined;
+  const visible = entry.visible === true;
+  const rawSegments: readonly unknown[] = Array.isArray(entry.segments)
+    ? entry.segments
+    : ((SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[entry.id] ?? []);
+  const segments: string[] = [];
+  const seen = new Set<string>();
+  for (const segment of rawSegments) {
+    if (typeof segment !== "string" || segment.length === 0) continue;
+    if (segment === SIDEBAR_LAYOUT_TOOL_SENTINEL) continue;
+    if (!isPersistedSidebarSegmentId(segment)) continue;
+    if (seen.has(segment)) continue;
+    seen.add(segment);
+    segments.push(segment);
+    if (segments.length >= SIDEBAR_LAYOUT_MAX_ASSIGNMENTS) break;
+  }
+  return { id: entry.id, visible, segments };
+}
+
+/**
+ * Public, copy-safe normalization for the nested sidebar panel layout. Returns
+ * a defensive copy where the first valid entry wins, unknown entries are
+ * dropped, and missing built-ins are appended with curated defaults.
+ */
 export function normalizeSidebarPanelLayout(input: unknown): SidebarPanelLayout {
   if (!Array.isArray(input)) return cloneSidebarPanelLayout(DEFAULT_SIDEBAR_PANEL_LAYOUT);
 
   const normalized: SidebarPanelLayout = [];
   const seen = new Set<SidebarPanelId>();
   for (const value of input) {
-    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
-    const entry = value as { id?: unknown; visible?: unknown };
-    if (!isSidebarPanelId(entry.id) || seen.has(entry.id)) continue;
+    const entry = normalizePanelEntry(value);
+    if (!entry || seen.has(entry.id)) continue;
     seen.add(entry.id);
-    normalized.push({ id: entry.id, visible: entry.visible === true });
+    normalized.push(entry);
   }
 
   for (const id of BUILTIN_SIDEBAR_PANEL_IDS) {
-    if (!seen.has(id)) normalized.push({ id, visible: true });
+    if (!seen.has(id)) {
+      normalized.push({
+        id,
+        visible: true,
+        segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]],
+      });
+    }
   }
 
   if (!normalized.some(({ visible }) => visible)) {
@@ -186,7 +231,18 @@ function parseConfig(content: string): Record<string, unknown> | null {
   }
 }
 
+function normalizeLegacyHiddenSegments(input: unknown): string[] {
+  if (!Array.isArray(input)) return [];
+  const bounded: string[] = [];
+  for (const value of input) {
+    if (typeof value !== "string" || value.length === 0) continue;
+    bounded.push(value);
+  }
+  return bounded;
+}
+
 function normalizeConfig(input: Record<string, unknown>): PiStatusConfig {
+  const layout = normalizeSidebarLayout(input);
   return {
     zones: Object.hasOwn(input, "zones")
       ? normalizeZones(input.zones)
@@ -194,19 +250,59 @@ function normalizeConfig(input: Record<string, unknown>): PiStatusConfig {
         ? normalizeZones({ topLeft: input.segments })
         : cloneZones(DEFAULT_ZONES),
     extensionSegments: normalizeExtensionSegments(input.extensionSegments),
-    sidebarExtensionSegments: Object.hasOwn(input, "sidebarExtensionSegments")
-      ? normalizeExtensionSegments(input.sidebarExtensionSegments)
-      : { hidden: [] },
-    extensionStatusZone:
-      input.extensionStatusZone === "topLeft" ||
-      input.extensionStatusZone === "topRight" ||
-      input.extensionStatusZone === "bottomLeft" ||
-      input.extensionStatusZone === "bottomRight"
-        ? input.extensionStatusZone
-        : "bottomRight",
+    extensionStatusZone: layout.extensionStatusZone,
     completionNotifications: input.completionNotifications === true,
-    showSidebarToolNames: input.showSidebarToolNames === true,
-    sidebarPanelLayout: normalizeSidebarPanelLayout(input.sidebarPanelLayout),
+    sidebarPanelLayout: layout.sidebarPanelLayout,
+    sidebarHiddenSegments: layout.sidebarHiddenSegments,
+  };
+}
+
+export function normalizeSidebarLayout(input: Record<string, unknown>): {
+  sidebarPanelLayout: SidebarPanelLayout;
+  sidebarHiddenSegments: string[];
+  extensionStatusZone: "topLeft" | "topRight" | "bottomLeft" | "bottomRight";
+} {
+  const toolSentinel = input.showSidebarToolNames === true ? [SIDEBAR_LAYOUT_TOOL_SENTINEL] : [];
+  const rawPanelLayout = input.sidebarPanelLayout;
+  const layout = normalizeSidebarPanelLayout(rawPanelLayout);
+  const assigned = new Set<string>();
+  for (const entry of layout) {
+    for (const segment of entry.segments) assigned.add(segment);
+  }
+  const rawHidden = (input.sidebarHiddenSegments as unknown) ??
+    (input.sidebarExtensionSegments &&
+      typeof input.sidebarExtensionSegments === "object" &&
+      !Array.isArray(input.sidebarExtensionSegments)
+      ? (input.sidebarExtensionSegments as { hidden?: unknown }).hidden
+      : undefined);
+  const hiddenCandidates = [
+    ...normalizeLegacyHiddenSegments(rawHidden),
+    ...toolSentinel,
+  ];
+  const hiddenWithoutAssigned = hiddenCandidates.filter(
+    (id) =>
+      !assigned.has(id) &&
+      (id === SIDEBAR_LAYOUT_TOOL_SENTINEL || isPersistedSidebarSegmentId(id)),
+  );
+  const dedupedHidden: string[] = [];
+  const seen = new Set<string>();
+  for (const id of hiddenWithoutAssigned) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    dedupedHidden.push(id);
+  }
+  const capped = dedupedHidden.slice(0, SIDEBAR_LAYOUT_MAX_ASSIGNMENTS);
+  const extensionStatusZone =
+    input.extensionStatusZone === "topLeft" ||
+    input.extensionStatusZone === "topRight" ||
+    input.extensionStatusZone === "bottomLeft" ||
+    input.extensionStatusZone === "bottomRight"
+      ? input.extensionStatusZone
+      : "bottomRight";
+  return {
+    sidebarPanelLayout: layout,
+    sidebarHiddenSegments: capped,
+    extensionStatusZone,
   };
 }
 
@@ -231,13 +327,10 @@ export function saveConfig(
   const next: PiStatusConfig = {
     zones: cloneZones(config.zones),
     extensionSegments: { hidden: [...config.extensionSegments.hidden] },
-    sidebarExtensionSegments: {
-      hidden: [...config.sidebarExtensionSegments.hidden],
-    },
     extensionStatusZone: config.extensionStatusZone,
     completionNotifications: config.completionNotifications,
-    showSidebarToolNames: config.showSidebarToolNames,
     sidebarPanelLayout: cloneSidebarPanelLayout(config.sidebarPanelLayout),
+    sidebarHiddenSegments: [...config.sidebarHiddenSegments],
   };
   store.write(path, `${JSON.stringify(next, null, 2)}\n`);
   return { path };

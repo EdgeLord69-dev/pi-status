@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildSnapshot, resolveFooter, type SnapshotInput } from "../../src/core/resolve-footer.ts";
-import { BUILTIN_SIDEBAR_PANEL_IDS, type PiStatusConfig } from "../../src/shared/types.ts";
+import { BUILTIN_SIDEBAR_PANEL_IDS, SIDEBAR_BUILTIN_ASSIGNMENTS, type PiStatusConfig } from "../../src/shared/types.ts";
 import type { ThemeLike } from "../../src/tui/render.ts";
 
 function makeInput(overrides?: Partial<SnapshotInput>): SnapshotInput {
@@ -273,11 +273,10 @@ describe("resolveFooter", () => {
     const config: PiStatusConfig = {
       zones: { topLeft: ["run-state" as const], topRight: [], bottomLeft: [], bottomRight: [] },
       extensionSegments: { hidden: [] },
-      sidebarExtensionSegments: { hidden: [] },
       extensionStatusZone: "bottomRight",
       completionNotifications: false,
-      showSidebarToolNames: false,
-      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
+      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true, segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]] })),
+      sidebarHiddenSegments: [],
     };
     const result = resolveFooter(snapshot, config, identityTheme);
     expect(result.topLeft).toEqual([{ key: "run-state", text: "idle", color: "dim" }]);
@@ -296,11 +295,10 @@ describe("resolveFooter", () => {
         bottomRight: [],
       },
       extensionSegments: { hidden: [] },
-      sidebarExtensionSegments: { hidden: [] },
       extensionStatusZone: "bottomRight",
       completionNotifications: false,
-      showSidebarToolNames: false,
-      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
+      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true, segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]] })),
+      sidebarHiddenSegments: [],
     };
     const result = resolveFooter(snapshot, config, identityTheme);
     expect(result.topLeft).toEqual([{ key: "run-state", text: "idle", color: "dim" }]);
@@ -316,11 +314,10 @@ describe("resolveFooter", () => {
         bottomRight: [],
       },
       extensionSegments: { hidden: [] },
-      sidebarExtensionSegments: { hidden: [] },
       extensionStatusZone: "bottomRight",
       completionNotifications: false,
-      showSidebarToolNames: false,
-      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
+      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true, segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]] })),
+      sidebarHiddenSegments: [],
     };
     const result = resolveFooter(snapshot, config, identityTheme);
     expect(result.topLeft).toEqual([
@@ -340,11 +337,10 @@ describe("resolveFooter", () => {
         bottomRight: [],
       },
       extensionSegments: { hidden: [] },
-      sidebarExtensionSegments: { hidden: [] },
       extensionStatusZone: "bottomRight",
       completionNotifications: false,
-      showSidebarToolNames: false,
-      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
+      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true, segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]] })),
+      sidebarHiddenSegments: [],
     };
     const result = resolveFooter(snapshot, config, identityTheme);
     expect(result.topLeft).toEqual([]);
@@ -355,11 +351,10 @@ describe("resolveFooter", () => {
     const config: PiStatusConfig = {
       zones: { topLeft: [], topRight: [], bottomLeft: [], bottomRight: [] },
       extensionSegments: { hidden: [] },
-      sidebarExtensionSegments: { hidden: [] },
       extensionStatusZone: "bottomRight",
       completionNotifications: false,
-      showSidebarToolNames: false,
-      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
+      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true, segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]] })),
+      sidebarHiddenSegments: [],
     };
     const result = resolveFooter(snapshot, config, identityTheme);
     expect(result).toEqual({ topLeft: [], topRight: [], bottomLeft: [], bottomRight: [] });
@@ -372,11 +367,10 @@ describe("resolveFooter", () => {
     const config: PiStatusConfig = {
       zones: { topLeft: ["run-state" as const], topRight: [], bottomLeft: [], bottomRight: [] },
       extensionSegments: { hidden: [] },
-      sidebarExtensionSegments: { hidden: [] },
       extensionStatusZone: "bottomRight",
       completionNotifications: false,
-      showSidebarToolNames: false,
-      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
+      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true, segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]] })),
+      sidebarHiddenSegments: [],
     };
     const result = resolveFooter(snapshot, config, identityTheme);
     expect(result.bottomRight).toEqual([{ key: "pi-usage", text: "5h: 60%", color: null }]);
@@ -394,11 +388,10 @@ describe("resolveFooter", () => {
     const config: PiStatusConfig = {
       zones: { topLeft: ["run-state" as const], topRight: [], bottomLeft: [], bottomRight: [] },
       extensionSegments: { hidden: ["pi-usage"] },
-      sidebarExtensionSegments: { hidden: [] },
       extensionStatusZone: "bottomRight",
       completionNotifications: false,
-      showSidebarToolNames: false,
-      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
+      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true, segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]] })),
+      sidebarHiddenSegments: [],
     };
     const result = resolveFooter(snapshot, config, identityTheme);
     expect(result.bottomRight).toEqual([{ key: "other-ext", text: "ok", color: null }]);
@@ -409,11 +402,10 @@ describe("resolveFooter", () => {
     const config: PiStatusConfig = {
       zones: { topLeft: ["run-state" as const], topRight: [], bottomLeft: [], bottomRight: [] },
       extensionSegments: { hidden: [] },
-      sidebarExtensionSegments: { hidden: [] },
       extensionStatusZone: "bottomRight",
       completionNotifications: false,
-      showSidebarToolNames: false,
-      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
+      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true, segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]] })),
+      sidebarHiddenSegments: [],
     };
     const result = resolveFooter(snapshot, config, identityTheme);
     expect(result.bottomRight).toEqual([]);
@@ -447,11 +439,10 @@ describe("resolveFooter", () => {
         bottomRight: [],
       },
       extensionSegments: { hidden: [] },
-      sidebarExtensionSegments: { hidden: [] },
       extensionStatusZone: "bottomRight",
       completionNotifications: false,
-      showSidebarToolNames: false,
-      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
+      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true, segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]] })),
+      sidebarHiddenSegments: [],
     };
     const result = resolveFooter(snapshot, config, identityTheme);
     expect(result.topLeft).toEqual([
@@ -463,11 +454,10 @@ describe("resolveFooter", () => {
     const config: PiStatusConfig = {
       zones: { topLeft: [], topRight: [], bottomLeft: [], bottomRight: [] },
       extensionSegments: { hidden: [] },
-      sidebarExtensionSegments: { hidden: [] },
       extensionStatusZone: "topRight",
       completionNotifications: false,
-      showSidebarToolNames: false,
-      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
+      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true, segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]] })),
+      sidebarHiddenSegments: [],
     };
     const snapshot = makeInput();
     const withStatuses = {

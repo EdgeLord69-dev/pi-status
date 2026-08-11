@@ -12,6 +12,8 @@ import {
 
 export { SIDEBAR_BUILTIN_ASSIGNMENTS } from "../shared/types.ts";
 
+const SIDEBAR_LAYOUT_TOOL_SENTINEL = "tool:all";
+
 /** Maximum characters accepted for a stable segment ID. */
 export const SIDEBAR_SEGMENT_MAX_ID_CHARS = 256;
 
@@ -59,8 +61,10 @@ export function curatedSidebarSegmentsForPanel(panelId: SidebarPanelId): string[
 }
 
 /**
- * Seed an effective layout from the Phase 1 configuration and a resolved
- * catalog. Nothing here normalizes or persists; Phase 3 owns that.
+ * Seed an effective layout from the configuration and a resolved catalog.
+ * The user's nested segments extend the panel's assignments; catalog entries
+ * are added to their home panels only when the user has not already assigned
+ * them. Hidden segments act as removal hints.
  */
 export function createLegacySidebarEffectiveLayout(
   config: PiStatusConfig,
@@ -69,15 +73,14 @@ export function createLegacySidebarEffectiveLayout(
   const panels: SidebarEffectivePanelLayoutEntry[] = config.sidebarPanelLayout.map((entry) => ({
     id: entry.id,
     visible: entry.visible,
-    segments: [],
+    segments: [...entry.segments],
   }));
   const byId = new Map(panels.map((panel) => [panel.id as string, panel]));
-  const hiddenStatusIds = new Set(
-    config.sidebarExtensionSegments.hidden
-      .map((key) => sidebarStatusSegmentId(key))
-      .filter((id): id is string => id !== undefined),
-  );
+  const assigned = new Set<string>();
+  for (const panel of panels) for (const segment of panel.segments) assigned.add(segment);
   const hiddenSegments: string[] = [];
+  const userHidden = new Set(config.sidebarHiddenSegments);
+  const toolsEnabled = userHidden.has(SIDEBAR_LAYOUT_TOOL_SENTINEL);
 
   for (const entry of catalog) {
     let panel = byId.get(entry.defaultPanelId);
@@ -86,10 +89,18 @@ export function createLegacySidebarEffectiveLayout(
       panels.push(panel);
       byId.set(entry.defaultPanelId, panel);
     }
-    const enabled = entry.id.startsWith("tool:")
-      ? config.showSidebarToolNames
-      : entry.defaultEnabled;
-    if (enabled && !hiddenStatusIds.has(entry.id)) panel.segments.push(entry.id);
+    if (userHidden.has(entry.id)) {
+      panel.segments = panel.segments.filter((id) => id !== entry.id);
+      hiddenSegments.push(entry.id);
+      continue;
+    }
+    if (assigned.has(entry.id)) continue;
+    if (entry.id.startsWith("tool:") && entry.defaultEnabled === false) {
+      if (toolsEnabled) panel.segments.push(entry.id);
+      else hiddenSegments.push(entry.id);
+      continue;
+    }
+    if (entry.defaultEnabled) panel.segments.push(entry.id);
     else hiddenSegments.push(entry.id);
   }
 

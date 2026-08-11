@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { buildSnapshot } from "../../src/core/resolve-footer.ts";
 import { fromPiTheme } from "../../src/tui/theme.ts";
 import {
-  BUILTIN_SIDEBAR_PANEL_IDS,
+  BUILTIN_SIDEBAR_PANEL_IDS, SIDEBAR_BUILTIN_ASSIGNMENTS,
   type PiStatusConfig,
   type StatusLineZones,
 } from "../../src/shared/types.ts";
@@ -31,11 +31,10 @@ function config(overrides: Partial<PiStatusConfig> = {}): PiStatusConfig {
   return {
     zones: zones(),
     extensionSegments: { hidden: [] },
-    sidebarExtensionSegments: { hidden: [] },
     extensionStatusZone: "bottomRight",
     completionNotifications: false,
-    showSidebarToolNames: false,
-    sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
+    sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true, segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]] })),
+    sidebarHiddenSegments: [],
     ...overrides,
   };
 }
@@ -178,12 +177,12 @@ describe("dashboard render", () => {
     expect(output).toContain("Save changes");
   });
 
-  it("renders the Settings tab with Show tool names", () => {
+  it("renders the Settings tab without the legacy tool names row", () => {
     const state = initDashboardState(config(), [], true);
     state.activeTab = "settings";
     const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
     expect(output).toContain("Completion notifications");
-    expect(output).toContain("Show tool names");
+    expect(output).not.toContain("Show tool names");
   });
 
   it("does not render Show tool names on the Sidebar tab", () => {
@@ -201,12 +200,11 @@ describe("dashboard render", () => {
     expect(output).toContain("Top Left");
   });
 
-  it("Statuses tab renders the surface picker and per-status checkboxes", () => {
+  it("Statuses tab renders per-status checkboxes (statusbar surface only)", () => {
     const state = initDashboardState(config(), ["alpha", "beta"], true);
     state.activeTab = "statuses";
     const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
-    expect(output).toContain("Surface");
-    expect(output).toContain("Statusbar"); // default surface label
+    expect(output).not.toContain("Surface");
     expect(output).toContain("alpha");
     expect(output).toContain("beta");
   });
@@ -423,9 +421,9 @@ describe("dashboard render", () => {
 describe("dashboard Sidebar render", () => {
   it("renders Sidebar rows with numbers, visibility markers, and availability suffix", () => {
     const layout = [
-      { id: "agent" as const, visible: true },
-      { id: "activity" as const, visible: false },
-      { id: "todos" as const, visible: true },
+      { id: "agent" as const, visible: true, segments: [] },
+      { id: "activity" as const, visible: false, segments: [] },
+      { id: "todos" as const, visible: true, segments: [] },
     ];
     const state = initDashboardState(config({ sidebarPanelLayout: layout }), [], true);
     state.activeTab = "sidebar";
@@ -446,8 +444,8 @@ describe("dashboard Sidebar render", () => {
 
   it("marks unavailable configured panels with unavailable suffix", () => {
     const layout = [
-      { id: "agent" as const, visible: true },
-      { id: "missing:contrib" as const, visible: false },
+      { id: "agent" as const, visible: true, segments: [] },
+      { id: "missing:contrib" as const, visible: false, segments: [] },
     ];
     const state = initDashboardState(config({ sidebarPanelLayout: layout }), [], true);
     state.activeTab = "sidebar";
@@ -470,7 +468,7 @@ describe("dashboard Sidebar render", () => {
   });
 
   it("omits the Sidebar preview when no panels are visible", () => {
-    const allHidden = BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: false }));
+    const allHidden = BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: false, segments: [] as string[] }));
     const state = initDashboardState(config({ sidebarPanelLayout: allHidden }), [], true);
     state.activeTab = "sidebar";
     const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
@@ -487,12 +485,12 @@ describe("dashboard Sidebar render", () => {
     expect(saveIndex).toBeGreaterThan(defaultIndex);
   });
 
-  it("shows sidebar_tool_names checked state on Settings tab", () => {
-    const state = initDashboardState(config({ showSidebarToolNames: true }), [], true);
+  it("omits the Show tool names legacy row on Settings tab", () => {
+    const state = initDashboardState(config(), [], true);
     state.activeTab = "settings";
-    state.navigation.settings.selectedIndex = 1;
     const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
-    expect(output).toContain("[•] Show tool names");
+    expect(output).not.toContain("Show tool names");
+    expect(output).toContain("Completion notifications");
   });
 
   it("extends the bounded-tab parametrization to the Sidebar tab", () => {
@@ -593,20 +591,11 @@ describe("save confirm dialog body", () => {
 });
 
 describe("statuses surface picker render", () => {
-  it("renders 'Surface: Statusbar' by default", () => {
+  it("does not render a Surface picker (statusbar surface only)", () => {
     const state = initDashboardState(config(), [], true);
     state.activeTab = "statuses";
     const output = renderDashboard(state, preview, noTheme, 100, 40).lines.join("\n");
-    expect(output).toContain("Surface");
-    expect(output).toContain("Statusbar");
-  });
-
-  it("renders 'Surface: Sidebar' after the picker is flipped", () => {
-    const state = initDashboardState(config(), [], true);
-    state.activeTab = "statuses";
-    state.navigation.statuses.surface = "sidebar";
-    const output = renderDashboard(state, preview, noTheme, 100, 40).lines.join("\n");
-    expect(output).toContain("Sidebar");
-    expect(output).not.toMatch(/Surface:\s*Statusbar/);
+    expect(output).not.toContain("Surface");
+    expect(output).toContain("Search:");
   });
 });

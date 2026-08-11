@@ -220,6 +220,13 @@ export default function createExtension(pi: ExtensionAPI): void {
     return layout.some((entry) => entry.id === "workspace" && entry.visible);
   }
 
+  function sidebarRequiresWorkspacePulse(): boolean {
+    const layout = runtimeState.snapshot().config.sidebarPanelLayout;
+    return layout.some(
+      (entry) => entry.visible && entry.segments.some((segment) => segment.includes("workspace")),
+    );
+  }
+
   function syncWorkspacePulse(config: PiStatusConfig): void {
     if (!workspacePulseRuntime) return;
     if (isWorkspacePulseEnabled(config.zones) || sidebarWorkspaceVisible()) {

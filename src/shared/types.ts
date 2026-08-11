@@ -51,11 +51,12 @@ export const BUILTIN_SIDEBAR_PANEL_IDS = [
 export type BuiltinSidebarPanelId = (typeof BUILTIN_SIDEBAR_PANEL_IDS)[number];
 export type ContributedSidebarPanelId = `${string}:${string}`;
 export type SidebarPanelId = BuiltinSidebarPanelId | ContributedSidebarPanelId;
-export type SidebarPanelLayoutEntry = { id: SidebarPanelId; visible: boolean };
+export type SidebarPanelLayoutEntry = {
+  id: SidebarPanelId;
+  visible: boolean;
+  segments: string[];
+};
 export type SidebarPanelLayout = SidebarPanelLayoutEntry[];
-
-export const DEFAULT_SIDEBAR_PANEL_LAYOUT: readonly Readonly<SidebarPanelLayoutEntry>[] =
-  BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true }));
 
 const BUILTIN_SIDEBAR_PANEL_ID_SET = new Set<string>(BUILTIN_SIDEBAR_PANEL_IDS);
 const CONTRIBUTED_SIDEBAR_PANEL_ID_PATTERN = /^[a-z][a-z0-9_-]*:[a-z][a-z0-9_-]*$/;
@@ -172,6 +173,13 @@ export const SIDEBAR_BUILTIN_ASSIGNMENTS = {
   todos: ["builtin:todos-progress"],
 } as const satisfies Record<BuiltinSidebarPanelId, readonly string[]>;
 
+export const DEFAULT_SIDEBAR_PANEL_LAYOUT: readonly Readonly<SidebarPanelLayoutEntry>[] =
+  BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
+    id,
+    visible: true,
+    segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]],
+  }));
+
 export interface NormalizedTodo {
   id: number;
   text: string;
@@ -192,11 +200,10 @@ export interface StatusLineZones {
 export type PiStatusConfig = {
   zones: StatusLineZones;
   extensionSegments: ExtensionSegments;
-  sidebarExtensionSegments: ExtensionSegments;
   extensionStatusZone: StatusLineZone;
   completionNotifications: boolean;
-  showSidebarToolNames: boolean;
   sidebarPanelLayout: SidebarPanelLayout;
+  sidebarHiddenSegments: string[];
 };
 
 export const KNOWN_SEGMENTS: readonly StatusLineSegmentId[] = [

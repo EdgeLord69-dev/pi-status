@@ -8,6 +8,7 @@ vi.mock("node:fs", async (importOriginal) => {
   return { ...fs, mkdtempSync: vi.fn(fs.mkdtempSync) };
 });
 import {
+  SIDEBAR_LAYOUT_TOOL_SENTINEL,
   getConfigPath,
   loadConfig,
   normalizeExtensionSegments,
@@ -21,19 +22,29 @@ import {
   type ConfigStore,
   DEFAULT_SIDEBAR_PANEL_LAYOUT,
   DEFAULT_ZONES,
+  SIDEBAR_BUILTIN_ASSIGNMENTS,
   STATUS_LINE_ZONE_ORDER,
   type PiStatusConfig,
+  type SidebarPanelLayout,
 } from "../../src/shared/types.ts";
 import { MemoryConfigStore } from "../helpers.ts";
+
+const builtinAssignments = SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>;
+const expectedDefaultLayout = (): SidebarPanelLayout =>
+  BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
+    id,
+    visible: true,
+    segments: [...builtinAssignments[id]],
+  }));
+const expectedDefault = expectedDefaultLayout;
 
 const config: PiStatusConfig = {
   zones: { topLeft: ["git-branch"], topRight: [], bottomLeft: [], bottomRight: [] },
   extensionSegments: { hidden: ["alpha"] },
-  sidebarExtensionSegments: { hidden: [] },
   extensionStatusZone: "bottomRight",
   completionNotifications: false,
-  showSidebarToolNames: false,
-  sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
+  sidebarPanelLayout: expectedDefault(),
+  sidebarHiddenSegments: [],
 };
 
 describe("config — normalization", () => {
@@ -92,8 +103,7 @@ describe("config — normalization", () => {
       extensionSegments: { hidden: [] },
       extensionStatusZone: "unknown",
       completionNotifications: false,
-      showSidebarToolNames: false,
-      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
+      sidebarPanelLayout: expectedDefault(),
     });
     const store = new MemoryConfigStore();
     store.seed(getConfigPath("/agent"), source);
@@ -102,8 +112,6 @@ describe("config — normalization", () => {
 });
 
 describe("config — sidebar panel layout", () => {
-  const expectedDefault = () => BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true }));
-
   it("defines the exact built-in order and all-visible default", () => {
     expect(BUILTIN_SIDEBAR_PANEL_IDS).toEqual([
       "agent",
@@ -152,8 +160,8 @@ describe("config — sidebar panel layout", () => {
         { id: "vendor:panel\n", visible: true },
         { id: "vendor:panel\r", visible: true },
         { id: "vendor:panel\r\n", visible: true },
-        { id: "vendor:panel\u2028", visible: true },
-        { id: "vendor:panel\u2029", visible: true },
+        { id: "vendor:panel ", visible: true },
+        { id: "vendor:panel ", visible: true },
         { id: `a:${"b".repeat(127)}`, visible: true },
       ]),
     ).toEqual(expectedDefault());
@@ -169,8 +177,8 @@ describe("config — sidebar panel layout", () => {
         { id: maxLengthId, visible: true },
       ]),
     ).toEqual([
-      { id: "vendor_1:panel-2", visible: true },
-      { id: maxLengthId, visible: true },
+      { id: "vendor_1:panel-2", visible: true, segments: [] },
+      { id: maxLengthId, visible: true, segments: [] },
       ...expectedDefault(),
     ]);
   });
@@ -184,16 +192,16 @@ describe("config — sidebar panel layout", () => {
         { id: "activity", visible: true },
       ]),
     ).toEqual([
-      { id: "vendor:missing", visible: false },
-      { id: "todos", visible: false },
-      { id: "activity", visible: true },
-      { id: "agent", visible: true },
-      { id: "alerts", visible: true },
-      { id: "statuses", visible: true },
-      { id: "context", visible: true },
-      { id: "workspace", visible: true },
-      { id: "usage", visible: true },
-      { id: "tools", visible: true },
+      { id: "vendor:missing", visible: false, segments: [] },
+      { id: "todos", visible: false, segments: [...builtinAssignments.todos] },
+      { id: "activity", visible: true, segments: [...builtinAssignments.activity] },
+      { id: "agent", visible: true, segments: [...builtinAssignments.agent] },
+      { id: "alerts", visible: true, segments: [] },
+      { id: "statuses", visible: true, segments: [] },
+      { id: "context", visible: true, segments: [...builtinAssignments.context] },
+      { id: "workspace", visible: true, segments: [...builtinAssignments.workspace] },
+      { id: "usage", visible: true, segments: [...builtinAssignments.usage] },
+      { id: "tools", visible: true, segments: [...builtinAssignments.tools] },
     ]);
   });
 
@@ -204,21 +212,29 @@ describe("config — sidebar panel layout", () => {
     ]);
 
     expect(normalized).toEqual([
-      { id: "vendor:missing", visible: false },
-      ...BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: id === "agent" })),
+      { id: "vendor:missing", visible: false, segments: [] },
+      ...BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
+        id,
+        visible: id === "agent",
+        segments: [...builtinAssignments[id]],
+      })),
     ]);
   });
 
-  it("persists ordered layouts and does not alias normalized input or loaded defaults", () => {
+  it("preserves ordered layouts and does not alias normalized input or loaded defaults", () => {
     const input = [
-      { id: "vendor:panel", visible: true },
-      { id: "tools", visible: false },
+      { id: "vendor:panel", visible: true, segments: ["custom:row"] },
+      { id: "tools", visible: false, segments: [] },
     ];
     const sidebarPanelLayout = normalizeSidebarPanelLayout(input);
     const inputEntry = input[0];
     expect(inputEntry).toBeDefined();
     if (inputEntry) inputEntry.visible = false;
-    expect(sidebarPanelLayout[0]).toEqual({ id: "vendor:panel", visible: true });
+    expect(sidebarPanelLayout[0]).toEqual({
+      id: "vendor:panel",
+      visible: true,
+      segments: ["custom:row"],
+    });
 
     const store = new MemoryConfigStore();
     const withLayout = { ...config, sidebarPanelLayout };
@@ -238,6 +254,149 @@ describe("config — sidebar panel layout", () => {
     expect(loadConfig({ agentDir: "/agent", store: emptyStore }).sidebarPanelLayout).toEqual(
       expectedDefault(),
     );
+  });
+});
+
+describe("config — nested sidebar layout", () => {
+  it("accepts nested entries with explicit segments", () => {
+    expect(
+      normalizeSidebarPanelLayout([
+        {
+          id: "agent",
+          visible: true,
+          segments: ["builtin:model", "contribution:vendor:panel:row_a"],
+        },
+        { id: "activity", visible: false, segments: [] },
+      ]),
+    ).toEqual([
+      {
+        id: "agent",
+        visible: true,
+        segments: ["builtin:model", "contribution:vendor:panel:row_a"],
+      },
+      { id: "activity", visible: false, segments: [] },
+      ...expectedDefault().filter((p) => p.id !== "agent" && p.id !== "activity"),
+    ]);
+  });
+
+  it("uses curated built-ins for panels missing segments", () => {
+    expect(
+      normalizeSidebarPanelLayout([
+        { id: "agent", visible: true },
+      ]),
+    ).toEqual([
+      { id: "agent", visible: true, segments: [...builtinAssignments.agent] },
+      ...expectedDefault().filter((p) => p.id !== "agent"),
+    ]);
+  });
+
+  it("keeps explicit empty segments empty", () => {
+    expect(
+      normalizeSidebarPanelLayout([
+        { id: "agent", visible: true, segments: [] },
+      ]),
+    ).toEqual([
+      { id: "agent", visible: true, segments: [] },
+      ...expectedDefault().filter((p) => p.id !== "agent"),
+    ]);
+  });
+
+  it("globally deduplicates assignments and caps at 2048", () => {
+    const overflow = Array.from({ length: 2_050 }, (_, i) => `tag:${i}`);
+    const expected = overflow.slice(0, 2_048);
+    expect(
+      normalizeSidebarPanelLayout([
+        { id: "agent", visible: true, segments: overflow },
+      ]),
+    ).toEqual([
+      { id: "agent", visible: true, segments: expected },
+      ...expectedDefault().slice(1),
+    ]);
+  });
+
+  it("dedupes segments within the same panel", () => {
+    expect(
+      normalizeSidebarPanelLayout([
+        { id: "agent", visible: true, segments: ["a", "a", "b", "a"] },
+      ]),
+    ).toEqual([
+      { id: "agent", visible: true, segments: ["a", "b"] },
+      ...expectedDefault().slice(1),
+    ]);
+  });
+
+  it("does not include sessions-only or sentinel IDs in the persisted output", () => {
+    const store = new MemoryConfigStore();
+    const path = getConfigPath("/agent");
+    saveConfig(
+      {
+        ...config,
+        sidebarPanelLayout: [
+          { id: "agent", visible: true, segments: ["session:todo:1", "extra:row"] },
+        ],
+      },
+      { agentDir: "/agent", store },
+    );
+    const written = JSON.parse(store.read(path) as string);
+    expect(written.sidebarPanelLayout[0].segments).toEqual(["extra:row"]);
+    expect(written.sidebarHiddenSegments).toEqual([]);
+  });
+});
+
+describe("config — legacy inputs as raw load inputs", () => {
+  it("migrates a legacy sidebarExtensionSegments hidden list into sidebarHiddenSegments", () => {
+    const store = new MemoryConfigStore();
+    store.seed(
+      getConfigPath("/agent"),
+      JSON.stringify({
+        zones: DEFAULT_ZONES,
+        extensionSegments: { hidden: [] },
+        sidebarExtensionSegments: { hidden: ["build", "lint"] },
+      }),
+    );
+    expect(loadConfig({ agentDir: "/agent", store }).sidebarHiddenSegments).toEqual([
+      "build",
+      "lint",
+    ]);
+  });
+
+  it("treats showSidebarToolNames: true as the internal sentinel in hidden segments", () => {
+    const store = new MemoryConfigStore();
+    store.seed(
+      getConfigPath("/agent"),
+      JSON.stringify({
+        zones: DEFAULT_ZONES,
+        extensionSegments: { hidden: [] },
+        showSidebarToolNames: true,
+      }),
+    );
+    const loaded = loadConfig({ agentDir: "/agent", store });
+    expect(loaded.sidebarHiddenSegments).toEqual([SIDEBAR_LAYOUT_TOOL_SENTINEL]);
+  });
+
+  it("excludes assigned IDs from sidebarHiddenSegments", () => {
+    const store = new MemoryConfigStore();
+    store.seed(
+      getConfigPath("/agent"),
+      JSON.stringify({
+        zones: DEFAULT_ZONES,
+        extensionSegments: { hidden: [] },
+        sidebarExtensionSegments: { hidden: ["builtin:model", "no:assignment"] },
+      }),
+    );
+    expect(loadConfig({ agentDir: "/agent", store }).sidebarHiddenSegments).toEqual([
+      "no:assignment",
+    ]);
+  });
+
+  it("does not write sidebarExtensionSegments or showSidebarToolNames to disk", () => {
+    const store = new MemoryConfigStore();
+    const path = getConfigPath("/agent");
+    saveConfig({ ...config, sidebarHiddenSegments: ["alpha"] }, { agentDir: "/agent", store });
+    const written = JSON.parse(store.read(path) as string);
+    expect(written).not.toHaveProperty("sidebarExtensionSegments");
+    expect(written).not.toHaveProperty("showSidebarToolNames");
+    expect(written.sidebarHiddenSegments).toEqual(["alpha"]);
   });
 });
 
@@ -316,11 +475,10 @@ describe("config — direct extension file", () => {
     expect(loadConfig({ agentDir, store })).toEqual({
       zones: DEFAULT_ZONES,
       extensionSegments: { hidden: [] },
-      sidebarExtensionSegments: { hidden: [] },
       extensionStatusZone: "bottomRight",
       completionNotifications: false,
-      showSidebarToolNames: false,
-      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
+      sidebarPanelLayout: expectedDefault(),
+      sidebarHiddenSegments: [],
     });
     expect(store.accessPaths).toEqual([path]);
     expect(store.accessPaths.some((accessed) => accessed.includes("settings.json"))).toBe(false);
@@ -351,11 +509,10 @@ describe("config — direct extension file", () => {
       expect(loadConfig({ agentDir: "/agent", store })).toEqual({
         zones: DEFAULT_ZONES,
         extensionSegments: { hidden: [] },
-        sidebarExtensionSegments: { hidden: [] },
         extensionStatusZone: "bottomRight",
         completionNotifications: false,
-        showSidebarToolNames: false,
-        sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
+        sidebarPanelLayout: expectedDefault(),
+        sidebarHiddenSegments: [],
       });
     },
   );
@@ -370,7 +527,7 @@ describe("config — direct extension file", () => {
     expect(store.accessPaths.some((accessed) => accessed.includes("settings.json"))).toBe(false);
   });
 
-  it("saves only zones and extensionSegments", () => {
+  it("saves only the published fields", () => {
     const store = new MemoryConfigStore();
     const path = getConfigPath("/agent");
     const dirtyConfig = { ...config, segments: ["model"], unknown: true } as PiStatusConfig & {
@@ -427,16 +584,16 @@ describe("config — direct extension file", () => {
 });
 
 describe("config — load/save round-trip", () => {
-  it("preserves sidebarExtensionSegments and extensionStatusZone through save and reload", () => {
+  it("preserves sidebarHiddenSegments and extensionStatusZone through save and reload", () => {
     const store = new MemoryConfigStore();
     const source: PiStatusConfig = {
       ...config,
-      sidebarExtensionSegments: { hidden: ["build", "lint"] },
+      sidebarHiddenSegments: ["build", "lint"],
       extensionStatusZone: "topLeft",
     };
     saveConfig(source, { agentDir: "/agent", store });
     const loaded = loadConfig({ agentDir: "/agent", store });
-    expect(loaded.sidebarExtensionSegments).toEqual({ hidden: ["build", "lint"] });
+    expect(loaded.sidebarHiddenSegments).toEqual(["build", "lint"]);
     expect(loaded.extensionStatusZone).toBe("topLeft");
   });
 
@@ -446,7 +603,6 @@ describe("config — load/save round-trip", () => {
       zones: { topLeft: ["model"], topRight: [], bottomLeft: [], bottomRight: [] },
       extensionSegments: { hidden: [] },
       completionNotifications: false,
-      showSidebarToolNames: false,
       sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
         id,
         visible: true,
@@ -454,18 +610,17 @@ describe("config — load/save round-trip", () => {
     });
     store.seed(getConfigPath("/agent"), legacy);
     const loaded = loadConfig({ agentDir: "/agent", store });
-    expect(loaded.sidebarExtensionSegments).toEqual({ hidden: [] });
+    expect(loaded.sidebarHiddenSegments).toEqual([]);
     expect(loaded.extensionStatusZone).toBe("bottomRight");
   });
 
-  it("round-trips a config with one new field and not the other", () => {
+  it("round-trips a config with sidebarHiddenSegments only", () => {
     const store = new MemoryConfigStore();
     const partial = JSON.stringify({
       zones: { topLeft: ["model"], topRight: [], bottomLeft: [], bottomRight: [] },
       extensionSegments: { hidden: [] },
-      sidebarExtensionSegments: { hidden: ["x"] },
+      sidebarHiddenSegments: ["x"],
       completionNotifications: false,
-      showSidebarToolNames: false,
       sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
         id,
         visible: true,
@@ -473,36 +628,8 @@ describe("config — load/save round-trip", () => {
     });
     store.seed(getConfigPath("/agent"), partial);
     const loaded = loadConfig({ agentDir: "/agent", store });
-    expect(loaded.sidebarExtensionSegments).toEqual({ hidden: ["x"] });
+    expect(loaded.sidebarHiddenSegments).toEqual(["x"]);
     expect(loaded.extensionStatusZone).toBe("bottomRight");
-  });
-});
-
-describe("config — sidebar tool names", () => {
-  it.each([
-    ["missing", undefined, false],
-    ["literal false", false, false],
-    ["literal true", true, true],
-    ["string yes", "yes", false],
-  ])("normalizes showSidebarToolNames: %s", (_case, value, expected) => {
-    const store = new MemoryConfigStore();
-    const input = { zones: DEFAULT_ZONES, extensionSegments: { hidden: [] } } as Record<
-      string,
-      unknown
-    >;
-    if (value !== undefined) input.showSidebarToolNames = value;
-    store.seed(getConfigPath("/agent"), JSON.stringify(input));
-
-    expect(loadConfig({ agentDir: "/agent", store }).showSidebarToolNames).toBe(expected);
-  });
-
-  it("serializes showSidebarToolNames: true through saveConfig", () => {
-    const store = new MemoryConfigStore();
-    const path = getConfigPath("/agent");
-
-    saveConfig({ ...config, showSidebarToolNames: true }, { agentDir: "/agent", store });
-
-    expect(JSON.parse(store.read(path) as string).showSidebarToolNames).toBe(true);
   });
 });
 
@@ -522,11 +649,10 @@ describe("config — filesystem", () => {
     expect(loadConfig()).toEqual({
       zones: DEFAULT_ZONES,
       extensionSegments: { hidden: [] },
-      sidebarExtensionSegments: { hidden: [] },
       extensionStatusZone: "bottomRight",
       completionNotifications: false,
-      showSidebarToolNames: false,
-      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
+      sidebarPanelLayout: expectedDefault(),
+      sidebarHiddenSegments: [],
     });
     vi.mocked(mkdtempSync).mockClear();
     expect(saveConfig(config)).toEqual({ path });
@@ -562,8 +688,7 @@ describe("config — completion notifications", () => {
         zones: DEFAULT_ZONES,
         extensionSegments: { hidden: [] },
         completionNotifications: false,
-        showSidebarToolNames: false,
-        sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
+        sidebarPanelLayout: expectedDefault(),
       }),
     );
     expect(loadConfig({ agentDir: "/agent", store }).completionNotifications).toBe(false);
@@ -593,8 +718,7 @@ describe("config — completion notifications", () => {
         zones: DEFAULT_ZONES,
         extensionSegments: { hidden: [] },
         completionNotifications: true,
-        showSidebarToolNames: false,
-        sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
+        sidebarPanelLayout: expectedDefault(),
       }),
     );
     expect(loadConfig({ agentDir: "/agent", store }).completionNotifications).toBe(true);
@@ -632,8 +756,7 @@ describe("config — completion notifications", () => {
         "completionNotifications",
         "extensionSegments",
         "extensionStatusZone",
-        "showSidebarToolNames",
-        "sidebarExtensionSegments",
+        "sidebarHiddenSegments",
         "sidebarPanelLayout",
         "zones",
       ].sort(),

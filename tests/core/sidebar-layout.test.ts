@@ -20,11 +20,13 @@ function config(overrides: Partial<PiStatusConfig> = {}): PiStatusConfig {
   return {
     zones: structuredClone(DEFAULT_ZONES),
     extensionSegments: { hidden: [] },
-    sidebarExtensionSegments: { hidden: [] },
     extensionStatusZone: "bottomRight",
     completionNotifications: false,
-    showSidebarToolNames: false,
-    sidebarPanelLayout: DEFAULT_SIDEBAR_PANEL_LAYOUT.map((entry) => ({ ...entry })),
+    sidebarPanelLayout: DEFAULT_SIDEBAR_PANEL_LAYOUT.map((entry) => ({
+      ...entry,
+      segments: [...entry.segments],
+    })),
+    sidebarHiddenSegments: [],
     ...overrides,
   };
 }
@@ -104,8 +106,8 @@ describe("createLegacySidebarEffectiveLayout", () => {
     const layout = createLegacySidebarEffectiveLayout(
       config({
         sidebarPanelLayout: [
-          { id: "usage", visible: false },
-          { id: "agent", visible: true },
+          { id: "usage", visible: false, segments: [] },
+          { id: "agent", visible: true, segments: [] },
         ],
       }),
       [entry({ id: "builtin:model", defaultPanelId: "agent" })],
@@ -118,7 +120,7 @@ describe("createLegacySidebarEffectiveLayout", () => {
 
   it("appends missing catalog homes as hidden panels", () => {
     const layout = createLegacySidebarEffectiveLayout(
-      config({ sidebarPanelLayout: [{ id: "agent", visible: true }] }),
+      config({ sidebarPanelLayout: [{ id: "agent", visible: true, segments: [] }] }),
       [entry({ id: "ext:row", defaultPanelId: "ext:panel" })],
     );
     expect(layout.panels).toEqual([
@@ -128,19 +130,31 @@ describe("createLegacySidebarEffectiveLayout", () => {
   });
 
   it("hides segments whose catalog default is disabled", () => {
-    const layout = createLegacySidebarEffectiveLayout(config(), [
-      entry({ id: "builtin:model", defaultPanelId: "agent" }),
-      entry({ id: "builtin:provider", defaultPanelId: "agent", defaultEnabled: false }),
-    ]);
+    const layout = createLegacySidebarEffectiveLayout(
+      config({
+        sidebarPanelLayout: [
+          { id: "agent", visible: true, segments: ["builtin:model"] },
+        ],
+      }),
+      [
+        entry({ id: "builtin:model", defaultPanelId: "agent" }),
+        entry({ id: "builtin:provider", defaultPanelId: "agent", defaultEnabled: false }),
+      ],
+    );
     expect(layout.panels.find((panel) => panel.id === "agent")?.segments).toEqual([
       "builtin:model",
     ]);
     expect(layout.hiddenSegments).toEqual(["builtin:provider"]);
   });
 
-  it("maps legacy hidden status keys onto encoded status segment IDs", () => {
+  it("treats hidden segments as removal hints after assignment", () => {
     const layout = createLegacySidebarEffectiveLayout(
-      config({ sidebarExtensionSegments: { hidden: ["usage:weekly"] } }),
+      config({
+        sidebarPanelLayout: [
+          { id: "statuses", visible: true, segments: ["status:lsp"] },
+        ],
+        sidebarHiddenSegments: ["status:usage%3Aweekly"],
+      }),
       [
         entry({ id: "status:usage%3Aweekly", defaultPanelId: "statuses" }),
         entry({ id: "status:lsp", defaultPanelId: "statuses" }),
@@ -149,21 +163,35 @@ describe("createLegacySidebarEffectiveLayout", () => {
     expect(layout.panels.find((panel) => panel.id === "statuses")?.segments).toEqual([
       "status:lsp",
     ]);
+    expect(layout.hiddenSegments).not.toContain("status:lsp");
     expect(layout.hiddenSegments).toContain("status:usage%3Aweekly");
   });
 
-  it("enables tool segments only when showSidebarToolNames is true", () => {
+  it("includes tool segments when the tool sentinel is hidden", () => {
     const tool = entry({
       id: "tool:bash",
       defaultPanelId: "tools",
       defaultEnabled: false,
     });
-    const hidden = createLegacySidebarEffectiveLayout(config(), [tool]);
+    const hidden = createLegacySidebarEffectiveLayout(
+      config({
+        sidebarPanelLayout: [
+          { id: "tools", visible: true, segments: [] },
+        ],
+      }),
+      [tool],
+    );
     expect(hidden.panels.find((panel) => panel.id === "tools")?.segments).toEqual([]);
 
-    const shown = createLegacySidebarEffectiveLayout(config({ showSidebarToolNames: true }), [
-      tool,
-    ]);
+    const shown = createLegacySidebarEffectiveLayout(
+      config({
+        sidebarPanelLayout: [
+          { id: "tools", visible: true, segments: [] },
+        ],
+        sidebarHiddenSegments: ["tool:all"],
+      }),
+      [tool],
+    );
     expect(shown.panels.find((panel) => panel.id === "tools")?.segments).toEqual(["tool:bash"]);
   });
 
@@ -173,6 +201,7 @@ describe("createLegacySidebarEffectiveLayout", () => {
     layout.panels[0]?.segments.push("builtin:mutated");
     layout.panels.pop();
     expect(source.sidebarPanelLayout).toHaveLength(DEFAULT_SIDEBAR_PANEL_LAYOUT.length);
-    expect(source.sidebarPanelLayout[0]).toEqual({ id: "agent", visible: true });
+    expect(source.sidebarPanelLayout[0]?.id).toBe("agent");
+    expect(source.sidebarPanelLayout[0]?.visible).toBe(true);
   });
 });

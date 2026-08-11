@@ -2,7 +2,7 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import { CURSOR_MARKER, type TUI } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import { buildSnapshot } from "../../src/core/resolve-footer.ts";
-import { BUILTIN_SIDEBAR_PANEL_IDS, type PiStatusConfig } from "../../src/shared/types.ts";
+import { BUILTIN_SIDEBAR_PANEL_IDS, SIDEBAR_BUILTIN_ASSIGNMENTS, type PiStatusConfig } from "../../src/shared/types.ts";
 import { openStatusLineDashboard, StatusLineDashboardComponent } from "../../src/tui/dashboard.ts";
 import { isDashboardDirty } from "../../src/tui/dashboard-state.ts";
 import type { FooterRenderInput } from "../../src/tui/render.ts";
@@ -17,11 +17,10 @@ function config(): PiStatusConfig {
       bottomRight: [],
     },
     extensionSegments: { hidden: [] },
-    sidebarExtensionSegments: { hidden: [] },
     extensionStatusZone: "bottomRight",
     completionNotifications: false,
-    showSidebarToolNames: false,
-    sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
+    sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true, segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]] })),
+    sidebarHiddenSegments: [],
   };
 }
 
@@ -132,13 +131,15 @@ function sessionTab(component: StatusLineDashboardComponent): void {
 
 function dirtySettings(component: StatusLineDashboardComponent): void {
   // Default tab is statusbar; five forward cycles reach the settings tab.
-  // Order: statusbar → statuses → session → tools → sidebar → settings.
+  // Order: statusbar → sidebar → statuses → session → tools → settings.
   component.handleInput("\t");
   component.handleInput("\t");
   component.handleInput("\t");
   component.handleInput("\t");
   component.handleInput("\t");
-  component.handleInput("\r");
+  component.handleInput("\r"); // toggle notifications (row 0)
+  component.handleInput("\x1b[B"); // → Save (row 1)
+  component.handleInput("\r"); // open Save dialog
 }
 
 describe("StatusLineDashboardComponent", () => {
@@ -223,9 +224,6 @@ describe("StatusLineDashboardComponent", () => {
   it("opens a Confirm/Cancel dialog instead of saving immediately", () => {
     const { component, save, done } = makeDashboard();
     dirtySettings(component);
-    component.handleInput("\x1b[B"); // → sidebar_tool_names
-    component.handleInput("\x1b[B"); // → Save
-    component.handleInput("\r"); // activate Save → opens dialog
     expect(save).not.toHaveBeenCalled();
     expect(component.render(100).join("\n")).toContain("Save changes?");
     expect(done).not.toHaveBeenCalled();
@@ -234,9 +232,6 @@ describe("StatusLineDashboardComponent", () => {
   it("Cancel in the save dialog dismisses without saving", () => {
     const { component, save, done } = makeDashboard();
     dirtySettings(component);
-    component.handleInput("\x1b[B");
-    component.handleInput("\x1b[B");
-    component.handleInput("\r"); // open dialog (Cancel selected)
     component.handleInput("\r"); // confirm Cancel
     expect(save).not.toHaveBeenCalled();
     expect(component.render(100).join("\n")).not.toContain("Save changes?");
@@ -246,9 +241,6 @@ describe("StatusLineDashboardComponent", () => {
   it.each(["q", "\x1b"])("Esc/q dismisses save dialog without saving (%j)", (input) => {
     const { component, save, done } = makeDashboard();
     dirtySettings(component);
-    component.handleInput("\x1b[B");
-    component.handleInput("\x1b[B");
-    component.handleInput("\r");
     component.handleInput(input);
     expect(save).not.toHaveBeenCalled();
     expect(component.render(100).join("\n")).not.toContain("Save changes?");
@@ -258,9 +250,6 @@ describe("StatusLineDashboardComponent", () => {
   it("Save on the destructive row writes the draft and dismisses the dialog", () => {
     const { component, save, done } = makeDashboard();
     dirtySettings(component);
-    component.handleInput("\x1b[B");
-    component.handleInput("\x1b[B");
-    component.handleInput("\r"); // open dialog (Cancel selected)
     component.handleInput("\x1b[B"); // → Save
     component.handleInput("\r"); // confirm Save
     expect(save).toHaveBeenCalledWith(expect.objectContaining({ completionNotifications: true }));
@@ -270,9 +259,6 @@ describe("StatusLineDashboardComponent", () => {
   it("saves the whole draft and marks clean only after success", () => {
     const { component, save } = makeDashboard();
     dirtySettings(component);
-    component.handleInput("\x1b[B");
-    component.handleInput("\x1b[B");
-    component.handleInput("\r"); // open dialog
     component.handleInput("\x1b[B"); // → Save
     component.handleInput("\r"); // confirm Save
     expect(save).toHaveBeenCalledWith(expect.objectContaining({ completionNotifications: true }));
@@ -285,9 +271,6 @@ describe("StatusLineDashboardComponent", () => {
       throw new Error("disk full");
     });
     dirtySettings(component);
-    component.handleInput("\x1b[B");
-    component.handleInput("\x1b[B");
-    component.handleInput("\r"); // open dialog
     component.handleInput("\x1b[B"); // → Save
     component.handleInput("\r"); // confirm Save
     expect(ctx.ui.notify).toHaveBeenCalledWith("Failed to save statusline config", "warning");
@@ -412,7 +395,8 @@ describe("StatusLineDashboardComponent", () => {
   it("keeps Cancel selected when dirty close opens an inline confirmation", () => {
     const { component, done } = makeDashboard();
     dirtySettings(component);
-    component.handleInput("q");
+    component.handleInput("\x1b"); // dismiss Save dialog
+    component.handleInput("q"); // dirty close while not on settings → opens discard dialog
     expect(component.render(100).join("\n")).toContain("Discard unsaved changes?");
     component.handleInput("\r");
     expect(done).not.toHaveBeenCalled();
@@ -421,7 +405,8 @@ describe("StatusLineDashboardComponent", () => {
   it.each(["q", "\x1b[113u", "\x1b"])("cancels a confirmation with %j", (input) => {
     const { component, done } = makeDashboard();
     dirtySettings(component);
-    component.handleInput("q");
+    component.handleInput("\x1b"); // dismiss Save dialog
+    component.handleInput("q"); // open dirty close discard
     component.handleInput(input);
     expect(component.render(100).join("\n")).not.toContain("Discard unsaved changes?");
     expect(done).not.toHaveBeenCalled();
@@ -430,7 +415,8 @@ describe("StatusLineDashboardComponent", () => {
   it("discards dirty changes only after moving to the destructive row", () => {
     const { component, done, order } = makeDashboard();
     dirtySettings(component);
-    component.handleInput("q");
+    component.handleInput("\x1b"); // dismiss Save dialog
+    component.handleInput("q"); // open dirty close discard
     component.handleInput("\x1b[B");
     component.handleInput(" ");
     expect(done).toHaveBeenCalledOnce();
@@ -490,6 +476,7 @@ describe("StatusLineDashboardComponent", () => {
       discoveredStatuses: Array.from({ length: 40 }, (_, index) => `status-${index}`),
     });
     dirtySettings(component);
+    component.handleInput("\x1b"); // dismiss Save dialog
     // From the settings tab, shift+tab three times reaches the statuses tab.
     // New order: settings(5) → statusbar(0) → sidebar(1) → statuses(2).
     for (let i = 0; i < 3; i += 1) component.handleInput("\x1b[Z");
@@ -572,7 +559,7 @@ describe("StatusLineDashboardComponent Sidebar tab", () => {
     for (let i = 0; i < panelCount; i += 1) component.handleInput("\x1b[B");
     component.handleInput("\r"); // activate restore_default
     expect(component.getState().draft.sidebarPanelLayout).toEqual(
-      BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true })),
+      BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true, segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]] })),
     );
   });
 
@@ -593,18 +580,17 @@ describe("StatusLineDashboardComponent Sidebar tab", () => {
     expect(isDashboardDirty(component.getState())).toBe(true);
   });
 
-  it("persists sidebarPanelLayout and showSidebarToolNames through Save", () => {
+  it("persists sidebarPanelLayout through Save", () => {
     const { component, save } = makeDashboard();
     component.handleInput("\t");
     component.handleInput("\r"); // toggle first panel off
-    // Navigate to Settings tab (four forward tabs from Sidebar) and toggle sidebar_tool_names.
+    // Navigate to Settings tab (four forward tabs from Sidebar) and toggle notifications.
     component.handleInput("\t"); // sidebar → statuses
     component.handleInput("\t"); // statuses → session
     component.handleInput("\t"); // session → tools
     component.handleInput("\t"); // tools → settings
-    component.handleInput("\x1b[B"); // → sidebar_tool_names (row 1)
-    component.handleInput("\r"); // toggle sidebar_tool_names
-    component.handleInput("\x1b[B"); // → Save
+    component.handleInput("\r"); // toggle notifications (row 0)
+    component.handleInput("\x1b[B"); // → Save (row 1)
     component.handleInput("\r"); // open dialog
     component.handleInput("\x1b[B"); // → Save
     component.handleInput("\r"); // confirm Save
@@ -613,8 +599,8 @@ describe("StatusLineDashboardComponent Sidebar tab", () => {
     expect(savedArg?.sidebarPanelLayout[0]).toEqual({
       id: BUILTIN_SIDEBAR_PANEL_IDS[0],
       visible: false,
+      segments: expect.any(Array),
     });
-    expect(savedArg?.showSidebarToolNames).toBe(true);
     expect(isDashboardDirty(component.getState())).toBe(false);
   });
 });

@@ -47,11 +47,10 @@ function makeInput(overrides: Partial<SidebarRenderFixtureInput> = {}): SidebarR
     config: {
       zones: footer.zones,
       extensionSegments: { hidden: [] },
-      sidebarExtensionSegments: { hidden: [] },
       extensionStatusZone: "bottomRight",
       completionNotifications: false,
-      showSidebarToolNames: false,
       sidebarPanelLayout: [...DEFAULT_SIDEBAR_PANEL_LAYOUT],
+      sidebarHiddenSegments: [],
     },
     persisted: true,
     branchEntryCount: 3,
@@ -173,7 +172,7 @@ describe("buildSidebarSnapshot", () => {
       config: {
         ...makeInput().config,
         extensionSegments: { hidden: ["err"] },
-        sidebarExtensionSegments: { hidden: ["lsp"] },
+        sidebarHiddenSegments: ["status:lsp"],
       },
     });
     const snapshot = buildSidebarSnapshot(input);
@@ -524,7 +523,7 @@ describe("renderSidebarLines panel composition", () => {
     const input = makeInput();
     const layout = [
       ...input.config.sidebarPanelLayout,
-      { id: "ext:sample" as never, visible: true },
+      { id: "ext:sample" as never, visible: true, segments: [] },
     ];
     const text = render(
       {
@@ -543,7 +542,7 @@ describe("renderSidebarLines panel composition", () => {
     const input = makeInput();
     const layout = [
       ...input.config.sidebarPanelLayout,
-      { id: "ext:missing" as never, visible: true },
+      { id: "ext:missing" as never, visible: true, segments: [] },
     ];
     const lines = render(
       { ...input, config: { ...input.config, sidebarPanelLayout: layout }, sidebarPanels: [] },
