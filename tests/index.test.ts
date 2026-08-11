@@ -542,7 +542,7 @@ describe("extension wiring", () => {
     expect(requestRender).toHaveBeenCalledTimes(1);
   });
 
-  it("reloads persisted config on session events", () => {
+  it("preserves the active config across session-tree events", () => {
     const project = join(agentDir, "project");
     const configPath = join(agentDir, "extensions", "statusline.json");
     mkdirSync(join(agentDir, "extensions"), { recursive: true });
@@ -594,7 +594,7 @@ describe("extension wiring", () => {
       "utf8",
     );
     for (const h of handlers.get("session_tree") ?? []) h({}, ctx);
-    expect(footer?.render(200).join("\n")).toBe("project");
+    expect(footer?.render(200).join("\n")).toBe("GPT-5");
   });
 
   it("declares only pi-status in pi.extensions", () => {
@@ -652,7 +652,11 @@ describe("extension wiring", () => {
       extensionSegments: { hidden: [] },
       extensionStatusZone: "bottomRight",
       completionNotifications: true,
-      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true, segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]] })),
+      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
+        id,
+        visible: true,
+        segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]],
+      })),
       sidebarHiddenSegments: [],
     });
   });
@@ -972,7 +976,11 @@ describe("extension wiring — completion notifications", () => {
         zones: { topLeft: [], topRight: [], bottomLeft: [], bottomRight: [] },
         extensionSegments: { hidden: [] },
         completionNotifications: true,
-        sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true, segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]] })),
+        sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
+          id,
+          visible: true,
+          segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]],
+        })),
       }),
       "utf8",
     );

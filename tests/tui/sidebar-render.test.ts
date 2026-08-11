@@ -555,9 +555,9 @@ describe("renderSidebarLines panel composition", () => {
 
   it("returns a blank dock when no assigned entry produces content", () => {
     const input = makeInput();
-    const layout = input.config.sidebarPanelLayout.map((entry) => ({ ...entry, visible: false }));
-    const lines = render(
-      { ...input, config: { ...input.config, sidebarPanelLayout: layout } },
+    const lines = renderWithLayout(
+      input,
+      () => ({ panels: [{ id: "agent", visible: true, segments: [] }], hiddenSegments: [] }),
       44,
       12,
     );

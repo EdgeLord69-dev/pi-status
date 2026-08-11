@@ -5,12 +5,25 @@ import { renderSidebarLines, type SidebarSnapshot } from "./sidebar-render.ts";
 import { buildSidebarSegmentCatalog } from "./sidebar-segments.ts";
 import { createLegacySidebarEffectiveLayout } from "../core/sidebar-layout.ts";
 import type { StatusLineTheme } from "./theme.ts";
-import type { PiStatusConfig } from "../shared/types.ts";
+import type {
+  PiStatusConfig,
+  SidebarCatalogEntry,
+  SidebarEffectiveLayout,
+} from "../shared/types.ts";
+
+export interface SidebarView {
+  snapshot: SidebarSnapshot;
+  catalog: readonly SidebarCatalogEntry[];
+  layout: SidebarEffectiveLayout;
+}
 
 export interface SidebarControllerOptions {
   ctx: ExtensionContext;
-  getSnapshot(): SidebarSnapshot;
-  getConfig(): PiStatusConfig;
+  getView?(): SidebarView;
+  /** @deprecated Phase 3 callers provide one coherent getView() callback. */
+  getSnapshot?(): SidebarSnapshot;
+  /** @deprecated Phase 3 callers provide one coherent getView() callback. */
+  getConfig?(): PiStatusConfig;
   colorEnabled?: boolean;
   shouldAnimate?(): boolean;
   animationIntervalMs?: number;
@@ -100,13 +113,24 @@ export function createSidebarController(options: SidebarControllerOptions): Side
             render(width: number) {
               currentColumns = tui.terminal.columns;
               try {
-                const snapshot = options.getSnapshot();
-                const catalog = buildSidebarSegmentCatalog(snapshot);
-                const layout = createLegacySidebarEffectiveLayout(options.getConfig(), catalog);
+                const view =
+                  options.getView?.() ??
+                  (() => {
+                    if (!options.getSnapshot || !options.getConfig) {
+                      throw new Error("Sidebar controller requires getView()");
+                    }
+                    const snapshot = options.getSnapshot();
+                    const catalog = buildSidebarSegmentCatalog(snapshot);
+                    return {
+                      snapshot,
+                      catalog,
+                      layout: createLegacySidebarEffectiveLayout(options.getConfig(), catalog),
+                    };
+                  })();
                 return renderSidebarLines(
-                  snapshot,
-                  catalog,
-                  layout,
+                  view.snapshot,
+                  view.catalog,
+                  view.layout,
                   statusTheme,
                   width,
                   tui.terminal.rows,
