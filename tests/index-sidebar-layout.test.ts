@@ -1,4 +1,5 @@
 import type { Component, OverlayHandle, TUI } from "@earendil-works/pi-tui";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   BUILTIN_SIDEBAR_PANEL_IDS,
@@ -13,6 +14,19 @@ import {
 import { noTheme } from "../src/tui/theme.ts";
 import { buildPiWithHandlers, createContext } from "./helpers.ts";
 
+function result(details: unknown, overrides: Record<string, unknown> = {}) {
+  return {
+    type: "message",
+    message: {
+      role: "toolResult",
+      toolName: "todo",
+      isError: false,
+      details,
+      ...overrides,
+    },
+  };
+}
+
 function configWithModelIn(panelId: SidebarPanelId): PiStatusConfig {
   return {
     zones: structuredClone(DEFAULT_ZONES),
@@ -23,6 +37,21 @@ function configWithModelIn(panelId: SidebarPanelId): PiStatusConfig {
       id,
       visible: id === panelId,
       segments: id === panelId ? ["builtin:model"] : [],
+    })),
+    sidebarHiddenSegments: [],
+  };
+}
+
+function configWithPanelsVisible(panels: SidebarPanelId[]): PiStatusConfig {
+  return {
+    zones: structuredClone(DEFAULT_ZONES),
+    extensionSegments: { hidden: [] },
+    extensionStatusZone: "bottomRight",
+    completionNotifications: false,
+    sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
+      id,
+      visible: panels.includes(id),
+      segments: id === "agent" ? ["builtin:model"] : [],
     })),
     sidebarHiddenSegments: [],
   };
@@ -158,5 +187,168 @@ describe("sidebar layout lifecycle", () => {
     const resetText = host.components.at(-1)?.render(44).join("\n") ?? "";
     expect(resetText).toContain("AGENT");
     expect(resetText).not.toContain("USAGE");
+  });
+
+  it("reconstructs TODOs and refreshes only from valid successful todo results", async () => {
+    const current = configWithPanelsVisible(["agent", "todos"]);
+    const branch = [
+      result({ todos: [{ id: 6, text: "old", done: false }] }),
+      result(
+        { tasks: [{ id: 9, subject: "ignored error", status: "pending" }] },
+        { isError: true },
+      ),
+      result({ malformed: true }),
+      result({ tasks: [{ id: 7, subject: "from branch", status: "in_progress" }] }),
+    ];
+    vi.doMock("../src/core/config.ts", () => ({
+      loadConfig: vi.fn(() => structuredClone(current)),
+      normalizeSidebarPanelLayout: vi.fn((value) => value),
+      saveConfig: vi.fn(),
+    }));
+    const { default: createExtension } = await import("../src/index.ts");
+    const { pi, handlers } = buildPiWithHandlers();
+    const host = sidebarHost();
+    const ctx = createContext({
+      ui: { ...createContext().ui, custom: host.custom as never },
+      sessionManager: {
+        getSessionId: () => "abcdef123456",
+        getSessionFile: () => undefined,
+        getBranch: () => branch,
+        getEntries: () => [],
+      } as unknown as ExtensionContext["sessionManager"],
+    });
+
+    createExtension(pi);
+    for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
+    const component = host.components.at(-1);
+    expect(component?.render(44).join("\n")).toContain("#7");
+    expect(component?.render(44).join("\n")).toContain("from branch");
+
+    for (const handler of handlers.get("tool_result") ?? []) {
+      handler(
+        {
+          toolCallId: "call-1",
+          toolName: "todo",
+          isError: false,
+          details: { tasks: [{ id: 8, subject: "live", status: "in_progress" }] },
+        },
+        ctx,
+      );
+    }
+    expect(component?.render(44).join("\n")).toContain("#8");
+    expect(component?.render(44).join("\n")).toContain("live");
+
+    const beforeRender = component?.render(44).join("\n") ?? "";
+
+    for (const handler of handlers.get("tool_result") ?? []) {
+      handler(
+        {
+          toolCallId: "call-2",
+          toolName: "todo",
+          isError: false,
+          details: { malformed: true },
+        },
+        ctx,
+      );
+      handler(
+        {
+          toolCallId: "call-3",
+          toolName: "todo",
+          isError: true,
+          details: { tasks: [{ id: 99, subject: "wrong", status: "pending" }] },
+        },
+        ctx,
+      );
+      handler(
+        {
+          toolCallId: "call-4",
+          toolName: "bash",
+          isError: false,
+          details: { tasks: [{ id: 50, subject: "non-todo", status: "pending" }] },
+        },
+        ctx,
+      );
+    }
+    const afterRender = component?.render(44).join("\n") ?? "";
+    expect(afterRender).toBe(beforeRender);
+    expect(afterRender).toContain("#8");
+    expect(afterRender).toContain("live");
+  });
+
+  it("rebuilds TODOs on session_tree without resetting the effective layout", async () => {
+    let branch = [
+      result({ todos: [{ id: 1, text: "first", done: false }] }),
+    ];
+    const current = configWithPanelsVisible(["agent", "todos"]);
+    vi.doMock("../src/core/config.ts", () => ({
+      loadConfig: vi.fn(() => structuredClone(current)),
+      normalizeSidebarPanelLayout: vi.fn((value) => value),
+      saveConfig: vi.fn(),
+    }));
+    const { default: createExtension } = await import("../src/index.ts");
+    const { pi, handlers } = buildPiWithHandlers();
+    const host = sidebarHost();
+    const ctx = createContext({
+      ui: { ...createContext().ui, custom: host.custom as never },
+      sessionManager: {
+        getSessionId: () => "abcdef123456",
+        getSessionFile: () => undefined,
+        getBranch: () => branch,
+        getEntries: () => [],
+      } as unknown as ExtensionContext["sessionManager"],
+    });
+
+    createExtension(pi);
+    for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
+    const component = host.components.at(-1);
+    expect(component?.render(44).join("\n")).toContain("AGENT");
+    expect(component?.render(44).join("\n")).toContain("#1");
+
+    branch = [result({ tasks: [{ id: 2, subject: "second", status: "pending" }] })];
+    for (const handler of handlers.get("session_tree") ?? []) handler({}, ctx);
+    expect(component?.render(44).join("\n")).toContain("AGENT");
+    expect(component?.render(44).join("\n")).toContain("#2");
+    expect(component?.render(44).join("\n")).not.toContain("#1");
+  });
+
+  it("clears active TODO state at shutdown and session replacement", async () => {
+    const branch = [result({ tasks: [{ id: 5, subject: "todo", status: "pending" }] })];
+    const current = configWithPanelsVisible(["agent", "todos"]);
+    vi.doMock("../src/core/config.ts", () => ({
+      loadConfig: vi.fn(() => structuredClone(current)),
+      normalizeSidebarPanelLayout: vi.fn((value) => value),
+      saveConfig: vi.fn(),
+    }));
+    const { default: createExtension } = await import("../src/index.ts");
+    const { pi, handlers } = buildPiWithHandlers();
+    const host = sidebarHost();
+    const ctx = createContext({
+      ui: { ...createContext().ui, custom: host.custom as never },
+      sessionManager: {
+        getSessionId: () => "abcdef123456",
+        getSessionFile: () => undefined,
+        getBranch: () => branch,
+        getEntries: () => [],
+      } as unknown as ExtensionContext["sessionManager"],
+    });
+
+    createExtension(pi);
+    for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
+    const component = host.components.at(-1);
+    expect(component?.render(44).join("\n")).toContain("#5");
+
+    for (const handler of handlers.get("session_shutdown") ?? []) handler({}, ctx);
+    const fresh = createContext({
+      ui: { ...createContext().ui, custom: host.custom as never },
+      sessionManager: {
+        getSessionId: () => "abcdef123456",
+        getSessionFile: () => undefined,
+        getBranch: () => [],
+        getEntries: () => [],
+      } as unknown as ExtensionContext["sessionManager"],
+    });
+    for (const handler of handlers.get("session_start") ?? []) handler({}, fresh);
+    const replacement = host.components.at(-1);
+    expect(replacement?.render(44).join("\n")).not.toContain("#5");
   });
 });

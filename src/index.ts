@@ -14,12 +14,14 @@ import { createActivityRuntime } from "./core/activity-runtime.ts";
 import { buildSnapshot, resolveFooter } from "./core/resolve-footer.ts";
 import { createNotificationsWiring } from "./core/notifications-wiring.ts";
 import { createRuntimeStateMachine } from "./core/runtime-state.ts";
+import { reconstructTodos, parseTodoDetails } from "./core/todos.ts";
 import { createUsageRuntime } from "./core/usage-runtime.ts";
 import { createWorkspacePulseRuntime, type WorkspacePulseRuntime } from "./core/workspace-pulse.ts";
 import {
   BUILTIN_SIDEBAR_PANEL_IDS,
   DEFAULT_SIDEBAR_PANEL_LAYOUT,
   type AccessType,
+  type NormalizedTodo,
   type PiStatusConfig,
   type StatusLineZones,
 } from "./shared/types.ts";
@@ -136,6 +138,7 @@ export default function createExtension(pi: ExtensionAPI): void {
   let activeSidebarController: SidebarController | undefined;
   let activeSidebarRegistry: SidebarPanelRegistry | undefined;
   let sidebarLayoutRuntime: SidebarLayoutRuntime | undefined;
+  let currentTodos: NormalizedTodo[] = [];
 
   pi.registerShortcut("ctrl+shift+r", {
     description: "Resize the pi-status sidebar",
@@ -212,6 +215,12 @@ export default function createExtension(pi: ExtensionAPI): void {
     }
   }
 
+  function readCurrentTodos(ctx: ExtensionContext): NormalizedTodo[] {
+    return (
+      safeRead(() => reconstructTodos(ctx.sessionManager.getBranch())) ?? []
+    );
+  }
+
   function currentFooterInput(ctx: ExtensionContext) {
     const snap = runtimeState.snapshot();
     const activeCtx = snap.ctx ?? ctx;
@@ -245,6 +254,7 @@ export default function createExtension(pi: ExtensionAPI): void {
       persisted: sessionFile !== undefined,
       branchEntryCount: branchEntries ?? 0,
       availableToolNames: safeAvailableToolNames ?? [],
+      todos: currentTodos,
       sidebarPanels: activeSidebarRegistry?.getAvailable() ?? [],
     });
   }
@@ -426,6 +436,7 @@ export default function createExtension(pi: ExtensionAPI): void {
     activeSidebarController = undefined;
     activeSidebarRegistry = undefined;
     sidebarLayoutRuntime = undefined;
+    currentTodos = [];
     workspacePulseRuntime?.setOnChange(undefined);
     workspacePulseRuntime?.dispose();
     workspacePulseRuntime = undefined;
@@ -453,6 +464,7 @@ export default function createExtension(pi: ExtensionAPI): void {
         },
       });
       try {
+        currentTodos = readCurrentTodos(ctx);
         captureSidebarView(ctx);
         activeSidebarController = createSidebarController({
           ctx,
@@ -494,6 +506,7 @@ export default function createExtension(pi: ExtensionAPI): void {
     attachNotificationsForCurrentSession();
     installFooter(ctx);
     if (ctx.mode === "tui" && activeSidebarController) {
+      currentTodos = readCurrentTodos(ctx);
       captureSidebarView(ctx);
       syncWorkspacePulse(runtimeState.snapshot().config);
       activeSidebarController.requestRender();
@@ -571,6 +584,22 @@ export default function createExtension(pi: ExtensionAPI): void {
     }
   });
 
+  pi.on("tool_result", (event, ctx) => {
+    if (
+      event.toolName !== "todo" ||
+      event.isError ||
+      !isActiveTuiSession(ctx, activeTuiSessionManager)
+    ) {
+      return;
+    }
+    const parsed = parseTodoDetails(event.details);
+    if (parsed === undefined) return;
+    currentTodos = parsed;
+    captureSidebarView(ctx);
+    syncWorkspacePulse(runtimeState.snapshot().config);
+    activeSidebarController?.requestRender();
+  });
+
   pi.on("agent_settled", (_event, ctx) => {
     notifications.notifyAgentSettled(ctx);
     if (isActiveTuiSession(ctx, activeTuiSessionManager) && ctx.isIdle()) {
@@ -587,6 +616,7 @@ export default function createExtension(pi: ExtensionAPI): void {
     activeSidebarController = undefined;
     activeSidebarRegistry = undefined;
     sidebarLayoutRuntime = undefined;
+    currentTodos = [];
     resetFooterProviderState();
     if (
       activeTuiSessionManager === undefined ||
