@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import { buildSnapshot } from "../../src/core/resolve-footer.ts";
 import { fromPiTheme } from "../../src/tui/theme.ts";
 import {
-  BUILTIN_SIDEBAR_PANEL_IDS, SIDEBAR_BUILTIN_ASSIGNMENTS,
+  BUILTIN_SIDEBAR_PANEL_IDS,
+  SIDEBAR_BUILTIN_ASSIGNMENTS,
   type PiStatusConfig,
   type StatusLineZones,
 } from "../../src/shared/types.ts";
@@ -33,7 +34,11 @@ function config(overrides: Partial<PiStatusConfig> = {}): PiStatusConfig {
     extensionSegments: { hidden: [] },
     extensionStatusZone: "bottomRight",
     completionNotifications: false,
-    sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true, segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]] })),
+    sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
+      id,
+      visible: true,
+      segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]],
+    })),
     sidebarHiddenSegments: [],
     ...overrides,
   };
@@ -468,7 +473,11 @@ describe("dashboard Sidebar render", () => {
   });
 
   it("omits the Sidebar preview when no panels are visible", () => {
-    const allHidden = BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: false, segments: [] as string[] }));
+    const allHidden = BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
+      id,
+      visible: false,
+      segments: [] as string[],
+    }));
     const state = initDashboardState(config({ sidebarPanelLayout: allHidden }), [], true);
     state.activeTab = "sidebar";
     const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");

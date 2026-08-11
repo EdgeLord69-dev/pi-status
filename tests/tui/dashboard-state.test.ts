@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  BUILTIN_SIDEBAR_PANEL_IDS, SIDEBAR_BUILTIN_ASSIGNMENTS,
+  BUILTIN_SIDEBAR_PANEL_IDS,
+  SIDEBAR_BUILTIN_ASSIGNMENTS,
   type PiStatusConfig,
   type StatusLineZones,
 } from "../../src/shared/types.ts";
@@ -30,7 +31,11 @@ function config(overrides: Partial<PiStatusConfig> = {}): PiStatusConfig {
     extensionSegments: { hidden: [] },
     extensionStatusZone: "bottomRight",
     completionNotifications: false,
-    sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true, segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]] })),
+    sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
+      id,
+      visible: true,
+      segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]],
+    })),
     sidebarHiddenSegments: [],
     ...overrides,
   };
@@ -118,8 +123,7 @@ describe("dashboard draft initialization", () => {
         first,
         config({
           sidebarPanelLayout: [...first.sidebarPanelLayout.slice(1), firstPanel],
-        },
-        ),
+        }),
       ),
     ).toBe(false);
     expect(
@@ -226,7 +230,9 @@ describe("dashboard Statusbar tab initialization", () => {
       { type: "notifications" },
       { type: "save" },
     ]);
-    expect(selectableRows(state, "settings").some((row) => row.type === "sidebar_panel")).toBe(false);
+    expect(selectableRows(state, "settings").some((row) => row.type === "sidebar_panel")).toBe(
+      false,
+    );
   });
 
   it("Statusbar tab exposes the extension_status_zone row between zone and segments", () => {
@@ -290,10 +296,7 @@ describe("statuses surface picker", () => {
     const state = initDashboardState(config(), ["alpha", "beta"], true);
     state.navigation.statuses.query = "alp";
     const rows = selectableRows(state, "statuses");
-    expect(rows).toEqual([
-      { type: "status_visibility", key: "alpha" },
-      { type: "save" },
-    ]);
+    expect(rows).toEqual([{ type: "status_visibility", key: "alpha" }, { type: "save" }]);
   });
 
   it("activate on a status_visibility row toggles extensionSegments.hidden", () => {
@@ -412,7 +415,9 @@ describe("dashboard transitions", () => {
 
     state = dispatch(state, { type: "type_char", char: "z" });
     // After filter "bz" the list is [save]; reconcile moves selection to 0.
-    expect(selectableRows(state)[state.navigation.statuses.selectedIndex]).toEqual({ type: "save" });
+    expect(selectableRows(state)[state.navigation.statuses.selectedIndex]).toEqual({
+      type: "save",
+    });
     expect(state.navigation.statuses.selectedIndex).toBe(0);
   });
 
@@ -591,7 +596,11 @@ describe("dashboard Sidebar tab transitions", () => {
     state.navigation.sidebar.selectedIndex = defaultIndex;
     const next = dispatch(state, { type: "activate" });
     expect(next.draft.sidebarPanelLayout).toEqual(
-      BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true, segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]] })),
+      BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
+        id,
+        visible: true,
+        segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]],
+      })),
     );
     expect(isDashboardDirty(next)).toBe(true);
   });

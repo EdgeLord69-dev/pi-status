@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createRuntimeStateMachine } from "../../src/core/runtime-state.ts";
-import { BUILTIN_SIDEBAR_PANEL_IDS, SIDEBAR_BUILTIN_ASSIGNMENTS, type PiStatusConfig } from "../../src/shared/types.ts";
+import {
+  BUILTIN_SIDEBAR_PANEL_IDS,
+  SIDEBAR_BUILTIN_ASSIGNMENTS,
+  type PiStatusConfig,
+} from "../../src/shared/types.ts";
 
 const defaultConfig: PiStatusConfig = {
   zones: {
@@ -13,9 +17,13 @@ const defaultConfig: PiStatusConfig = {
   extensionSegments: { hidden: [] },
   extensionStatusZone: "bottomRight",
   completionNotifications: false,
-  sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true, segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]] })),
+  sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
+    id,
+    visible: true,
+    segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]],
+  })),
   sidebarHiddenSegments: [],
-}
+};
 
 function stubCtx(cwd = "/test"): ExtensionContext {
   return { cwd } as unknown as ExtensionContext;
@@ -79,7 +87,11 @@ describe("RuntimeStateMachine", () => {
       extensionSegments: { hidden: ["x"] },
       extensionStatusZone: "bottomRight",
       completionNotifications: false,
-      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true, segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]] })),
+      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
+        id,
+        visible: true,
+        segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]],
+      })),
       sidebarHiddenSegments: [],
     };
     sm.update({ type: "config_reload", config: newConfig });

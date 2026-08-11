@@ -2,7 +2,11 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import { CURSOR_MARKER, type TUI } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import { buildSnapshot } from "../../src/core/resolve-footer.ts";
-import { BUILTIN_SIDEBAR_PANEL_IDS, SIDEBAR_BUILTIN_ASSIGNMENTS, type PiStatusConfig } from "../../src/shared/types.ts";
+import {
+  BUILTIN_SIDEBAR_PANEL_IDS,
+  SIDEBAR_BUILTIN_ASSIGNMENTS,
+  type PiStatusConfig,
+} from "../../src/shared/types.ts";
 import { openStatusLineDashboard, StatusLineDashboardComponent } from "../../src/tui/dashboard.ts";
 import { isDashboardDirty } from "../../src/tui/dashboard-state.ts";
 import type { FooterRenderInput } from "../../src/tui/render.ts";
@@ -19,7 +23,11 @@ function config(): PiStatusConfig {
     extensionSegments: { hidden: [] },
     extensionStatusZone: "bottomRight",
     completionNotifications: false,
-    sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true, segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]] })),
+    sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
+      id,
+      visible: true,
+      segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]],
+    })),
     sidebarHiddenSegments: [],
   };
 }
@@ -559,7 +567,11 @@ describe("StatusLineDashboardComponent Sidebar tab", () => {
     for (let i = 0; i < panelCount; i += 1) component.handleInput("\x1b[B");
     component.handleInput("\r"); // activate restore_default
     expect(component.getState().draft.sidebarPanelLayout).toEqual(
-      BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, visible: true, segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]] })),
+      BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
+        id,
+        visible: true,
+        segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]],
+      })),
     );
   });
 
