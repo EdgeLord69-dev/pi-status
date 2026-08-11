@@ -9,6 +9,7 @@ import {
   findProjectRootLabel,
   formatCompactNumber,
   formatExtensionStatuses,
+  removeLeadingStatusKey,
   formatModelWithReasoning,
   formatSegment,
   type FooterRenderInput,
@@ -1096,5 +1097,24 @@ describe("ModelLike.provider", () => {
     const left = buildFooterRows(without, identityTheme, 80);
     const right = buildFooterRows({ ...without, model: withProvider }, identityTheme, 80);
     expect(right).toEqual(left);
+  });
+});
+
+describe("removeLeadingStatusKey", () => {
+  it("strips a repeated leading key with any of the separators", () => {
+    expect(removeLeadingStatusKey("lsp", "lsp: ready")).toBe("ready");
+    expect(removeLeadingStatusKey("lsp", "LSP = ready")).toBe("ready");
+    expect(removeLeadingStatusKey("lsp", "lsp - ready")).toBe("ready");
+    expect(removeLeadingStatusKey("lsp", "lsp ready")).toBe("ready");
+  });
+
+  it("keeps values that do not repeat the key", () => {
+    expect(removeLeadingStatusKey("lsp", "ready")).toBe("ready");
+    expect(removeLeadingStatusKey("a.b*c", "a.b*c: ok")).toBe("ok");
+  });
+
+  it("leaves pre-colored values untouched", () => {
+    const colored = `${String.fromCharCode(27)}[31mlsp: down${String.fromCharCode(27)}[39m`;
+    expect(removeLeadingStatusKey("lsp", colored)).toBe(colored);
   });
 });

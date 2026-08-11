@@ -140,6 +140,13 @@ function normalizeFilterList(input: string[]): string[] {
   return out;
 }
 
+/** Strip one leading `key` prefix from a plain-text extension status value. */
+export function removeLeadingStatusKey(key: string, value: string): string {
+  if (hasAnsi(value)) return value;
+  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return value.replace(new RegExp(`^${escaped}(?:\\s*[:=-]\\s*|\\s+)`, "i"), "");
+}
+
 export function formatExtensionStatuses(
   input: FooterRenderInput,
   _theme: ThemeLike,
@@ -154,13 +161,7 @@ export function formatExtensionStatuses(
 
   for (const [key, value] of entries) {
     if (blocked.has(key)) continue;
-    const trimmed = hasAnsi(value)
-      ? value
-      : value.replace(
-          new RegExp(`^${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:\\s*[:=-]\\s*|\\s+)`, "i"),
-          "",
-        );
-    const text = trimmed.trim();
+    const text = removeLeadingStatusKey(key, value).trim();
     if (!text) continue;
     resolved.push({ key, text, color: null });
   }

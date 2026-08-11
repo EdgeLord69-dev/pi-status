@@ -4,7 +4,8 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import createExtension from "../src/index.ts";
-import { BUILTIN_SIDEBAR_PANEL_IDS } from "../src/shared/types.ts";
+import { BUILTIN_SIDEBAR_PANEL_IDS, SIDEBAR_BUILTIN_ASSIGNMENTS } from "../src/shared/types.ts";
+import type { SidebarCatalogEntry, SidebarEffectiveLayout } from "../src/shared/types.ts";
 import type { StatusLineDashboardComponent } from "../src/tui/dashboard.ts";
 
 let agentDir: string;
@@ -1512,5 +1513,41 @@ describe("sidebar lifecycle", () => {
       overlay: true,
       overlayOptions: expect.objectContaining({ offsetX: -22 }),
     });
+  });
+});
+
+describe("public sidebar catalog contracts", () => {
+  it("accepts a data-only catalog entry that survives structuredClone", () => {
+    const entry: SidebarCatalogEntry = {
+      id: "builtin:model",
+      label: "Model",
+      description: "Active model name",
+      defaultPanelId: "agent",
+      persistence: "stable",
+      defaultEnabled: true,
+      available: true,
+      requiresWorkspacePulse: false,
+      priority: "required",
+      dropOrder: 0,
+      content: { kind: "metric", value: [{ text: "gpt-5", role: "primary" }], pairKey: "agent" },
+    };
+    expect(structuredClone(entry)).toEqual(entry);
+  });
+
+  it("accepts a data-only effective layout that survives structuredClone", () => {
+    const layout: SidebarEffectiveLayout = {
+      panels: [{ id: "agent", visible: true, segments: ["builtin:model"] }],
+      hiddenSegments: ["builtin:provider"],
+    };
+    expect(structuredClone(layout)).toEqual(layout);
+  });
+
+  it("assigns every canonical built-in to exactly one panel", () => {
+    const ids = Object.values(SIDEBAR_BUILTIN_ASSIGNMENTS).flat();
+    expect(ids).toHaveLength(32);
+    expect(new Set(ids).size).toBe(32);
+    for (const panelId of Object.keys(SIDEBAR_BUILTIN_ASSIGNMENTS)) {
+      expect(BUILTIN_SIDEBAR_PANEL_IDS).toContain(panelId);
+    }
   });
 });
