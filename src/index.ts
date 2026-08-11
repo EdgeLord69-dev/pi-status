@@ -2,7 +2,6 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { estimateTokens } from "@earendil-works/pi-coding-agent";
 import { loadConfig, normalizeSidebarPanelLayout, saveConfig } from "./core/config.ts";
 import {
-  applySidebarPanelControls,
   cloneSidebarEffectiveLayout,
   createSidebarLayoutRuntime,
   persistSidebarLayout,
@@ -24,6 +23,7 @@ import {
   type AccessType,
   type NormalizedTodo,
   type PiStatusConfig,
+  type SidebarCatalogEntry,
   type SidebarEffectiveLayout,
   type StatusLineZones,
 } from "./shared/types.ts";
@@ -157,17 +157,20 @@ export default function createExtension(pi: ExtensionAPI): void {
     },
   });
 
-  function saveAndApplyConfig(next: PiStatusConfig, sidebarLayout: SidebarEffectiveLayout): void {
+  function saveAndApplyConfig(
+    next: PiStatusConfig,
+    sidebarLayout: SidebarEffectiveLayout,
+    catalog: readonly SidebarCatalogEntry[],
+  ): void {
     const ctx = runtimeState.snapshot().ctx;
     if (ctx?.mode === "tui") {
-      const view = previewSidebarView(ctx);
       persistSidebarLayout({
         config: next,
         effective: sidebarLayout,
-        catalog: view.catalog,
+        catalog,
         persist: saveConfig,
         commit: (committed, committedLayout) => {
-          sidebarLayoutRuntime?.replace(committedLayout, view.catalog);
+          sidebarLayoutRuntime?.replace(committedLayout, catalog);
           runtimeState.update({ type: "config_reload", config: committed });
         },
       });
@@ -421,7 +424,8 @@ export default function createExtension(pi: ExtensionAPI): void {
           sidebarCatalog: structuredClone(sidebarView.catalog),
           sidebarPanels: structuredClone(sidebarPanels),
           sidebarLayout: cloneSidebarEffectiveLayout(sidebarView.layout),
-          save: saveAndApplyConfig,
+          save: (config, sidebarLayout) =>
+            saveAndApplyConfig(config, sidebarLayout, sidebarView.catalog),
           getEffectiveSidebarWidth: () => activeSidebarController?.getEffectiveWidth(),
           onComponent(component) {
             activeDashboard = component;
@@ -500,6 +504,8 @@ export default function createExtension(pi: ExtensionAPI): void {
   });
 
   pi.on("session_tree", (_event, ctx) => {
+    const activeCtx = runtimeState.snapshot().ctx;
+    if (activeCtx && activeCtx.sessionManager !== ctx.sessionManager) return;
     closeActiveDashboard();
     resetFooterProviderState();
     activityRuntime.setOnChange(undefined);

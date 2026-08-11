@@ -10,6 +10,7 @@ import {
 } from "./dashboard-layout.ts";
 import {
   DASHBOARD_TABS,
+  type DashboardEffect,
   type DashboardState,
   type DashboardTabId,
   findSegmentAssignment,
@@ -37,18 +38,20 @@ export interface DashboardRenderResult {
   offset: number;
 }
 
-type SaveEffect = Extract<
-  ReturnType<typeof import("./dashboard-state.ts").reduceDashboardState>["effect"],
-  { type: "save" }
->;
+type SaveEffect = Extract<DashboardEffect, { type: "save" }>;
 
 export type DashboardDialog =
   | { type: "rename"; input: Input }
   | {
       type: "confirm";
-      kind: "discard" | "compact" | "save";
+      kind: "discard" | "compact";
       selectedIndex: 0 | 1;
-      payload?: SaveEffect;
+    }
+  | {
+      type: "confirm";
+      kind: "save";
+      selectedIndex: 0 | 1;
+      payload: SaveEffect;
     };
 
 type LogicalBody = {
@@ -79,8 +82,6 @@ const FOOTERS: Record<DashboardTabId, string> = {
     "Type Search  •  ↑/↓ Select  •  ←/→ Adjust/Reorder  •  Space/Enter Apply  •  Esc Clear/Close",
   settings: "↑/↓ Select  •  Space/Enter Toggle/Save  •  Tab Switch  •  q/Esc Close",
 };
-
-const DEFAULT_BUILTIN_SIDEBAR_PANELS: readonly { id: string; title: string }[] = [];
 
 function selectableLine(
   selected: boolean,
@@ -130,7 +131,7 @@ function logicalBody(
 ): LogicalBody {
   const renderState = stateForNaturalHeight(state, tab, ignoreQuery);
   const rows = selectableRows(renderState, tab);
-  const selectedIndex = state.navigation[tab].selectedIndex;
+  const selectedIndex = renderState.navigation[tab].selectedIndex;
   const lines: string[] = [];
   let interactiveIndex = 0;
   let selectedLine: number | undefined;
@@ -169,11 +170,10 @@ function logicalBody(
       ...buildFooterRowsFromResolved(resolveFooter(previewInput, state.draft, theme), theme, width),
     );
   } else if (tab === "statuses") {
-    const statusRows = selectableRows(state, "statuses");
     lines.push(`Search: ${renderState.navigation.statuses.query}`);
-    const surface = state.navigation.statuses.surface;
+    const surface = renderState.navigation.statuses.surface;
     let visibilityCount = 0;
-    for (const row of statusRows) {
+    for (const row of rows) {
       if (row.type === "surface_picker") {
         pushSelectable("↔", "Surface", surface === "statusbar" ? "Statusbar" : "Sidebar");
       } else if (row.type === "status_visibility") {
@@ -181,8 +181,8 @@ function logicalBody(
         const assigned =
           row.surface === "sidebar"
             ? statusId !== undefined &&
-              !!findSidebarSegmentAssignment(state.draftSidebarLayout, statusId)
-            : !state.draft.extensionSegments.hidden.includes(row.key);
+              !!findSidebarSegmentAssignment(renderState.draftSidebarLayout, statusId)
+            : !renderState.draft.extensionSegments.hidden.includes(row.key);
         pushSelectable(assigned ? "[•]" : "[ ]", "", row.key);
         visibilityCount += 1;
       }

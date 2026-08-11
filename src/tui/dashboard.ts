@@ -249,7 +249,7 @@ export class StatusLineDashboardComponent implements Component, Focusable {
     this.options.tui.requestRender();
   }
 
-  private openConfirmDialog(kind: "discard" | "compact" | "save"): void {
+  private openConfirmDialog(kind: "discard" | "compact"): void {
     this.dialog = { type: "confirm", kind, selectedIndex: 0 };
     this.options.tui.requestRender();
   }
@@ -292,7 +292,7 @@ export class StatusLineDashboardComponent implements Component, Focusable {
         this.dismissDialog();
       } else if (dialog.kind === "discard") {
         this.close();
-      } else if (dialog.kind === "save" && dialog.payload) {
+      } else if (dialog.kind === "save") {
         const payload = structuredClone(dialog.payload);
         try {
           this.options.save(payload.config, payload.sidebarLayout);

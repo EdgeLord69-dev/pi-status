@@ -567,6 +567,22 @@ describe("dashboard Sidebar render", () => {
     expect(result.lines.every((line) => !/[\r\n]/.test(line))).toBe(true);
     expect(result.lines.at(-1)).toContain("┗");
   });
+
+  it("keeps Statuses natural height independent of its search query", () => {
+    const state = initDashboardState(
+      config(),
+      Array.from({ length: 50 }, (_, index) => `status-${index}`),
+      true,
+    );
+    state.activeTab = "statuses";
+    state.navigation.statuses.query = "no-match";
+    const filteredHeight = renderDashboard(state, preview, noTheme, 100, 100).lines.length;
+
+    state.navigation.statuses.query = "";
+    const unfilteredHeight = renderDashboard(state, preview, noTheme, 100, 100).lines.length;
+
+    expect(filteredHeight).toBe(unfilteredHeight);
+  });
 });
 
 describe("dashboard Session and Tools rendering", () => {
@@ -640,6 +656,11 @@ describe("save confirm dialog body", () => {
       type: "confirm",
       kind: "save",
       selectedIndex: 0,
+      payload: {
+        type: "save",
+        config: state.draft,
+        sidebarLayout: state.draftSidebarLayout,
+      },
     };
     const output = renderDashboard(state, preview, noTheme, 100, 40, dialog).lines.join("\n");
     expect(output).toContain("Statusbar");

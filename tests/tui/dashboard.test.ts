@@ -8,7 +8,11 @@ import {
   type PiStatusConfig,
 } from "../../src/shared/types.ts";
 import { openStatusLineDashboard, StatusLineDashboardComponent } from "../../src/tui/dashboard.ts";
-import { isDashboardDirty, selectableRows } from "../../src/tui/dashboard-state.ts";
+import {
+  type DashboardState,
+  isDashboardDirty,
+  selectableRows,
+} from "../../src/tui/dashboard-state.ts";
 import type { FooterRenderInput } from "../../src/tui/render.ts";
 import { noTheme } from "../../src/tui/theme.ts";
 
@@ -620,22 +624,18 @@ describe("StatusLineDashboardComponent save dialog payload", () => {
 
   it("changing reducer state after opening the dialog cannot change the stored payload", () => {
     const { component, save } = makeDashboard();
-    component.handleInput("\t"); // sidebar
-    component.handleInput("\x1b[B"); // → sidebar_panel_visibility
-    component.handleInput("\r"); // toggle visibility (panels[0] = hidden)
-    const rows = selectableRowsForTests(component);
-    for (let i = 0; i < rows.length; i += 1) component.handleInput("\x1b[B");
-    component.handleInput("\r"); // open dialog (captures frozen payload)
-    // Dismiss dialog without changing the saved payload
-    component.handleInput("\x1b");
-    // Second save uses the latest reducer state, not the frozen dialog payload
-    const rows2 = selectableRowsForTests(component);
-    for (let i = 0; i < rows2.length; i += 1) component.handleInput("\x1b[B");
-    component.handleInput("\r"); // open dialog again
-    component.handleInput("\x1b[B"); // → Save
+    openSaveDialog(component); // captures panels[0] hidden
+    const liveState = component.getState() as DashboardState;
+    const firstPanel = liveState.draftSidebarLayout.panels[0];
+    if (!firstPanel) throw new Error("expected first Sidebar panel");
+    firstPanel.visible = true;
+    liveState.draft.completionNotifications = true;
+
+    component.handleInput("\x1b[B"); // Save
     component.handleInput("\r"); // confirm
-    const layout = save.mock.calls.at(-1)?.[1];
-    // Latest state has panel[0] still hidden — payload tracks state, not the first dialog
+
+    const [config, layout] = save.mock.calls[0] ?? [];
+    expect(config?.completionNotifications).toBe(false);
     expect(layout?.panels[0]?.visible).toBe(false);
   });
 
@@ -648,19 +648,17 @@ describe("StatusLineDashboardComponent save dialog payload", () => {
     component.handleInput("\x1b[B"); // → sidebar_panel_visibility
     component.handleInput("\r"); // toggle visibility
     component.handleInput("r"); // query
-    const before = structuredClone(component.getState());
     const rows = selectableRowsForTests(component);
     for (let i = 0; i < rows.length; i += 1) component.handleInput("\x1b[B");
     component.handleInput("\r"); // open dialog
+    const beforeConfirm = structuredClone(component.getState());
     component.handleInput("\x1b[B"); // → Save
     component.handleInput("\r"); // confirm
     expect(ctx.ui.notify).toHaveBeenCalledWith("Failed to save statusline config", "warning");
-    expect(component.getState().draftSidebarLayout).toEqual(before.draftSidebarLayout);
-    expect(component.getState().navigation.sidebar.query).toBe(before.navigation.sidebar.query);
+    expect(component.getState()).toEqual(beforeConfirm);
     expect(isDashboardDirty(component.getState())).toBe(true);
     save.mockImplementationOnce(() => undefined);
-    for (let i = 0; i < rows.length; i += 1) component.handleInput("\x1b[B");
-    component.handleInput("\r"); // open dialog
+    component.handleInput("\r"); // reopen dialog from selected Save row
     component.handleInput("\x1b[B"); // → Save
     component.handleInput("\r"); // confirm
     expect(isDashboardDirty(component.getState())).toBe(false);

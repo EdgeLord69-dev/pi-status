@@ -38,9 +38,9 @@ Usage-limit segments depend on `pi-usage`. `/statusline` can show those segment 
 
 ## Quick Start
 
-Once installed, the footer updates automatically. Run `/statusline` inside Pi to open the five-tab dashboard:
+Once installed, the footer updates automatically. Run `/statusline` inside Pi to open the six-tab dashboard:
 
-- **Layout**, **Statuses**, and **Settings** share one draft and Save action.
+- **Statusbar**, **Sidebar**, **Statuses**, and **Settings** share one draft and Save action.
 - **Tools** applies tool changes immediately and never disables the final active tool.
 - **Session** shows current details; Rename and Compact open transient views inside the same dashboard overlay.
 - `Esc` clears search before closing; dirty close opens an in-overlay Cancel/Discard confirmation.
@@ -245,7 +245,7 @@ If you are upgrading from `0.2.x`, note these compatibility changes:
 
 ## Sidebar
 
-`@pi-vault/pi-status` installs a right-edge, non-capturing sidebar that surfaces the same live data the footer tracks — session, run, turn, tools, workspace pulse, extension statuses — alongside optional contributions from other extensions. The sidebar is on by default, runs only in TUI sessions, and never leaves the runtime: nothing is persisted from sidebar activity and nothing it observes leaves the host.
+`@pi-vault/pi-status` installs a right-edge, non-capturing sidebar that surfaces the same live data the footer tracks — session, run, turn, tools, workspace pulse, extension statuses — alongside optional contributions from other extensions. The sidebar is on by default and runs only in TUI sessions. Its stable layout configuration can be saved, while observed TODO and anonymous contribution data remains session-only and never leaves the host.
 
 ### Built-in panels and order
 
@@ -342,7 +342,7 @@ Newly registered contributions are hidden by default. `normalizeSidebarPanelLayo
 
 ### TODO rendering
 
-The TODOS panel accepts a `NormalizedTodo[]` snapshot with `status: "pending" | "in_progress" | "completed"`. pi-status does not parse TODO formats itself; the producer that populates the sidebar snapshot owns format parsing. Rendering shows a `done/total` summary, then one row per task with a `✓` (completed), `�` (in progress), or `○` (pending) indicator, the `#id`, and the task text.
+The TODOS panel accepts a `NormalizedTodo[]` snapshot with `status: "pending" | "in_progress" | "completed"`. pi-status reconstructs the latest valid successful `todo` result from the active session branch and refreshes it from successful live `tool_result` events. Both legacy `{ todos }` and current `{ tasks }` detail shapes are normalized best-effort. Rendering shows a `done/total` summary, then one row per task with a `✓` (completed), `◐` (in progress), or `○` (pending) indicator, the `#id`, and the task text.
 
 ### Width breakpoints
 

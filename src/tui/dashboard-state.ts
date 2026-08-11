@@ -3,24 +3,18 @@ import type {
   SidebarCatalogEntry,
   SidebarEffectiveLayout,
   SidebarPanelId,
-  SidebarPanelLayout,
   StatusLineSegmentId,
   StatusLineZone,
   StatusLineZones,
 } from "../shared/types.ts";
-import {
-  BUILTIN_SIDEBAR_PANEL_IDS,
-  isUsageSegment,
-  SIDEBAR_BUILTIN_ASSIGNMENTS,
-  STATUS_LINE_ZONE_ORDER,
-} from "../shared/types.ts";
+import { isUsageSegment, STATUS_LINE_ZONE_ORDER } from "../shared/types.ts";
 import {
   cloneSidebarEffectiveLayout,
   flattenSidebarEffectiveLayout,
+  projectStableSidebarLayout,
   restoreDefaultSidebarLayout,
   sidebarStatusSegmentId,
 } from "../core/sidebar-layout.ts";
-import { projectStableSidebarLayout } from "../core/sidebar-layout.ts";
 import type { SessionDetails } from "./session-actions.ts";
 import type { DashboardTool } from "./tool-controls.ts";
 import { DISPLAY_PRESET_NAMES, displayPreset } from "./preset-actions.ts";
@@ -493,32 +487,6 @@ function currentRow(state: DashboardState): DashboardSelectableRow | undefined {
   return rows[activeNavigation(state).selectedIndex];
 }
 
-function toggleSidebarPanel(layout: SidebarPanelLayout, id: SidebarPanelId): SidebarPanelLayout {
-  return layout.map((entry) =>
-    entry.id === id ? { ...entry, visible: !entry.visible, segments: [...entry.segments] } : entry,
-  );
-}
-
-function cloneSidebarPanelLayout(layout: SidebarPanelLayout): SidebarPanelLayout {
-  return layout.map((entry) => ({ ...entry, segments: [...entry.segments] }));
-}
-
-function moveSidebarPanel(
-  layout: SidebarPanelLayout,
-  id: SidebarPanelId,
-  direction: -1 | 1,
-): SidebarPanelLayout {
-  const index = layout.findIndex((entry) => entry.id === id);
-  if (index < 0) return layout;
-  const target = index + direction;
-  if (target < 0 || target >= layout.length) return layout;
-  const next = cloneSidebarPanelLayout(layout);
-  const [moved] = next.splice(index, 1);
-  if (!moved) return layout;
-  next.splice(target, 0, moved);
-  return next;
-}
-
 export function findSidebarSegmentAssignment(
   layout: SidebarEffectiveLayout,
   id: string,
@@ -578,6 +546,12 @@ function activeSidebarPanel(state: DashboardState) {
     state.draftSidebarLayout.panels.find((panel) => panel.id === state.activeSidebarPanelId) ??
     state.draftSidebarLayout.panels[0]
   );
+}
+
+function flipStatusesSurface(state: DashboardState): void {
+  const navigation = state.navigation.statuses;
+  navigation.surface = navigation.surface === "statusbar" ? "sidebar" : "statusbar";
+  navigation.selectedIndex = 0;
 }
 
 function keepSegmentSelected(state: DashboardState, id: StatusLineSegmentId): DashboardState {
@@ -706,11 +680,10 @@ export function reduceDashboardState(
       if (!moved) return { state: clampSelection(state) };
       reordered.splice(target, 0, moved);
       active.segments = reordered;
-      return { state: clampSelection(state) };
+      return { state: reconcileSidebarSelection(state, row) };
     }
     if (row.type === "surface_picker") {
-      const nav = state.navigation.statuses;
-      nav.surface = nav.surface === "statusbar" ? "sidebar" : "statusbar";
+      flipStatusesSurface(state);
       return { state: clampSelection(state) };
     }
     if (row.type === "extension_status_zone") {
@@ -784,6 +757,10 @@ export function reduceDashboardState(
       },
     };
   }
+  if (row.type === "surface_picker") {
+    flipStatusesSurface(state);
+    return { state: clampSelection(state) };
+  }
   if (row.type === "notifications") {
     state.draft.completionNotifications = !state.draft.completionNotifications;
   } else if (row.type === "sidebar_panel_visibility") {
@@ -813,6 +790,7 @@ export function reduceDashboardState(
     } else {
       assignSidebarSegment(state.draftSidebarLayout, row.id, active.id);
     }
+    return { state: reconcileSidebarSelection(state, row) };
   } else if (row.type === "sidebar_default") {
     state.draftSidebarLayout = restoreDefaultSidebarLayout(
       state.draftSidebarLayout,

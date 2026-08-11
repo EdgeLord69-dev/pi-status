@@ -714,7 +714,8 @@ function catalogEntry(
   };
 }
 
-const STATUS_ID = sidebarStatusSegmentId("queue")!;
+const STATUS_ID = sidebarStatusSegmentId("queue");
+if (!STATUS_ID) throw new Error("expected queue status ID");
 const SIDEBAR_CATALOG = [
   catalogEntry("builtin:model", "agent", { label: "Model" }),
   catalogEntry("builtin:recent-tools", "activity", {
@@ -763,9 +764,13 @@ describe("dashboard Sidebar ownership", () => {
       sidebarLayout: layout,
     });
 
-    catalog[0]!.label = "mutated";
-    panels[0]!.title = "mutated";
-    layout.panels[0]!.segments.push("mutated");
+    const firstCatalogEntry = catalog[0];
+    const firstPanel = panels[0];
+    const firstLayoutPanel = layout.panels[0];
+    if (!firstCatalogEntry || !firstPanel || !firstLayoutPanel) throw new Error("missing fixture");
+    firstCatalogEntry.label = "mutated";
+    firstPanel.title = "mutated";
+    firstLayoutPanel.segments.push("mutated");
 
     expect(state.sidebarCatalog[0]?.label).toBe("Model");
     expect(state.sidebarPanels[0]?.title).toBe("Agent");
@@ -789,6 +794,16 @@ describe("dashboard Sidebar ownership", () => {
       { type: "status_visibility", key: "queue", surface: "statusbar" },
       { type: "save" },
     ]);
+  });
+
+  it("activates the Statuses surface picker", () => {
+    const state = initDashboardState(config(), ["queue"], true, sidebarOptions());
+    state.activeTab = "statuses";
+
+    const next = reduceDashboardState(state, { type: "activate" }).state;
+
+    expect(next.navigation.statuses.surface).toBe("sidebar");
+    expect(next.navigation.statuses.selectedIndex).toBe(0);
   });
 
   it("changes Statusbar surfaces without mutating config", () => {
@@ -932,6 +947,27 @@ describe("searchable Sidebar reducer", () => {
     const active = next.draftSidebarLayout.panels.find((p) => p.id === next.activeSidebarPanelId);
     expect(active?.segments).not.toContain("builtin:model");
     expect(next.draftSidebarLayout.hiddenSegments).toContain("builtin:model");
+    expect(selectableRows(next)[next.navigation.sidebar.selectedIndex]).toEqual({
+      type: "sidebar_segment",
+      id: "builtin:model",
+    });
+  });
+
+  it("keeps the reordered segment selected by identity", () => {
+    const state = initDashboardState(config(), [], true, sidebarOptions());
+    state.activeTab = "sidebar";
+    selectSidebarRow(state, { type: "sidebar_segment", id: "builtin:model" });
+
+    const next = reduceDashboardState(state, { type: "adjust", delta: 1 }).state;
+
+    expect(next.draftSidebarLayout.panels[0]?.segments.slice(0, 2)).toEqual([
+      "stable:missing",
+      "builtin:model",
+    ]);
+    expect(selectableRows(next)[next.navigation.sidebar.selectedIndex]).toEqual({
+      type: "sidebar_segment",
+      id: "builtin:model",
+    });
   });
 
   it("deduplicates segment assignments across all panels and hidden", () => {
@@ -983,7 +1019,9 @@ describe("searchable Sidebar reducer", () => {
 
   it("Save effect carries stable projected config plus complete effective draft", () => {
     const state = initDashboardState(config(), [], true, sidebarOptions());
-    state.draftSidebarLayout.panels[0]!.segments.push("session:todo:8");
+    const firstPanel = state.draftSidebarLayout.panels[0];
+    if (!firstPanel) throw new Error("expected first Sidebar panel");
+    firstPanel.segments.push("session:todo:8");
     state.activeTab = "sidebar";
     selectSidebarRow(state, { type: "save" });
     const result = reduceDashboardState(state, { type: "activate" });
