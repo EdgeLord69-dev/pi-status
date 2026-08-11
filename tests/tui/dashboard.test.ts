@@ -112,7 +112,16 @@ function makeDashboard(overrides: DashboardOverrides = {}) {
     discoveredStatuses: overrides.discoveredStatuses ?? ["build", "review"],
     usageAvailable: true,
     getPreviewInput: () => preview as Omit<FooterRenderInput, "zones" | "extensionSegments">,
-    getAvailableSidebarPanels: () => BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, title: id })),
+    sidebarCatalog: [],
+    sidebarPanels: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, title: id })),
+    sidebarLayout: {
+      panels: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
+        id,
+        visible: true,
+        segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]],
+      })),
+      hiddenSegments: [],
+    },
     save,
     done,
   });
@@ -260,7 +269,10 @@ describe("StatusLineDashboardComponent", () => {
     dirtySettings(component);
     component.handleInput("\x1b[B"); // → Save
     component.handleInput("\r"); // confirm Save
-    expect(save).toHaveBeenCalledWith(expect.objectContaining({ completionNotifications: true }));
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({ completionNotifications: true }),
+      expect.anything(),
+    );
     expect(done).not.toHaveBeenCalled();
   });
 
@@ -269,7 +281,10 @@ describe("StatusLineDashboardComponent", () => {
     dirtySettings(component);
     component.handleInput("\x1b[B"); // → Save
     component.handleInput("\r"); // confirm Save
-    expect(save).toHaveBeenCalledWith(expect.objectContaining({ completionNotifications: true }));
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({ completionNotifications: true }),
+      expect.anything(),
+    );
     expect(component.getState().baseline.completionNotifications).toBe(true);
   });
 
@@ -663,7 +678,16 @@ describe("openStatusLineDashboard", () => {
       discoveredStatuses: ["build"],
       usageAvailable: true,
       getPreviewInput: () => preview as Omit<FooterRenderInput, "zones" | "extensionSegments">,
-      getAvailableSidebarPanels: () => BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, title: id })),
+      sidebarCatalog: [],
+      sidebarPanels: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, title: id })),
+      sidebarLayout: {
+        panels: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
+          id,
+          visible: true,
+          segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]],
+        })),
+        hiddenSegments: [],
+      },
       save: vi.fn(),
     });
     await new Promise((resolve) => setImmediate(resolve));
@@ -723,7 +747,16 @@ describe("openStatusLineDashboard sidebar-aware overlay geometry", () => {
       discoveredStatuses: ["build"],
       usageAvailable: true,
       getPreviewInput: () => preview as Omit<FooterRenderInput, "zones" | "extensionSegments">,
-      getAvailableSidebarPanels: () => BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, title: id })),
+      sidebarCatalog: [],
+      sidebarPanels: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, title: id })),
+      sidebarLayout: {
+        panels: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
+          id,
+          visible: true,
+          segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]],
+        })),
+        hiddenSegments: [],
+      },
       save: vi.fn(),
       ...(effectiveWidth === undefined ? {} : { getEffectiveSidebarWidth: () => effectiveWidth }),
     });

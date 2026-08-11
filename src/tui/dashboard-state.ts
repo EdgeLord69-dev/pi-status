@@ -1,5 +1,7 @@
 import type {
   PiStatusConfig,
+  SidebarCatalogEntry,
+  SidebarEffectiveLayout,
   SidebarPanelId,
   SidebarPanelLayout,
   StatusLineSegmentId,
@@ -12,6 +14,10 @@ import {
   SIDEBAR_BUILTIN_ASSIGNMENTS,
   STATUS_LINE_ZONE_ORDER,
 } from "../shared/types.ts";
+import {
+  cloneSidebarEffectiveLayout,
+  sidebarStatusSegmentId,
+} from "../core/sidebar-layout.ts";
 import type { SessionDetails } from "./session-actions.ts";
 import type { DashboardTool } from "./tool-controls.ts";
 import { DISPLAY_PRESET_NAMES, displayPreset } from "./preset-actions.ts";
@@ -32,6 +38,7 @@ export interface TabNavigation {
   selectedIndex: number;
   query: string;
   offset: number;
+  surface: "statusbar" | "sidebar";
 }
 
 export interface DashboardState {
@@ -45,6 +52,11 @@ export interface DashboardState {
   navigation: Record<DashboardTabId, TabNavigation>;
   tools: DashboardTool[];
   session?: SessionDetails;
+  sidebarCatalog: SidebarCatalogEntry[];
+  sidebarPanels: { id: SidebarPanelId; title: string }[];
+  baselineSidebarLayout: SidebarEffectiveLayout;
+  draftSidebarLayout: SidebarEffectiveLayout;
+  activeSidebarPanelId: SidebarPanelId | undefined;
 }
 
 export type DashboardSelectableRow =
@@ -52,7 +64,8 @@ export type DashboardSelectableRow =
   | { type: "zone" }
   | { type: "extension_status_zone" }
   | { type: "segment"; id: StatusLineSegmentId }
-  | { type: "status_visibility"; key: string }
+  | { type: "status_visibility"; key: string; surface: "statusbar" | "sidebar" }
+  | { type: "surface_picker"; surface: "statusbar" | "sidebar" }
   | { type: "tool"; name: string }
   | { type: "rename_session" }
   | { type: "compact_session" }
@@ -199,8 +212,27 @@ export function configsEqual(left: PiStatusConfig, right: PiStatusConfig): boole
   );
 }
 
+function sameEffectiveLayout(
+  left: SidebarEffectiveLayout,
+  right: SidebarEffectiveLayout,
+): boolean {
+  return (
+    left.panels.length === right.panels.length &&
+    left.panels.every(
+      (panel, index) =>
+        panel.id === right.panels[index]?.id &&
+        panel.visible === right.panels[index]?.visible &&
+        sameArray(panel.segments, right.panels[index]?.segments ?? []),
+    ) &&
+    sameArray(left.hiddenSegments, right.hiddenSegments)
+  );
+}
+
 export function isDashboardDirty(state: DashboardState): boolean {
-  return !configsEqual(state.baseline, state.draft);
+  return (
+    !configsEqual(state.baseline, state.draft) ||
+    !sameEffectiveLayout(state.baselineSidebarLayout, state.draftSidebarLayout)
+  );
 }
 
 export function includesFuzzy(haystack: string, needle: string): boolean {
@@ -244,13 +276,20 @@ const emptyNavigation = (): TabNavigation => ({
   selectedIndex: 0,
   query: "",
   offset: 0,
+  surface: "statusbar",
 });
 
 export function initDashboardState(
   config: PiStatusConfig,
   discoveredStatuses: string[],
   usageAvailable = true,
-  options: { tools?: DashboardTool[]; session?: SessionDetails } = {},
+  options: {
+    tools?: DashboardTool[];
+    session?: SessionDetails;
+    sidebarCatalog?: readonly SidebarCatalogEntry[];
+    sidebarPanels?: readonly { id: SidebarPanelId; title: string }[];
+    sidebarLayout?: SidebarEffectiveLayout;
+  } = {},
 ): DashboardState {
   const baseline = structuredClone(config);
   const visibleSegmentIds = SEGMENT_ORDER.map(({ id }) => id).filter(
@@ -258,6 +297,11 @@ export function initDashboardState(
   );
   const tools = structuredClone(options.tools ?? []);
   const session = options.session ? structuredClone(options.session) : undefined;
+  const sidebarLayout = options.sidebarLayout ?? {
+    panels: config.sidebarPanelLayout,
+    hiddenSegments: config.sidebarHiddenSegments,
+  };
+  const baselineSidebarLayout = cloneSidebarEffectiveLayout(sidebarLayout);
   return {
     activeTab: "statusbar",
     baseline,
@@ -276,6 +320,14 @@ export function initDashboardState(
     },
     tools,
     ...(session ? { session } : {}),
+    sidebarCatalog: structuredClone(options.sidebarCatalog ?? []) as SidebarCatalogEntry[],
+    sidebarPanels: structuredClone(
+      options.sidebarPanels ??
+        config.sidebarPanelLayout.map(({ id }) => ({ id, title: id })),
+    ) as { id: SidebarPanelId; title: string }[],
+    baselineSidebarLayout,
+    draftSidebarLayout: cloneSidebarEffectiveLayout(baselineSidebarLayout),
+    activeSidebarPanelId: baselineSidebarLayout.panels[0]?.id,
   };
 }
 
@@ -300,10 +352,12 @@ export function selectableRows(
   }
   if (tab === "statuses") {
     const query = state.navigation.statuses.query;
+    const surface = state.navigation.statuses.surface;
     return [
+      { type: "surface_picker", surface },
       ...state.discoveredStatuses
         .filter((key) => includesFuzzy(key, query))
-        .map((key) => ({ type: "status_visibility" as const, key })),
+        .map((key) => ({ type: "status_visibility" as const, key, surface })),
       { type: "save" },
     ];
   }
@@ -430,6 +484,42 @@ function moveSidebarPanel(
   return next;
 }
 
+export function findSidebarSegmentAssignment(
+  layout: SidebarEffectiveLayout,
+  id: string,
+): { panelId: SidebarPanelId; index: number } | undefined {
+  for (const panel of layout.panels) {
+    const index = panel.segments.indexOf(id);
+    if (index >= 0) return { panelId: panel.id, index };
+  }
+}
+
+function removeSidebarSegment(layout: SidebarEffectiveLayout, id: string): void {
+  for (const panel of layout.panels) {
+    panel.segments = panel.segments.filter((candidate) => candidate !== id);
+  }
+  layout.hiddenSegments = layout.hiddenSegments.filter((candidate) => candidate !== id);
+}
+
+function assignSidebarSegment(
+  layout: SidebarEffectiveLayout,
+  id: string,
+  panelId: SidebarPanelId,
+): void {
+  removeSidebarSegment(layout, id);
+  let panel = layout.panels.find((candidate) => candidate.id === panelId);
+  if (!panel) {
+    panel = { id: panelId, visible: false, segments: [] };
+    layout.panels.push(panel);
+  }
+  panel.segments.push(id);
+}
+
+function disableSidebarSegment(layout: SidebarEffectiveLayout, id: string): void {
+  removeSidebarSegment(layout, id);
+  layout.hiddenSegments.push(id);
+}
+
 function keepSegmentSelected(state: DashboardState, id: StatusLineSegmentId): DashboardState {
   const index = selectableRows(state).findIndex((row) => row.type === "segment" && row.id === id);
   if (index >= 0) activeNavigation(state).selectedIndex = index;
@@ -521,6 +611,11 @@ export function reduceDashboardState(
       if (index >= 0) state.navigation.sidebar.selectedIndex = index;
       return { state: clampSelection(state) };
     }
+    if (row.type === "surface_picker") {
+      const nav = state.navigation.statuses;
+      nav.surface = nav.surface === "statusbar" ? "sidebar" : "statusbar";
+      return { state: clampSelection(state) };
+    }
     if (row.type === "extension_status_zone") {
       const index = STATUS_LINE_ZONE_ORDER.indexOf(state.draft.extensionStatusZone);
       state.draft.extensionStatusZone =
@@ -594,12 +689,25 @@ export function reduceDashboardState(
       })),
     );
   } else if (row.type === "status_visibility") {
-    const hidden = state.draft.extensionSegments.hidden;
-    state.draft.extensionSegments = {
-      hidden: hidden.includes(row.key)
-        ? hidden.filter((key) => key !== row.key)
-        : [...hidden, row.key],
-    };
+    if (row.surface === "sidebar") {
+      const id = sidebarStatusSegmentId(row.key);
+      if (!id) return { state: clampSelection(state) };
+      const assignment = findSidebarSegmentAssignment(state.draftSidebarLayout, id);
+      if (assignment) {
+        disableSidebarSegment(state.draftSidebarLayout, id);
+      } else {
+        const definition = state.sidebarCatalog.find((entry) => entry.id === id);
+        if (!definition) return { state: clampSelection(state) };
+        assignSidebarSegment(state.draftSidebarLayout, id, definition.defaultPanelId);
+      }
+    } else {
+      const hidden = state.draft.extensionSegments.hidden;
+      state.draft.extensionSegments = {
+        hidden: hidden.includes(row.key)
+          ? hidden.filter((key) => key !== row.key)
+          : [...hidden, row.key],
+      };
+    }
   } else if (row.type === "tool") {
     const tool = state.tools.find(({ name }) => name === row.name);
     return tool

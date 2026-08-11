@@ -9,7 +9,12 @@ import {
   type OverlayOptions,
   type TUI,
 } from "@earendil-works/pi-tui";
-import type { PiStatusConfig, SidebarPanelId } from "../shared/types.ts";
+import type {
+  PiStatusConfig,
+  SidebarCatalogEntry,
+  SidebarEffectiveLayout,
+  SidebarPanelId,
+} from "../shared/types.ts";
 import { renderDashboard, type DashboardDialog } from "./dashboard-render.ts";
 import {
   initDashboardState,
@@ -38,8 +43,10 @@ export interface StatusLineDashboardOptions {
   discoveredStatuses: string[];
   usageAvailable: boolean;
   getPreviewInput(): Omit<FooterRenderInput, "zones" | "extensionSegments">;
-  getAvailableSidebarPanels(): readonly { id: SidebarPanelId; title: string }[];
-  save(config: PiStatusConfig): void;
+  sidebarCatalog: readonly SidebarCatalogEntry[];
+  sidebarPanels: readonly { id: SidebarPanelId; title: string }[];
+  sidebarLayout: SidebarEffectiveLayout;
+  save(config: PiStatusConfig, sidebarLayout: SidebarEffectiveLayout): void;
   getEffectiveSidebarWidth?(): number | undefined;
   done(): void;
 }
@@ -80,7 +87,13 @@ export class StatusLineDashboardComponent implements Component, Focusable {
       options.config,
       options.discoveredStatuses,
       options.usageAvailable,
-      { tools, session },
+      {
+        tools,
+        session,
+        sidebarCatalog: options.sidebarCatalog,
+        sidebarPanels: options.sidebarPanels,
+        sidebarLayout: options.sidebarLayout,
+      },
     );
   }
 
@@ -105,7 +118,6 @@ export class StatusLineDashboardComponent implements Component, Focusable {
       width,
       this.options.tui.terminal.rows,
       this.dialog,
-      this.options.getAvailableSidebarPanels(),
     );
     if (!this.dialog && result.offset !== this.state.navigation[this.state.activeTab].offset) {
       this.state = reduceDashboardState(this.state, {
@@ -271,7 +283,7 @@ export class StatusLineDashboardComponent implements Component, Focusable {
       } else if (dialog.kind === "save") {
         const draft = structuredClone(this.state.draft);
         try {
-          this.options.save(draft);
+          this.options.save(draft, structuredClone(this.state.draftSidebarLayout));
           this.state.baseline = structuredClone(draft);
         } catch {
           this.warn("Failed to save statusline config");

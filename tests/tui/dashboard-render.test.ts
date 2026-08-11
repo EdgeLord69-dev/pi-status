@@ -205,11 +205,11 @@ describe("dashboard render", () => {
     expect(output).toContain("Top Left");
   });
 
-  it("Statuses tab renders per-status checkboxes (statusbar surface only)", () => {
+  it("Statuses tab renders per-status checkboxes and the surface picker", () => {
     const state = initDashboardState(config(), ["alpha", "beta"], true);
     state.activeTab = "statuses";
     const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
-    expect(output).not.toContain("Surface");
+    expect(output).toContain("Surface");
     expect(output).toContain("alpha");
     expect(output).toContain("beta");
   });
@@ -430,13 +430,15 @@ describe("dashboard Sidebar render", () => {
       { id: "activity" as const, visible: false, segments: [] },
       { id: "todos" as const, visible: true, segments: [] },
     ];
-    const state = initDashboardState(config({ sidebarPanelLayout: layout }), [], true);
+    const state = initDashboardState(config({ sidebarPanelLayout: layout }), [], true, {
+      sidebarPanels: [
+        { id: "agent", title: "Agent" },
+        { id: "activity", title: "Activity" },
+        { id: "todos", title: "TODOS" },
+      ],
+    });
     state.activeTab = "sidebar";
-    const output = renderDashboard(state, preview, noTheme, 100, 60, undefined, [
-      { id: "agent", title: "Agent" },
-      { id: "activity", title: "Activity" },
-      { id: "todos", title: "TODOS" },
-    ]).lines.join("\n");
+    const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
     expect(output).toContain("1");
     expect(output).toContain("[•]");
     expect(output).toContain("[ ]");
@@ -452,11 +454,11 @@ describe("dashboard Sidebar render", () => {
       { id: "agent" as const, visible: true, segments: [] },
       { id: "missing:contrib" as const, visible: false, segments: [] },
     ];
-    const state = initDashboardState(config({ sidebarPanelLayout: layout }), [], true);
+    const state = initDashboardState(config({ sidebarPanelLayout: layout }), [], true, {
+      sidebarPanels: [{ id: "agent", title: "Agent" }],
+    });
     state.activeTab = "sidebar";
-    const output = renderDashboard(state, preview, noTheme, 100, 60, undefined, [
-      { id: "agent", title: "Agent" },
-    ]).lines.join("\n");
+    const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
     expect(output).toContain("missing:contrib");
     expect(output).toContain("unavailable");
   });
@@ -600,11 +602,12 @@ describe("save confirm dialog body", () => {
 });
 
 describe("statuses surface picker render", () => {
-  it("does not render a Surface picker (statusbar surface only)", () => {
+  it("renders a Surface picker with the active surface label", () => {
     const state = initDashboardState(config(), [], true);
     state.activeTab = "statuses";
     const output = renderDashboard(state, preview, noTheme, 100, 40).lines.join("\n");
-    expect(output).not.toContain("Surface");
+    expect(output).toContain("Surface");
+    expect(output).toContain("Statusbar");
     expect(output).toContain("Search:");
   });
 });

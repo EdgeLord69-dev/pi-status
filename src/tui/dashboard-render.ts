@@ -1,10 +1,7 @@
 import { truncateToWidth, type Input, visibleWidth } from "@earendil-works/pi-tui";
 import { resolveFooter } from "../core/resolve-footer.ts";
-import {
-  BUILTIN_SIDEBAR_PANEL_IDS,
-  type SidebarPanelId,
-  type StatusLineZone,
-} from "../shared/types.ts";
+import { sidebarStatusSegmentId } from "../core/sidebar-layout.ts";
+import type { StatusLineZone } from "../shared/types.ts";
 import {
   bodyRowBudget,
   fitViewport,
@@ -16,6 +13,7 @@ import {
   type DashboardState,
   type DashboardTabId,
   findSegmentAssignment,
+  findSidebarSegmentAssignment,
   SEGMENT_METADATA,
   selectableRows,
 } from "./dashboard-state.ts";
@@ -71,8 +69,7 @@ const FOOTERS: Record<DashboardTabId, string> = {
   settings: "↑/↓ Select  •  Space/Enter Toggle/Save  •  Tab Switch  •  q/Esc Close",
 };
 
-const DEFAULT_BUILTIN_SIDEBAR_PANELS: readonly { id: SidebarPanelId; title: string }[] =
-  BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, title: id }));
+const DEFAULT_BUILTIN_SIDEBAR_PANELS: readonly { id: string; title: string }[] = [];
 
 function selectableLine(
   selected: boolean,
@@ -119,10 +116,6 @@ function logicalBody(
   theme: StatusLineTheme,
   width: number,
   ignoreQuery: boolean,
-  availablePanels: readonly {
-    id: SidebarPanelId;
-    title: string;
-  }[] = DEFAULT_BUILTIN_SIDEBAR_PANELS,
 ): LogicalBody {
   const renderState = stateForNaturalHeight(state, tab, ignoreQuery);
   const rows = selectableRows(renderState, tab);
@@ -165,13 +158,21 @@ function logicalBody(
       ...buildFooterRowsFromResolved(resolveFooter(previewInput, state.draft, theme), theme, width),
     );
   } else if (tab === "statuses") {
-    const rows = selectableRows(state, "statuses");
+    const statusRows = selectableRows(state, "statuses");
     lines.push(`Search: ${renderState.navigation.statuses.query}`);
+    const surface = state.navigation.statuses.surface;
     let visibilityCount = 0;
-    for (const row of rows) {
-      if (row.type === "status_visibility") {
-        const hidden = state.draft.extensionSegments.hidden;
-        pushSelectable(hidden.includes(row.key) ? "[ ]" : "[•]", "", row.key);
+    for (const row of statusRows) {
+      if (row.type === "surface_picker") {
+        pushSelectable("↔", "Surface", surface === "statusbar" ? "Statusbar" : "Sidebar");
+      } else if (row.type === "status_visibility") {
+        const statusId = sidebarStatusSegmentId(row.key);
+        const assigned =
+          row.surface === "sidebar"
+            ? statusId !== undefined &&
+              !!findSidebarSegmentAssignment(state.draftSidebarLayout, statusId)
+            : !state.draft.extensionSegments.hidden.includes(row.key);
+        pushSelectable(assigned ? "[•]" : "[ ]", "", row.key);
         visibilityCount += 1;
       }
     }
@@ -206,7 +207,7 @@ function logicalBody(
       );
     }
   } else if (tab === "sidebar") {
-    const available = new Map(availablePanels.map((entry) => [entry.id, entry.title]));
+    const available = new Map(state.sidebarPanels.map((entry) => [entry.id, entry.title]));
     state.draft.sidebarPanelLayout.forEach((entry, index) => {
       const title = available.get(entry.id) ?? entry.id;
       const unavailable = !available.has(entry.id);
@@ -217,7 +218,7 @@ function logicalBody(
       );
     });
     pushSelectable(" ", "Restore default", "Reset Sidebar to the built-in visible layout");
-    const visibleIds = state.draft.sidebarPanelLayout
+    const visibleIds = state.draftSidebarLayout.panels
       .filter((entry) => entry.visible)
       .map((entry) => entry.id);
     if (visibleIds.length > 0 && width >= 24) {
@@ -291,15 +292,11 @@ export function renderDashboard(
   width: number,
   terminalRows: number,
   dialog?: DashboardDialog,
-  availablePanels: readonly {
-    id: SidebarPanelId;
-    title: string;
-  }[] = DEFAULT_BUILTIN_SIDEBAR_PANELS,
 ): DashboardRenderResult {
   const safeWidth = Math.max(1, Math.floor(width));
   const contentWidth = frameContentWidth(safeWidth);
   const natural = DASHBOARD_TABS.map(({ id }) =>
-    logicalBody(state, id, previewInput, theme, contentWidth, true, availablePanels),
+    logicalBody(state, id, previewInput, theme, contentWidth, true),
   );
   const target = targetOverlayRows(
     natural.map(({ lines }) => lines.length),
@@ -311,15 +308,7 @@ export function renderDashboard(
 
   const active = dialog
     ? dialogBody(dialog, contentWidth, theme)
-    : logicalBody(
-        state,
-        state.activeTab,
-        previewInput,
-        theme,
-        contentWidth,
-        false,
-        availablePanels,
-      );
+    : logicalBody(state, state.activeTab, previewInput, theme, contentWidth, false);
   const viewport = fitViewport(
     active.lines,
     active.selectedLine,

@@ -3,6 +3,7 @@ import { estimateTokens } from "@earendil-works/pi-coding-agent";
 import { loadConfig, normalizeSidebarPanelLayout, saveConfig } from "./core/config.ts";
 import {
   applySidebarPanelControls,
+  cloneSidebarEffectiveLayout,
   createSidebarLayoutRuntime,
   persistSidebarLayout,
   reconcileSidebarEffectiveLayout,
@@ -23,6 +24,7 @@ import {
   type AccessType,
   type NormalizedTodo,
   type PiStatusConfig,
+  type SidebarEffectiveLayout,
   type StatusLineZones,
 } from "./shared/types.ts";
 import { buildFooterRowsFromResolved } from "./tui/render.ts";
@@ -155,14 +157,16 @@ export default function createExtension(pi: ExtensionAPI): void {
     },
   });
 
-  function saveAndApplyConfig(next: PiStatusConfig): void {
+  function saveAndApplyConfig(
+    next: PiStatusConfig,
+    sidebarLayout: SidebarEffectiveLayout,
+  ): void {
     const ctx = runtimeState.snapshot().ctx;
     if (ctx?.mode === "tui") {
       const view = previewSidebarView(ctx);
-      const layout = applySidebarPanelControls(next.sidebarPanelLayout, view.layout);
       persistSidebarLayout({
         config: next,
-        effective: layout,
+        effective: sidebarLayout,
         catalog: view.catalog,
         persist: saveConfig,
         commit: (committed, committedLayout) => {
@@ -401,6 +405,17 @@ export default function createExtension(pi: ExtensionAPI): void {
       );
 
       try {
+        const sidebarView = captureSidebarView(ctx);
+        const sidebarPanels = [
+          ...BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
+            id,
+            title: `${id[0]?.toUpperCase() ?? ""}${id.slice(1)}`,
+          })),
+          ...(activeSidebarRegistry?.getAvailable() ?? []).map(({ id, title }) => ({
+            id,
+            title,
+          })),
+        ];
         await openStatusLineDashboard({
           pi,
           ctx,
@@ -408,11 +423,9 @@ export default function createExtension(pi: ExtensionAPI): void {
           discoveredStatuses: discovered,
           usageAvailable: usageRuntime.getAvailable(),
           getPreviewInput: () => currentFooterInput(ctx),
-          getAvailableSidebarPanels: () => {
-            const panels = activeSidebarRegistry?.getAvailable();
-            if (panels && panels.length > 0) return panels;
-            return BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, title: id }));
-          },
+          sidebarCatalog: structuredClone(sidebarView.catalog),
+          sidebarPanels: structuredClone(sidebarPanels),
+          sidebarLayout: cloneSidebarEffectiveLayout(sidebarView.layout),
           save: saveAndApplyConfig,
           getEffectiveSidebarWidth: () => activeSidebarController?.getEffectiveWidth(),
           onComponent(component) {

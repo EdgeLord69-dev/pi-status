@@ -3,6 +3,9 @@ import {
   BUILTIN_SIDEBAR_PANEL_IDS,
   SIDEBAR_BUILTIN_ASSIGNMENTS,
   type PiStatusConfig,
+  type SidebarCatalogEntry,
+  type SidebarEffectiveLayout,
+  type SidebarPanelId,
   type StatusLineZones,
 } from "../../src/shared/types.ts";
 import type { DashboardTool } from "../../src/tui/tool-controls.ts";
@@ -14,6 +17,7 @@ import {
   SEGMENT_ORDER,
   selectableRows,
 } from "../../src/tui/dashboard-state.ts";
+import { sidebarStatusSegmentId } from "../../src/core/sidebar-layout.ts";
 
 function zones(overrides: Partial<StatusLineZones> = {}): StatusLineZones {
   return {
@@ -168,7 +172,10 @@ describe("dashboard draft initialization", () => {
     const state = initDashboardState(config(), ["alpha"], true);
     state.activeTab = "statuses";
     state.navigation.statuses.query = "zzz";
-    expect(selectableRows(state)).toEqual([{ type: "save" }]);
+    expect(selectableRows(state)).toEqual([
+      { type: "surface_picker", surface: "statusbar" },
+      { type: "save" },
+    ]);
   });
 });
 
@@ -189,12 +196,13 @@ describe("dashboard Statusbar tab initialization", () => {
     expect(state.activeTab).toBe("statusbar");
   });
 
-  it("initializes Statuses navigation without a surface field", () => {
+  it("initializes Statuses navigation with the statusbar surface", () => {
     const state = initDashboardState(config(), [], true);
     expect(state.navigation.statuses).toEqual({
       selectedIndex: 0,
       query: "",
       offset: 0,
+      surface: "statusbar",
     });
   });
 
@@ -265,6 +273,7 @@ describe("dashboard Statusbar tab initialization", () => {
       selectedIndex: 0,
       query: "",
       offset: 0,
+      surface: "statusbar",
     });
   });
 });
@@ -286,8 +295,9 @@ describe("statuses surface picker", () => {
     const state = initDashboardState(config(), ["alpha", "beta"], true);
     const rows = selectableRows(state, "statuses");
     expect(rows).toEqual([
-      { type: "status_visibility", key: "alpha" },
-      { type: "status_visibility", key: "beta" },
+      { type: "surface_picker", surface: "statusbar" },
+      { type: "status_visibility", key: "alpha", surface: "statusbar" },
+      { type: "status_visibility", key: "beta", surface: "statusbar" },
       { type: "save" },
     ]);
   });
@@ -296,13 +306,17 @@ describe("statuses surface picker", () => {
     const state = initDashboardState(config(), ["alpha", "beta"], true);
     state.navigation.statuses.query = "alp";
     const rows = selectableRows(state, "statuses");
-    expect(rows).toEqual([{ type: "status_visibility", key: "alpha" }, { type: "save" }]);
+    expect(rows).toEqual([
+      { type: "surface_picker", surface: "statusbar" },
+      { type: "status_visibility", key: "alpha", surface: "statusbar" },
+      { type: "save" },
+    ]);
   });
 
   it("activate on a status_visibility row toggles extensionSegments.hidden", () => {
     let state = initDashboardState(config(), ["alpha"], true);
     state.activeTab = "statuses";
-    state.navigation.statuses.selectedIndex = 0; // alpha row
+    state.navigation.statuses.selectedIndex = 1; // alpha row (after surface_picker)
     const before = state.draft.extensionSegments.hidden;
     state = reduceDashboardState(state, { type: "activate" }).state;
     expect(state.draft.extensionSegments.hidden).toEqual([...before, "alpha"]);
@@ -404,19 +418,21 @@ describe("dashboard transitions", () => {
   it("keeps or resets status selection safely when filtering", () => {
     let state = initDashboardState(config(), ["alpha", "beta"], true);
     state.activeTab = "statuses";
-    // Statuses emits one row per key. beta lives at index 1 (alpha(0), beta(1)).
-    state.navigation.statuses.selectedIndex = 1;
+    // Rows: surface_picker(0), alpha(1), beta(2). beta lives at index 2.
+    state.navigation.statuses.selectedIndex = 2;
 
     state = dispatch(state, { type: "type_char", char: "b" });
     expect(selectableRows(state)[state.navigation.statuses.selectedIndex]).toEqual({
       type: "status_visibility",
       key: "beta",
+      surface: "statusbar",
     });
 
     state = dispatch(state, { type: "type_char", char: "z" });
-    // After filter "bz" the list is [save]; reconcile moves selection to 0.
+    // After filter "bz" the list is [surface_picker, save]; reconcile moves selection to 0.
     expect(selectableRows(state)[state.navigation.statuses.selectedIndex]).toEqual({
-      type: "save",
+      type: "surface_picker",
+      surface: "statusbar",
     });
     expect(state.navigation.statuses.selectedIndex).toBe(0);
   });
@@ -444,9 +460,10 @@ describe("dashboard transitions", () => {
     );
     state.activeTab = "statuses";
     state.navigation.statuses.query = "ab";
-    state.navigation.statuses.selectedIndex = 0; // alpha-build row
+    state.navigation.statuses.selectedIndex = 1; // alpha-build row (after surface_picker)
     expect(selectableRows(state)).toEqual([
-      { type: "status_visibility", key: "alpha-build" },
+      { type: "surface_picker", surface: "statusbar" },
+      { type: "status_visibility", key: "alpha-build", surface: "statusbar" },
       { type: "save" },
     ]);
     state = dispatch(state, { type: "activate" });
@@ -456,7 +473,7 @@ describe("dashboard transitions", () => {
   it("activating status_visibility toggles extensionSegments.hidden", () => {
     let state = initDashboardState(config(), ["alpha"], true);
     state.activeTab = "statuses";
-    state.navigation.statuses.selectedIndex = 0; // alpha row
+    state.navigation.statuses.selectedIndex = 1; // alpha row (after surface_picker)
     state = reduceDashboardState(state, { type: "activate" }).state;
     expect(state.draft.extensionSegments.hidden).toEqual(["alpha"]);
     state = reduceDashboardState(state, { type: "activate" }).state;
@@ -756,5 +773,152 @@ describe("dashboard live snapshots", () => {
       tools: [{ name: "read", description: "Read files", enabled: true }],
     });
     expect(state.navigation.tools.selectedIndex).toBe(0);
+  });
+});
+
+const SIDEBAR_PANELS = [
+  { id: "agent" as const, title: "Agent" },
+  { id: "activity" as const, title: "Activity" },
+  { id: "statuses" as const, title: "Statuses" },
+  { id: "vendor:queue" as const, title: "Queue" },
+];
+
+function catalogEntry(
+  id: string,
+  defaultPanelId: SidebarPanelId,
+  overrides: Partial<SidebarCatalogEntry> = {},
+): SidebarCatalogEntry {
+  return {
+    id,
+    label: id,
+    description: `Description for ${id}`,
+    defaultPanelId,
+    persistence: "stable",
+    defaultEnabled: true,
+    available: true,
+    requiresWorkspacePulse: false,
+    priority: "normal",
+    dropOrder: 0,
+    content: null,
+    ...overrides,
+  };
+}
+
+const STATUS_ID = sidebarStatusSegmentId("queue")!;
+const SIDEBAR_CATALOG = [
+  catalogEntry("builtin:model", "agent", { label: "Model" }),
+  catalogEntry("builtin:recent-tools", "activity", {
+    label: "Recent tools",
+    description: "Most recently completed tools",
+    available: false,
+  }),
+  catalogEntry(STATUS_ID, "statuses", { label: "Queue", available: false }),
+  catalogEntry("session:todo:7", "activity", {
+    label: "Ship Phase 4",
+    persistence: "session",
+  }),
+] satisfies SidebarCatalogEntry[];
+
+const SIDEBAR_LAYOUT: SidebarEffectiveLayout = {
+  panels: [
+    {
+      id: "agent",
+      visible: true,
+      segments: ["builtin:model", "stable:missing"],
+    },
+    { id: "activity", visible: true, segments: ["session:todo:7"] },
+    { id: "statuses", visible: false, segments: [STATUS_ID] },
+    { id: "vendor:queue", visible: true, segments: [] },
+  ],
+  hiddenSegments: ["builtin:recent-tools"],
+};
+
+function sidebarOptions() {
+  return {
+    sidebarCatalog: SIDEBAR_CATALOG,
+    sidebarPanels: SIDEBAR_PANELS,
+    sidebarLayout: SIDEBAR_LAYOUT,
+  };
+}
+
+describe("dashboard Sidebar ownership", () => {
+  it("clones frozen Sidebar inputs into independent baseline and draft state", () => {
+    const catalog = structuredClone(SIDEBAR_CATALOG);
+    const panels = structuredClone(SIDEBAR_PANELS);
+    const layout = structuredClone(SIDEBAR_LAYOUT);
+    const state = initDashboardState(config(), ["queue"], true, {
+      ...sidebarOptions(),
+      sidebarCatalog: catalog,
+      sidebarPanels: panels,
+      sidebarLayout: layout,
+    });
+
+    catalog[0]!.label = "mutated";
+    panels[0]!.title = "mutated";
+    layout.panels[0]!.segments.push("mutated");
+
+    expect(state.sidebarCatalog[0]?.label).toBe("Model");
+    expect(state.sidebarPanels[0]?.title).toBe("Agent");
+    expect(state.baselineSidebarLayout).toEqual(SIDEBAR_LAYOUT);
+    expect(state.draftSidebarLayout).toEqual(SIDEBAR_LAYOUT);
+    expect(state.draftSidebarLayout).not.toBe(state.baselineSidebarLayout);
+  });
+
+  it("treats stable and session-only effective edits as dirty without changing config", () => {
+    const state = initDashboardState(config(), [], true, sidebarOptions());
+    const original = structuredClone(state.draft);
+    state.draftSidebarLayout.hiddenSegments.push("session:todo:8");
+    expect(isDashboardDirty(state)).toBe(true);
+    expect(state.draft).toEqual(original);
+  });
+
+  it("restores the Statuses surface picker", () => {
+    const state = initDashboardState(config(), ["queue"], true, sidebarOptions());
+    expect(selectableRows(state, "statuses")).toEqual([
+      { type: "surface_picker", surface: "statusbar" },
+      { type: "status_visibility", key: "queue", surface: "statusbar" },
+      { type: "save" },
+    ]);
+  });
+
+  it("changes Statusbar surfaces without mutating config", () => {
+    const state = initDashboardState(config(), ["queue"], true, sidebarOptions());
+    state.activeTab = "statuses";
+    state.navigation.statuses.surface = "sidebar";
+    state.navigation.statuses.selectedIndex = 1;
+    const original = structuredClone(state.draft);
+    const next = reduceDashboardState(state, { type: "activate" }).state;
+    expect(next.draft.extensionSegments.hidden).toEqual(original.extensionSegments.hidden);
+    expect(next.draftSidebarLayout.hiddenSegments).toContain(STATUS_ID);
+  });
+
+  it("re-enables a known unavailable catalog entry at its defaultPanelId", () => {
+    const state = initDashboardState(config(), ["queue"], true, sidebarOptions());
+    state.draftSidebarLayout = structuredClone(SIDEBAR_LAYOUT);
+    state.draftSidebarLayout.hiddenSegments = [STATUS_ID];
+    const statuses = state.draftSidebarLayout.panels.find(({ id }) => id === "statuses");
+    if (statuses) statuses.segments = [];
+    state.activeTab = "statuses";
+    state.navigation.statuses.surface = "sidebar";
+    state.navigation.statuses.selectedIndex = 1;
+    const next = reduceDashboardState(state, { type: "activate" }).state;
+    const statusesPanel = next.draftSidebarLayout.panels.find(({ id }) => id === "statuses");
+    expect(statusesPanel?.segments).toContain(STATUS_ID);
+    expect(next.draftSidebarLayout.hiddenSegments).not.toContain(STATUS_ID);
+  });
+
+  it("leaves effective draft byte-for-byte unchanged when a status ID is unencodable", () => {
+    const state = initDashboardState(
+      config(),
+      ["x".repeat(300)],
+      true,
+      sidebarOptions(),
+    );
+    const snapshot = structuredClone(state.draftSidebarLayout);
+    state.activeTab = "statuses";
+    state.navigation.statuses.surface = "sidebar";
+    state.navigation.statuses.selectedIndex = 1;
+    const next = reduceDashboardState(state, { type: "activate" }).state;
+    expect(next.draftSidebarLayout).toEqual(snapshot);
   });
 });
