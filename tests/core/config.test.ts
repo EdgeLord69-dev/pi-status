@@ -13,6 +13,7 @@ import {
   loadConfig,
   normalizeExtensionSegments,
   normalizeSegments,
+  normalizeSidebarLayout,
   normalizeSidebarPanelLayout,
   normalizeZones,
   saveConfig,
@@ -280,45 +281,48 @@ describe("config — nested sidebar layout", () => {
   });
 
   it("uses curated built-ins for panels missing segments", () => {
-    expect(
-      normalizeSidebarPanelLayout([
-        { id: "agent", visible: true },
-      ]),
-    ).toEqual([
+    expect(normalizeSidebarPanelLayout([{ id: "agent", visible: true }])).toEqual([
       { id: "agent", visible: true, segments: [...builtinAssignments.agent] },
       ...expectedDefault().filter((p) => p.id !== "agent"),
     ]);
   });
 
   it("keeps explicit empty segments empty", () => {
-    expect(
-      normalizeSidebarPanelLayout([
-        { id: "agent", visible: true, segments: [] },
-      ]),
-    ).toEqual([
+    expect(normalizeSidebarPanelLayout([{ id: "agent", visible: true, segments: [] }])).toEqual([
       { id: "agent", visible: true, segments: [] },
       ...expectedDefault().filter((p) => p.id !== "agent"),
     ]);
   });
 
   it("globally deduplicates assignments and caps at 2048", () => {
-    const overflow = Array.from({ length: 2_050 }, (_, i) => `tag:${i}`);
-    const expected = overflow.slice(0, 2_048);
-    expect(
-      normalizeSidebarPanelLayout([
-        { id: "agent", visible: true, segments: overflow },
-      ]),
-    ).toEqual([
-      { id: "agent", visible: true, segments: expected },
-      ...expectedDefault().slice(1),
+    const first = Array.from({ length: 2_047 }, (_, i) => `tag:${i}`);
+    const normalized = normalizeSidebarPanelLayout([
+      { id: "agent", visible: true, segments: first },
+      { id: "activity", visible: true, segments: ["tag:0", "tag:last", "tag:overflow"] },
     ]);
+
+    expect(normalized[0]?.segments).toEqual(first);
+    expect(normalized[1]?.segments).toEqual(["tag:last"]);
+    expect(normalized.flatMap((panel) => panel.segments)).toHaveLength(2_048);
+  });
+
+  it("shares the global assignment cap with hidden IDs", () => {
+    const assigned = Array.from({ length: 2_047 }, (_, index) => `tag:${index}`);
+    const normalized = normalizeSidebarLayout({
+      sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
+        id,
+        visible: true,
+        segments: id === "agent" ? assigned : [],
+      })),
+      sidebarHiddenSegments: ["hidden:first", "hidden:overflow"],
+    });
+
+    expect(normalized.sidebarHiddenSegments).toEqual(["hidden:first"]);
   });
 
   it("dedupes segments within the same panel", () => {
     expect(
-      normalizeSidebarPanelLayout([
-        { id: "agent", visible: true, segments: ["a", "a", "b", "a"] },
-      ]),
+      normalizeSidebarPanelLayout([{ id: "agent", visible: true, segments: ["a", "a", "b", "a"] }]),
     ).toEqual([
       { id: "agent", visible: true, segments: ["a", "b"] },
       ...expectedDefault().slice(1),
@@ -334,12 +338,18 @@ describe("config — nested sidebar layout", () => {
         sidebarPanelLayout: [
           { id: "agent", visible: true, segments: ["session:todo:1", "extra:row"] },
         ],
+        sidebarHiddenSegments: [
+          "session:todo:2",
+          SIDEBAR_LAYOUT_TOOL_SENTINEL,
+          "extra:hidden",
+          "extra:hidden",
+        ],
       },
       { agentDir: "/agent", store },
     );
     const written = JSON.parse(store.read(path) as string);
     expect(written.sidebarPanelLayout[0].segments).toEqual(["extra:row"]);
-    expect(written.sidebarHiddenSegments).toEqual([]);
+    expect(written.sidebarHiddenSegments).toEqual(["extra:hidden"]);
   });
 });
 
@@ -355,8 +365,24 @@ describe("config — legacy inputs as raw load inputs", () => {
       }),
     );
     expect(loadConfig({ agentDir: "/agent", store }).sidebarHiddenSegments).toEqual([
-      "build",
-      "lint",
+      "status:build",
+      "status:lint",
+    ]);
+  });
+
+  it("drops empty legacy hidden status keys", () => {
+    const store = new MemoryConfigStore();
+    store.seed(
+      getConfigPath("/agent"),
+      JSON.stringify({
+        zones: DEFAULT_ZONES,
+        extensionSegments: { hidden: [] },
+        sidebarExtensionSegments: { hidden: ["", "build"] },
+      }),
+    );
+
+    expect(loadConfig({ agentDir: "/agent", store }).sidebarHiddenSegments).toEqual([
+      "status:build",
     ]);
   });
 
@@ -381,11 +407,12 @@ describe("config — legacy inputs as raw load inputs", () => {
       JSON.stringify({
         zones: DEFAULT_ZONES,
         extensionSegments: { hidden: [] },
-        sidebarExtensionSegments: { hidden: ["builtin:model", "no:assignment"] },
+        sidebarPanelLayout: [{ id: "statuses", visible: true, segments: ["status:build"] }],
+        sidebarExtensionSegments: { hidden: ["build", "lint"] },
       }),
     );
     expect(loadConfig({ agentDir: "/agent", store }).sidebarHiddenSegments).toEqual([
-      "no:assignment",
+      "status:lint",
     ]);
   });
 

@@ -29,6 +29,7 @@ import {
   isPersistedSidebarSegmentId,
   SIDEBAR_LAYOUT_MAX_ASSIGNMENTS,
   SIDEBAR_LAYOUT_TOOL_SENTINEL,
+  sidebarStatusSegmentId,
 } from "./sidebar-layout.ts";
 
 export {
@@ -63,9 +64,7 @@ function cloneSidebarPanelLayout(
   return layout.map(({ id, visible, segments }) => ({
     id,
     visible,
-    segments: segments.filter(
-      (segment) => isPersistedSidebarSegmentId(segment) && segment !== SIDEBAR_LAYOUT_TOOL_SENTINEL,
-    ),
+    segments: segments.filter(isPersistedSidebarSegmentId),
   }));
 }
 
@@ -166,26 +165,27 @@ export function normalizeExtensionSegments(input: unknown): ExtensionSegments {
   return { hidden: normalizeFilterValues((input as { hidden?: unknown }).hidden) };
 }
 
-function normalizePanelEntry(value: unknown): SidebarPanelLayoutEntry | undefined {
+function normalizePanelEntry(
+  value: unknown,
+  panelIds: Set<SidebarPanelId>,
+  assignments: Set<string>,
+): SidebarPanelLayoutEntry | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const entry = value as { id?: unknown; visible?: unknown; segments?: unknown };
-  if (!isSidebarPanelId(entry.id)) return undefined;
-  const visible = entry.visible === true;
+  if (!isSidebarPanelId(entry.id) || panelIds.has(entry.id)) return undefined;
+  panelIds.add(entry.id);
   const rawSegments: readonly unknown[] = Array.isArray(entry.segments)
     ? entry.segments
     : ((SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[entry.id] ?? []);
   const segments: string[] = [];
-  const seen = new Set<string>();
   for (const segment of rawSegments) {
-    if (typeof segment !== "string" || segment.length === 0) continue;
-    if (segment === SIDEBAR_LAYOUT_TOOL_SENTINEL) continue;
-    if (!isPersistedSidebarSegmentId(segment)) continue;
-    if (seen.has(segment)) continue;
-    seen.add(segment);
+    if (assignments.size >= SIDEBAR_LAYOUT_MAX_ASSIGNMENTS) break;
+    if (typeof segment !== "string" || !isPersistedSidebarSegmentId(segment)) continue;
+    if (assignments.has(segment)) continue;
+    assignments.add(segment);
     segments.push(segment);
-    if (segments.length >= SIDEBAR_LAYOUT_MAX_ASSIGNMENTS) break;
   }
-  return { id: entry.id, visible, segments };
+  return { id: entry.id, visible: entry.visible === true, segments };
 }
 
 /**
@@ -197,21 +197,22 @@ export function normalizeSidebarPanelLayout(input: unknown): SidebarPanelLayout 
   if (!Array.isArray(input)) return cloneSidebarPanelLayout(DEFAULT_SIDEBAR_PANEL_LAYOUT);
 
   const normalized: SidebarPanelLayout = [];
-  const seen = new Set<SidebarPanelId>();
+  const panelIds = new Set<SidebarPanelId>();
+  const assignments = new Set<string>();
   for (const value of input) {
-    const entry = normalizePanelEntry(value);
-    if (!entry || seen.has(entry.id)) continue;
-    seen.add(entry.id);
-    normalized.push(entry);
+    const entry = normalizePanelEntry(value, panelIds, assignments);
+    if (entry) normalized.push(entry);
   }
 
   for (const id of BUILTIN_SIDEBAR_PANEL_IDS) {
-    if (!seen.has(id)) {
-      normalized.push({
-        id,
-        visible: true,
-        segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]],
-      });
+    if (!panelIds.has(id)) {
+      normalized.push(
+        normalizePanelEntry(
+          { id, visible: true },
+          panelIds,
+          assignments,
+        ) as SidebarPanelLayoutEntry,
+      );
     }
   }
 
@@ -233,14 +234,16 @@ function parseConfig(content: string): Record<string, unknown> | null {
   }
 }
 
-function normalizeLegacyHiddenSegments(input: unknown): string[] {
+function normalizeHiddenSegments(input: unknown): string[] {
   if (!Array.isArray(input)) return [];
-  const bounded: string[] = [];
-  for (const value of input) {
-    if (typeof value !== "string" || value.length === 0) continue;
-    bounded.push(value);
-  }
-  return bounded;
+  return input.filter((value): value is string => typeof value === "string" && value.length > 0);
+}
+
+function normalizeLegacyHiddenSegments(input: unknown): string[] {
+  return normalizeHiddenSegments(input).flatMap((key) => {
+    const id = sidebarStatusSegmentId(key);
+    return id === undefined ? [] : [id];
+  });
 }
 
 function normalizeConfig(input: Record<string, unknown>): PiStatusConfig {
@@ -271,14 +274,20 @@ export function normalizeSidebarLayout(input: Record<string, unknown>): {
   for (const entry of layout) {
     for (const segment of entry.segments) assigned.add(segment);
   }
-  const rawHidden =
-    (input.sidebarHiddenSegments as unknown) ??
-    (input.sidebarExtensionSegments &&
-    typeof input.sidebarExtensionSegments === "object" &&
-    !Array.isArray(input.sidebarExtensionSegments)
+  const hasNestedHidden = Object.hasOwn(input, "sidebarHiddenSegments");
+  const rawHidden = hasNestedHidden
+    ? input.sidebarHiddenSegments
+    : input.sidebarExtensionSegments &&
+        typeof input.sidebarExtensionSegments === "object" &&
+        !Array.isArray(input.sidebarExtensionSegments)
       ? (input.sidebarExtensionSegments as { hidden?: unknown }).hidden
-      : undefined);
-  const hiddenCandidates = [...normalizeLegacyHiddenSegments(rawHidden), ...toolSentinel];
+      : undefined;
+  const hiddenCandidates = [
+    ...(hasNestedHidden
+      ? normalizeHiddenSegments(rawHidden)
+      : normalizeLegacyHiddenSegments(rawHidden)),
+    ...toolSentinel,
+  ];
   const hiddenWithoutAssigned = hiddenCandidates.filter(
     (id) =>
       !assigned.has(id) && (id === SIDEBAR_LAYOUT_TOOL_SENTINEL || isPersistedSidebarSegmentId(id)),
@@ -290,7 +299,10 @@ export function normalizeSidebarLayout(input: Record<string, unknown>): {
     seen.add(id);
     dedupedHidden.push(id);
   }
-  const capped = dedupedHidden.slice(0, SIDEBAR_LAYOUT_MAX_ASSIGNMENTS);
+  const capped = dedupedHidden.slice(
+    0,
+    Math.max(0, SIDEBAR_LAYOUT_MAX_ASSIGNMENTS - assigned.size),
+  );
   const extensionStatusZone =
     input.extensionStatusZone === "topLeft" ||
     input.extensionStatusZone === "topRight" ||
@@ -323,13 +335,17 @@ export function saveConfig(
   if (store.exists(path) && !parseConfig(store.read(path) ?? "")) {
     throw new Error(`Refusing to overwrite malformed or non-object config: ${path}`);
   }
+  const sidebar = normalizeSidebarLayout({
+    sidebarPanelLayout: config.sidebarPanelLayout,
+    sidebarHiddenSegments: config.sidebarHiddenSegments,
+  });
   const next: PiStatusConfig = {
     zones: cloneZones(config.zones),
     extensionSegments: { hidden: [...config.extensionSegments.hidden] },
     extensionStatusZone: config.extensionStatusZone,
     completionNotifications: config.completionNotifications,
-    sidebarPanelLayout: cloneSidebarPanelLayout(config.sidebarPanelLayout),
-    sidebarHiddenSegments: [...config.sidebarHiddenSegments],
+    sidebarPanelLayout: sidebar.sidebarPanelLayout,
+    sidebarHiddenSegments: sidebar.sidebarHiddenSegments.filter(isPersistedSidebarSegmentId),
   };
   store.write(path, `${JSON.stringify(next, null, 2)}\n`);
   return { path };

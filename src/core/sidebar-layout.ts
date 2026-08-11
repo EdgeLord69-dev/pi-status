@@ -1,5 +1,4 @@
-// Final bounded identity encoding for dynamic sidebar segments plus the legacy
-// effective-layout seeder. Persistence and reconciliation stay out of Phase 2.
+// Bounded sidebar identities and the effective-layout runtime.
 
 import {
   BUILTIN_SIDEBAR_PANEL_IDS,
@@ -10,7 +9,6 @@ import {
   type SidebarEffectivePanelLayoutEntry,
   type SidebarPanelId,
   type SidebarPanelLayout,
-  type SidebarPanelLayoutEntry,
 } from "../shared/types.ts";
 
 export { SIDEBAR_BUILTIN_ASSIGNMENTS } from "../shared/types.ts";
@@ -78,57 +76,6 @@ export function curatedSidebarSegmentsForPanel(panelId: SidebarPanelId): string[
   return curated ? [...curated] : [];
 }
 
-/**
- * Seed an effective layout from the configuration and a resolved catalog.
- * The user's nested segments extend the panel's assignments; catalog entries
- * are added to their home panels only when the user has not already assigned
- * them. Hidden segments act as removal hints.
- */
-export function createLegacySidebarEffectiveLayout(
-  config: PiStatusConfig,
-  catalog: readonly SidebarCatalogEntry[],
-): SidebarEffectiveLayout {
-  const panels: SidebarEffectivePanelLayoutEntry[] = config.sidebarPanelLayout.map((entry) => ({
-    id: entry.id,
-    visible: entry.visible,
-    segments: [...entry.segments],
-  }));
-  const byId = new Map(panels.map((panel) => [panel.id as string, panel]));
-  const assigned = new Set<string>();
-  for (const panel of panels) for (const segment of panel.segments) assigned.add(segment);
-  const hiddenSegments: string[] = [];
-  const userHidden = new Set(config.sidebarHiddenSegments);
-  const toolsEnabled = userHidden.has(SIDEBAR_LAYOUT_TOOL_SENTINEL);
-
-  for (const entry of catalog) {
-    let panel = byId.get(entry.defaultPanelId);
-    if (!panel) {
-      panel = { id: entry.defaultPanelId, visible: false, segments: [] };
-      panels.push(panel);
-      byId.set(entry.defaultPanelId, panel);
-    }
-    if (userHidden.has(entry.id)) {
-      panel.segments = panel.segments.filter((id) => id !== entry.id);
-      hiddenSegments.push(entry.id);
-      continue;
-    }
-    if (assigned.has(entry.id)) continue;
-    if (entry.id.startsWith("tool:") && entry.defaultEnabled === false) {
-      if (toolsEnabled) panel.segments.push(entry.id);
-      else hiddenSegments.push(entry.id);
-      continue;
-    }
-    if (entry.defaultEnabled) panel.segments.push(entry.id);
-    else hiddenSegments.push(entry.id);
-  }
-
-  if (!panels.some((panel) => panel.visible)) {
-    const agent = panels.find((panel) => panel.id === "agent");
-    if (agent) agent.visible = true;
-  }
-  return { panels, hiddenSegments };
-}
-
 export function seedSidebarEffectiveLayout(
   config: PiStatusConfig,
   catalog: readonly SidebarCatalogEntry[],
@@ -138,11 +85,6 @@ export function seedSidebarEffectiveLayout(
     visible: panel.visible,
     segments: [...panel.segments],
   }));
-  const explicitlyEmpty = new Set(
-    config.sidebarPanelLayout
-      .filter((panel) => panel.segments.length === 0)
-      .map((panel) => panel.id),
-  );
   const hiddenSegments = config.sidebarHiddenSegments.filter(
     (id) => id !== SIDEBAR_LAYOUT_TOOL_SENTINEL,
   );
@@ -154,7 +96,7 @@ export function seedSidebarEffectiveLayout(
   }
   const known = new Set([...panels.flatMap((panel) => panel.segments), ...hiddenSegments]);
   for (const entry of catalog) {
-    if (known.has(entry.id) || explicitlyEmpty.has(entry.defaultPanelId)) continue;
+    if (known.has(entry.id)) continue;
     let panel = panels.find((candidate) => candidate.id === entry.defaultPanelId);
     if (!panel) {
       panel = { id: entry.defaultPanelId, visible: false, segments: [] };
@@ -195,32 +137,42 @@ function normalizeEffectiveLayout(
     if (isPersistedSidebarSegmentId(id)) return true;
     return catalogById.get(id)?.persistence === "session";
   };
+  const takeAssignments = (source: readonly string[]): string[] => {
+    const segments: string[] = [];
+    for (const id of source) {
+      if (assigned.size >= SIDEBAR_LAYOUT_MAX_ASSIGNMENTS) break;
+      if (assigned.has(id) || !isAccepted(id)) continue;
+      assigned.add(id);
+      segments.push(id);
+    }
+    return segments;
+  };
 
   for (const source of input.panels) {
     if (panelIds.has(source.id)) continue;
     panelIds.add(source.id);
-    const segments: string[] = [];
-    for (const id of source.segments) {
-      if (assigned.size >= SIDEBAR_LAYOUT_MAX_ASSIGNMENTS || assigned.has(id) || !isAccepted(id)) {
-        continue;
-      }
-      assigned.add(id);
-      segments.push(id);
-    }
-    panels.push({ id: source.id, visible: source.visible, segments });
+    panels.push({
+      id: source.id,
+      visible: source.visible,
+      segments: takeAssignments(source.segments),
+    });
   }
 
   for (const id of BUILTIN_SIDEBAR_PANEL_IDS) {
     if (!panelIds.has(id)) {
       panelIds.add(id);
-      panels.push({ id, visible: true, segments: curatedSidebarSegmentsForPanel(id) });
-      for (const segment of curatedSidebarSegmentsForPanel(id)) assigned.add(segment);
+      panels.push({
+        id,
+        visible: true,
+        segments: takeAssignments(curatedSidebarSegmentsForPanel(id)),
+      });
     }
   }
 
   const hiddenSegments: string[] = [];
   const hidden = new Set<string>();
   for (const id of input.hiddenSegments) {
+    if (assigned.size + hidden.size >= SIDEBAR_LAYOUT_MAX_ASSIGNMENTS) break;
     if (assigned.has(id) || hidden.has(id) || !isAccepted(id)) continue;
     hidden.add(id);
     hiddenSegments.push(id);
@@ -248,7 +200,7 @@ export function reconcileSidebarEffectiveLayout(
   );
   const known = new Set(flattenSidebarEffectiveLayout(layout));
   for (const entry of catalog) {
-    if (known.has(entry.id)) continue;
+    if (known.has(entry.id) || known.size >= SIDEBAR_LAYOUT_MAX_ASSIGNMENTS) continue;
     if (entry.defaultEnabled) {
       let panel = layout.panels.find((candidate) => candidate.id === entry.defaultPanelId);
       if (!panel) {
@@ -264,25 +216,103 @@ export function reconcileSidebarEffectiveLayout(
   return normalizeEffectiveLayout(layout, catalog);
 }
 
-export function projectStableSidebarLayout(layout: SidebarEffectiveLayout): SidebarEffectiveLayout {
+export function projectStableSidebarLayout(
+  layout: SidebarEffectiveLayout,
+  catalog: readonly SidebarCatalogEntry[],
+): Pick<PiStatusConfig, "sidebarPanelLayout" | "sidebarHiddenSegments"> {
+  const sessionIds = new Set(
+    catalog.filter((entry) => entry.persistence === "session").map((entry) => entry.id),
+  );
+  const isStable = (id: string) => isPersistedSidebarSegmentId(id) && !sessionIds.has(id);
   return {
-    panels: layout.panels.map((panel) => ({
+    sidebarPanelLayout: layout.panels.map((panel) => ({
       ...panel,
-      segments: panel.segments.filter(isPersistedSidebarSegmentId),
+      segments: panel.segments.filter(isStable),
     })),
-    hiddenSegments: layout.hiddenSegments.filter(isPersistedSidebarSegmentId),
+    sidebarHiddenSegments: layout.hiddenSegments.filter(isStable),
   };
 }
 
-export function restoreDefaultSidebarLayout(): SidebarEffectiveLayout {
-  return {
-    panels: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
-      id,
-      visible: true,
-      segments: curatedSidebarSegmentsForPanel(id),
-    })),
-    hiddenSegments: [],
+export function restoreDefaultSidebarLayout(
+  current: SidebarEffectiveLayout,
+  catalog: readonly SidebarCatalogEntry[],
+): SidebarEffectiveLayout {
+  const builtinPanelIds = new Set<string>(BUILTIN_SIDEBAR_PANEL_IDS);
+  const builtinSegmentIds = new Set<string>(Object.values(SIDEBAR_BUILTIN_ASSIGNMENTS).flat());
+  const catalogById = new Map(catalog.map((entry) => [entry.id, entry]));
+  const retained = new Set<string>();
+  const retainedByPanel = new Map<SidebarPanelId, string[]>();
+  const retainedHidden: string[] = [];
+  const retain = (id: string) => {
+    if (
+      retained.size >= SIDEBAR_LAYOUT_MAX_ASSIGNMENTS ||
+      !isPersistedSidebarSegmentId(id) ||
+      builtinSegmentIds.has(id) ||
+      retained.has(id)
+    ) {
+      return false;
+    }
+    const definition = catalogById.get(id);
+    if (definition?.available !== false && definition !== undefined) return false;
+    retained.add(id);
+    return true;
   };
+
+  for (const panel of current.panels) {
+    for (const id of panel.segments) {
+      if (!retain(id)) continue;
+      const segments = retainedByPanel.get(panel.id) ?? [];
+      segments.push(id);
+      retainedByPanel.set(panel.id, segments);
+    }
+  }
+  for (const id of current.hiddenSegments) {
+    if (retain(id)) retainedHidden.push(id);
+  }
+
+  const panels: SidebarEffectivePanelLayoutEntry[] = BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
+    id,
+    visible: true,
+    segments: [],
+  }));
+  for (const panel of current.panels) {
+    if (!builtinPanelIds.has(panel.id)) {
+      panels.push({ id: panel.id, visible: panel.visible, segments: [] });
+    }
+  }
+  const panelById = new Map(panels.map((panel) => [panel.id, panel]));
+  const panelFor = (id: SidebarPanelId) => {
+    let panel = panelById.get(id);
+    if (!panel) {
+      panel = { id, visible: false, segments: [] };
+      panels.push(panel);
+      panelById.set(id, panel);
+    }
+    return panel;
+  };
+  const assigned = new Set<string>();
+  let defaultsLeft = SIDEBAR_LAYOUT_MAX_ASSIGNMENTS - retained.size;
+  const assignDefault = (id: string, panelId: SidebarPanelId) => {
+    if (defaultsLeft <= 0 || assigned.has(id)) return;
+    panelFor(panelId).segments.push(id);
+    assigned.add(id);
+    defaultsLeft -= 1;
+  };
+
+  for (const panelId of BUILTIN_SIDEBAR_PANEL_IDS) {
+    for (const id of curatedSidebarSegmentsForPanel(panelId)) assignDefault(id, panelId);
+  }
+  for (const [panelId, ids] of retainedByPanel) panelFor(panelId).segments.push(...ids);
+  const hiddenSegments = [...retainedHidden];
+  for (const entry of catalog) {
+    if (!entry.available || assigned.has(entry.id) || retained.has(entry.id)) continue;
+    if (entry.defaultEnabled) assignDefault(entry.id, entry.defaultPanelId);
+    else if (defaultsLeft > 0) {
+      hiddenSegments.push(entry.id);
+      defaultsLeft -= 1;
+    }
+  }
+  return normalizeEffectiveLayout({ panels, hiddenSegments }, catalog);
 }
 
 export function sidebarLayoutDemandsWorkspacePulse(
@@ -321,35 +351,30 @@ export function applySidebarPanelControls(
   return { panels, hiddenSegments: [...layout.hiddenSegments] };
 }
 
-export function persistSidebarLayout(
-  layout: SidebarEffectiveLayout,
-  options: {
-    base: PiStatusConfig;
-    persist(next: PiStatusConfig): void;
-    commit?(next: PiStatusConfig): void;
-  },
-): PiStatusConfig {
-  const stable = projectStableSidebarLayout(layout);
-  const next: PiStatusConfig = {
-    ...options.base,
-    sidebarPanelLayout: stable.panels.map(
-      (panel): SidebarPanelLayoutEntry => ({
-        id: panel.id,
-        visible: panel.visible,
-        segments: [...panel.segments],
-      }),
-    ),
-    sidebarHiddenSegments: [...stable.hiddenSegments],
+export function persistSidebarLayout(options: {
+  config: PiStatusConfig;
+  effective: SidebarEffectiveLayout;
+  catalog: readonly SidebarCatalogEntry[];
+  persist(next: PiStatusConfig): void;
+  commit?(next: PiStatusConfig, effective: SidebarEffectiveLayout): void;
+}): PiStatusConfig {
+  const effective = cloneSidebarEffectiveLayout(options.effective);
+  const next = {
+    ...options.config,
+    ...projectStableSidebarLayout(effective, options.catalog),
   };
   options.persist(next);
-  options.commit?.(next);
+  options.commit?.(next, effective);
   return next;
 }
 
 export interface SidebarLayoutRuntime {
   snapshot(): SidebarEffectiveLayout;
   reconcile(catalog: readonly SidebarCatalogEntry[]): SidebarEffectiveLayout;
-  replace(layout: SidebarEffectiveLayout): SidebarEffectiveLayout;
+  replace(
+    layout: SidebarEffectiveLayout,
+    catalog: readonly SidebarCatalogEntry[],
+  ): SidebarEffectiveLayout;
   reset(source: {
     config: PiStatusConfig;
     catalog: readonly SidebarCatalogEntry[];
@@ -367,8 +392,8 @@ export function createSidebarLayoutRuntime(source: {
       current = reconcileSidebarEffectiveLayout(current, catalog);
       return cloneSidebarEffectiveLayout(current);
     },
-    replace(layout) {
-      current = cloneSidebarEffectiveLayout(layout);
+    replace(layout, catalog) {
+      current = normalizeEffectiveLayout(layout, catalog);
       return cloneSidebarEffectiveLayout(current);
     },
     reset(next) {
