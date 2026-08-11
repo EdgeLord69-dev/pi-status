@@ -3,10 +3,19 @@ import { EventEmitter } from "node:events";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { Component, OverlayHandle, TUI } from "@earendil-works/pi-tui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import createExtension from "../src/index.ts";
 import { BUILTIN_SIDEBAR_PANEL_IDS } from "../src/shared/types.ts";
-import { buildSetFooterSpy, createContext, buildPiWithHandlers } from "./helpers.ts";
+import type { StatusLineDashboardComponent } from "../src/tui/dashboard.ts";
+import { selectableRows } from "../src/tui/dashboard-state.ts";
+import { noTheme } from "../src/tui/theme.ts";
+import {
+  buildSetFooterSpy,
+  createContext,
+  buildPiWithHandlers,
+  getRegisteredCommand,
+} from "./helpers.ts";
 
 vi.mock("node:child_process", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:child_process")>();
@@ -251,6 +260,33 @@ describe("workspace pulse wiring", () => {
 });
 
 describe("workspace pulse sidebar demand", () => {
+  function dashboardHost() {
+    const components: Component[] = [];
+    const tui = {
+      terminal: { columns: 120, rows: 30 },
+      requestRender: vi.fn(),
+      render: vi.fn(),
+    } as unknown as TUI;
+    const handle = {
+      hide: vi.fn(),
+      setHidden: vi.fn(),
+      isHidden: vi.fn(() => false),
+      focus: vi.fn(),
+      unfocus: vi.fn(),
+      isFocused: vi.fn(() => false),
+    } as unknown as OverlayHandle;
+    const custom = vi.fn(async (factory, options) => {
+      const component = factory(tui, noTheme, {}, () => {});
+      components.push(component);
+      options?.onHandle?.(handle);
+      return undefined;
+    });
+    return {
+      custom,
+      dashboard: () => components.at(-1) as StatusLineDashboardComponent,
+    };
+  }
+
   function writeSidebarLayout(workspaceVisible: boolean): void {
     const { writeFileSync, mkdirSync } = require("node:fs") as typeof import("node:fs");
     mkdirSync(join(agentDir, "extensions"), { recursive: true });
@@ -338,6 +374,84 @@ describe("workspace pulse sidebar demand", () => {
     const ctx = createContext();
     for (const h of handlers.get("session_start") ?? []) h({}, ctx);
     expect(execFileMock).not.toHaveBeenCalled();
+  });
+
+  it("stops Workspace Pulse only after a successful dashboard replacement", async () => {
+    const { writeFileSync, mkdirSync } = require("node:fs") as typeof import("node:fs");
+    mkdirSync(join(agentDir, "extensions"), { recursive: true });
+    writeFileSync(
+      join(agentDir, "extensions", "statusline.json"),
+      JSON.stringify({
+        zones: { topLeft: [], topRight: [], bottomLeft: [], bottomRight: [] },
+        extensionSegments: { hidden: [] },
+        extensionStatusZone: "bottomRight",
+        sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
+          id,
+          visible: id === "agent",
+          segments: id === "agent" ? ["builtin:branch"] : [],
+        })),
+        sidebarHiddenSegments: [],
+      }),
+      "utf8",
+    );
+    const queueInspection = fourCommandMock(() => "/repo");
+    const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
+    const host = dashboardHost();
+    createExtension(pi);
+    const ctx = createContext({
+      ui: { ...createContext().ui, custom: host.custom as never },
+    });
+    for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
+    for (let index = 0; index < 4; index += 1) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    expect(execFileMock).toHaveBeenCalled();
+
+    await getRegisteredCommand(registerCommandCalls, "statusline").handler("", ctx);
+    const dashboard = host.dashboard();
+    dashboard.handleInput("\t");
+    for (const char of "branch") dashboard.handleInput(char);
+    const branchIndex = selectableRows(dashboard.getState()).findIndex(
+      (row) => row.type === "sidebar_segment" && row.id === "builtin:branch",
+    );
+    for (let index = 0; index < branchIndex; index += 1) dashboard.handleInput("\x1b[B");
+    dashboard.handleInput("\r"); // disable the active producer
+    const saveIndex = selectableRows(dashboard.getState()).length - 1;
+    while (dashboard.getState().navigation.sidebar.selectedIndex < saveIndex) {
+      dashboard.handleInput("\x1b[B");
+    }
+    dashboard.handleInput("\r");
+
+    const extensionsDir = join(agentDir, "extensions");
+    rmSync(extensionsDir, { recursive: true, force: true });
+    writeFileSync(extensionsDir, "block config writes", "utf8");
+    dashboard.handleInput("\x1b[B");
+    dashboard.handleInput("\r");
+
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Failed to save statusline config", "warning");
+    expect(dashboard.getState().draftSidebarLayout.hiddenSegments).toContain("builtin:branch");
+
+    const callsAfterFailedSave = execFileMock.mock.calls.length;
+    queueInspection();
+    for (const handler of handlers.get("tool_execution_end") ?? []) {
+      handler({ toolCallId: "after-failed-save", isError: false }, ctx);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 260));
+    expect(execFileMock.mock.calls.length).toBe(callsAfterFailedSave + 4);
+
+    rmSync(extensionsDir, { force: true });
+    mkdirSync(extensionsDir, { recursive: true });
+    dashboard.handleInput("\r");
+    dashboard.handleInput("\x1b[B");
+    dashboard.handleInput("\r");
+
+    const callsAfterSuccessfulSave = execFileMock.mock.calls.length;
+    queueInspection();
+    for (const handler of handlers.get("tool_execution_end") ?? []) {
+      handler({ toolCallId: "after-successful-save", isError: false }, ctx);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 260));
+    expect(execFileMock.mock.calls.length).toBe(callsAfterSuccessfulSave);
   });
 });
 

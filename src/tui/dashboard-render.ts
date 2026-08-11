@@ -1,10 +1,7 @@
 import { truncateToWidth, type Input, visibleWidth } from "@earendil-works/pi-tui";
 import { resolveFooter } from "../core/resolve-footer.ts";
-import {
-  BUILTIN_SIDEBAR_PANEL_IDS,
-  type SidebarPanelId,
-  type StatusLineZone,
-} from "../shared/types.ts";
+import { sidebarStatusSegmentId } from "../core/sidebar-layout.ts";
+import type { StatusLineZone } from "../shared/types.ts";
 import {
   bodyRowBudget,
   fitViewport,
@@ -13,10 +10,13 @@ import {
 } from "./dashboard-layout.ts";
 import {
   DASHBOARD_TABS,
+  type DashboardEffect,
   type DashboardState,
   type DashboardTabId,
   findSegmentAssignment,
+  findSidebarSegmentAssignment,
   SEGMENT_METADATA,
+  sidebarSegmentMetadata,
   selectableRows,
 } from "./dashboard-state.ts";
 import {
@@ -38,9 +38,21 @@ export interface DashboardRenderResult {
   offset: number;
 }
 
+type SaveEffect = Extract<DashboardEffect, { type: "save" }>;
+
 export type DashboardDialog =
   | { type: "rename"; input: Input }
-  | { type: "confirm"; kind: "discard" | "compact" | "save"; selectedIndex: 0 | 1 };
+  | {
+      type: "confirm";
+      kind: "discard" | "compact";
+      selectedIndex: 0 | 1;
+    }
+  | {
+      type: "confirm";
+      kind: "save";
+      selectedIndex: 0 | 1;
+      payload: SaveEffect;
+    };
 
 type LogicalBody = {
   lines: string[];
@@ -67,12 +79,9 @@ const FOOTERS: Record<DashboardTabId, string> = {
   session: "↑/↓ Select  •  Space/Enter Open  •  Tab Switch  •  q/Esc Close",
   tools: "Type Search  •  ↑/↓ Select  •  Space/Enter Toggle  •  Esc Clear/Close",
   sidebar:
-    "↑/↓ Select  •  ←/→ Reorder  •  Space/Enter Toggle/Restore/Save  •  Tab Switch  •  q/Esc Close",
+    "Type Search  •  ↑/↓ Select  •  ←/→ Adjust/Reorder  •  Space/Enter Apply  •  Esc Clear/Close",
   settings: "↑/↓ Select  •  Space/Enter Toggle/Save  •  Tab Switch  •  q/Esc Close",
 };
-
-const DEFAULT_BUILTIN_SIDEBAR_PANELS: readonly { id: SidebarPanelId; title: string }[] =
-  BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({ id, title: id }));
 
 function selectableLine(
   selected: boolean,
@@ -102,7 +111,7 @@ function stateForNaturalHeight(
   tab: DashboardTabId,
   ignoreQuery: boolean,
 ): DashboardState {
-  if (!ignoreQuery || (tab !== "statuses" && tab !== "tools")) return state;
+  if (!ignoreQuery || !["sidebar", "statuses", "tools"].includes(tab)) return state;
   return {
     ...state,
     navigation: {
@@ -119,14 +128,10 @@ function logicalBody(
   theme: StatusLineTheme,
   width: number,
   ignoreQuery: boolean,
-  availablePanels: readonly {
-    id: SidebarPanelId;
-    title: string;
-  }[] = DEFAULT_BUILTIN_SIDEBAR_PANELS,
 ): LogicalBody {
   const renderState = stateForNaturalHeight(state, tab, ignoreQuery);
   const rows = selectableRows(renderState, tab);
-  const selectedIndex = state.navigation[tab].selectedIndex;
+  const selectedIndex = renderState.navigation[tab].selectedIndex;
   const lines: string[] = [];
   let interactiveIndex = 0;
   let selectedLine: number | undefined;
@@ -165,13 +170,20 @@ function logicalBody(
       ...buildFooterRowsFromResolved(resolveFooter(previewInput, state.draft, theme), theme, width),
     );
   } else if (tab === "statuses") {
-    const rows = selectableRows(state, "statuses");
     lines.push(`Search: ${renderState.navigation.statuses.query}`);
+    const surface = renderState.navigation.statuses.surface;
     let visibilityCount = 0;
     for (const row of rows) {
-      if (row.type === "status_visibility") {
-        const hidden = state.draft.extensionSegments.hidden;
-        pushSelectable(hidden.includes(row.key) ? "[ ]" : "[•]", "", row.key);
+      if (row.type === "surface_picker") {
+        pushSelectable("↔", "Surface", surface === "statusbar" ? "Statusbar" : "Sidebar");
+      } else if (row.type === "status_visibility") {
+        const statusId = sidebarStatusSegmentId(row.key);
+        const assigned =
+          row.surface === "sidebar"
+            ? statusId !== undefined &&
+              !!findSidebarSegmentAssignment(renderState.draftSidebarLayout, statusId)
+            : !renderState.draft.extensionSegments.hidden.includes(row.key);
+        pushSelectable(assigned ? "[•]" : "[ ]", "", row.key);
         visibilityCount += 1;
       }
     }
@@ -206,28 +218,53 @@ function logicalBody(
       );
     }
   } else if (tab === "sidebar") {
-    const available = new Map(availablePanels.map((entry) => [entry.id, entry.title]));
-    state.draft.sidebarPanelLayout.forEach((entry, index) => {
-      const title = available.get(entry.id) ?? entry.id;
-      const unavailable = !available.has(entry.id);
-      const suffix = unavailable ? "  unavailable" : "";
-      pushSelectable(
-        entry.visible ? "[•]" : "[ ]",
-        `${String(index + 1).padStart(2)}  ${title}${suffix}`,
-      );
-    });
-    pushSelectable(" ", "Restore default", "Reset Sidebar to the built-in visible layout");
-    const visibleIds = state.draft.sidebarPanelLayout
-      .filter((entry) => entry.visible)
-      .map((entry) => entry.id);
-    if (visibleIds.length > 0 && width >= 24) {
-      lines.push("");
-      lines.push(theme.dim(truncateToWidth(`Sidebar: ${visibleIds.join(", ")}`, width, "…")));
-    }
-    lines.push(
-      "",
-      ...buildFooterRowsFromResolved(resolveFooter(previewInput, state.draft, theme), theme, width),
+    const panels = new Map(renderState.sidebarPanels.map(({ id, title }) => [id, title]));
+    const activePanel = renderState.draftSidebarLayout.panels.find(
+      ({ id }) => id === renderState.activeSidebarPanelId,
     );
+    const activeIndex = activePanel
+      ? renderState.draftSidebarLayout.panels.findIndex(({ id }) => id === activePanel.id)
+      : -1;
+    lines.push(`Search: ${renderState.navigation.sidebar.query}`);
+    for (const row of rows) {
+      if (row.type === "sidebar_active_panel") {
+        pushSelectable(
+          "↔",
+          "Active panel",
+          activePanel ? (panels.get(activePanel.id) ?? activePanel.id) : "None",
+        );
+      } else if (row.type === "sidebar_panel_visibility") {
+        pushSelectable(
+          activePanel?.visible ? "[•]" : "[ ]",
+          "Panel visible",
+          activePanel?.visible ? "visible" : "hidden",
+        );
+      } else if (row.type === "sidebar_panel_position") {
+        pushSelectable(
+          "↔",
+          "Panel position",
+          activeIndex >= 0
+            ? `${activeIndex + 1} of ${renderState.draftSidebarLayout.panels.length}`
+            : "unavailable",
+        );
+      } else if (row.type === "sidebar_segment") {
+        const metadata = sidebarSegmentMetadata(renderState, row.id);
+        const assignment = findSidebarSegmentAssignment(renderState.draftSidebarLayout, row.id);
+        const assignedPanel = assignment
+          ? renderState.draftSidebarLayout.panels.find(({ id }) => id === assignment.panelId)
+          : undefined;
+        const location = assignment
+          ? `${assignedPanel ? (panels.get(assignedPanel.id) ?? assignedPanel.id) : assignment.panelId} ${assignment.index + 1}`
+          : "Disabled";
+        pushSelectable(
+          assignment ? "[•]" : "[ ]",
+          `${metadata.label} (${location})${metadata.available ? "" : "  unavailable"}`,
+          metadata.description,
+        );
+      } else if (row.type === "sidebar_default") {
+        pushSelectable(" ", "Restore default", "Reset known items to catalog defaults");
+      }
+    }
   } else {
     const notifications = rows[0];
     if (notifications?.type === "notifications") {
@@ -266,7 +303,7 @@ function dialogBody(dialog: DashboardDialog, width: number, theme: StatusLineThe
     ? "Pi will summarize older context."
     : save
       ? "Apply draft Statusbar, Statuses, Sidebar, and Settings changes."
-      : "Unsaved Statusbar, Statuses, or Settings changes will be lost.";
+      : "Unsaved Statusbar, Statuses, Sidebar, or Settings changes will be lost.";
   return {
     lines: [
       heading,
@@ -291,15 +328,11 @@ export function renderDashboard(
   width: number,
   terminalRows: number,
   dialog?: DashboardDialog,
-  availablePanels: readonly {
-    id: SidebarPanelId;
-    title: string;
-  }[] = DEFAULT_BUILTIN_SIDEBAR_PANELS,
 ): DashboardRenderResult {
   const safeWidth = Math.max(1, Math.floor(width));
   const contentWidth = frameContentWidth(safeWidth);
   const natural = DASHBOARD_TABS.map(({ id }) =>
-    logicalBody(state, id, previewInput, theme, contentWidth, true, availablePanels),
+    logicalBody(state, id, previewInput, theme, contentWidth, true),
   );
   const target = targetOverlayRows(
     natural.map(({ lines }) => lines.length),
@@ -311,15 +344,7 @@ export function renderDashboard(
 
   const active = dialog
     ? dialogBody(dialog, contentWidth, theme)
-    : logicalBody(
-        state,
-        state.activeTab,
-        previewInput,
-        theme,
-        contentWidth,
-        false,
-        availablePanels,
-      );
+    : logicalBody(state, state.activeTab, previewInput, theme, contentWidth, false);
   const viewport = fitViewport(
     active.lines,
     active.selectedLine,

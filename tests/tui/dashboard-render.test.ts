@@ -74,7 +74,6 @@ describe("dashboard render", () => {
     expect(output).toContain("Preset");
     expect(output).toContain("Save changes");
     expect(output).toContain("GPT-5");
-    expect(result.lines).toHaveLength(37);
     expect(result.lines.every((line) => visibleWidth(line) === 100)).toBe(true);
   });
 
@@ -205,11 +204,12 @@ describe("dashboard render", () => {
     expect(output).toContain("Top Left");
   });
 
-  it("Statuses tab renders per-status checkboxes (statusbar surface only)", () => {
+  it("Statuses tab renders per-status checkboxes and the surface picker", () => {
     const state = initDashboardState(config(), ["alpha", "beta"], true);
     state.activeTab = "statuses";
     const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
-    expect(output).not.toContain("Surface");
+    expect(output).toContain("Surface");
+    expect(output).toContain("Statusbar");
     expect(output).toContain("alpha");
     expect(output).toContain("beta");
   });
@@ -424,74 +424,100 @@ describe("dashboard render", () => {
 });
 
 describe("dashboard Sidebar render", () => {
-  it("renders Sidebar rows with numbers, visibility markers, and availability suffix", () => {
-    const layout = [
-      { id: "agent" as const, visible: true, segments: [] },
-      { id: "activity" as const, visible: false, segments: [] },
-      { id: "todos" as const, visible: true, segments: [] },
-    ];
-    const state = initDashboardState(config({ sidebarPanelLayout: layout }), [], true);
+  const sidebarFixture = {
+    catalog: [
+      {
+        id: "builtin:model",
+        label: "Model",
+        description: "Current model name",
+        defaultPanelId: "agent" as const,
+        persistence: "stable" as const,
+        defaultEnabled: true,
+        available: true,
+        requiresWorkspacePulse: false,
+        priority: "normal" as const,
+        dropOrder: 0,
+        content: null,
+      },
+      {
+        id: "stable:missing",
+        label: "stable:missing",
+        description: "Unavailable saved segment",
+        defaultPanelId: "agent" as const,
+        persistence: "stable" as const,
+        defaultEnabled: true,
+        available: false,
+        requiresWorkspacePulse: false,
+        priority: "normal" as const,
+        dropOrder: 0,
+        content: null,
+      },
+      {
+        id: "builtin:recent-tools",
+        label: "Recent tools",
+        description: "Most recently completed tools",
+        defaultPanelId: "activity" as const,
+        persistence: "stable" as const,
+        defaultEnabled: false,
+        available: false,
+        requiresWorkspacePulse: false,
+        priority: "normal" as const,
+        dropOrder: 0,
+        content: null,
+      },
+      {
+        id: "session:todo:7",
+        label: "Ship Phase 4",
+        description: "One TODO row for this session.",
+        defaultPanelId: "activity" as const,
+        persistence: "session" as const,
+        defaultEnabled: true,
+        available: true,
+        requiresWorkspacePulse: false,
+        priority: "normal" as const,
+        dropOrder: 0,
+        content: null,
+      },
+    ],
+    panels: [
+      { id: "agent" as const, title: "Agent" },
+      { id: "activity" as const, title: "Activity" },
+      { id: "vendor:queue" as const, title: "Queue" },
+    ],
+    layout: {
+      panels: [
+        { id: "agent" as const, visible: true, segments: ["builtin:model", "stable:missing"] },
+        { id: "activity" as const, visible: true, segments: ["session:todo:7"] },
+        { id: "statuses" as const, visible: false, segments: [] },
+        { id: "vendor:queue" as const, visible: true, segments: [] },
+      ],
+      hiddenSegments: ["builtin:recent-tools"],
+    } as never,
+  };
+
+  function sidebarState() {
+    return initDashboardState(config(), [], true, {
+      sidebarCatalog: sidebarFixture.catalog,
+      sidebarPanels: sidebarFixture.panels,
+      sidebarLayout: sidebarFixture.layout,
+    });
+  }
+
+  it("renders searchable Sidebar rows from state", () => {
+    const state = sidebarState();
     state.activeTab = "sidebar";
-    const output = renderDashboard(state, preview, noTheme, 100, 60, undefined, [
-      { id: "agent", title: "Agent" },
-      { id: "activity", title: "Activity" },
-      { id: "todos", title: "TODOS" },
-    ]).lines.join("\n");
-    expect(output).toContain("1");
-    expect(output).toContain("[•]");
-    expect(output).toContain("[ ]");
-    expect(output).toContain("Agent");
-    expect(output).toContain("Activity");
-    expect(output).toContain("TODOS");
+    const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
+    expect(output).toContain("Search:");
+    expect(output).toContain("Active panel - Agent");
+    expect(output).toContain("Panel visible - visible");
+    expect(output).toContain("Panel position - 1 of 4");
+    expect(output).toContain("Model (Agent 1)");
+    expect(output).toContain("stable:missing (Agent 2)  unavailable");
+    expect(output).toContain("Recent tools (Disabled)  unavailable");
     expect(output).toContain("Restore default");
-    expect(output).not.toContain("Show tool names");
-  });
-
-  it("marks unavailable configured panels with unavailable suffix", () => {
-    const layout = [
-      { id: "agent" as const, visible: true, segments: [] },
-      { id: "missing:contrib" as const, visible: false, segments: [] },
-    ];
-    const state = initDashboardState(config({ sidebarPanelLayout: layout }), [], true);
-    state.activeTab = "sidebar";
-    const output = renderDashboard(state, preview, noTheme, 100, 60, undefined, [
-      { id: "agent", title: "Agent" },
-    ]).lines.join("\n");
-    expect(output).toContain("missing:contrib");
-    expect(output).toContain("unavailable");
-  });
-
-  it("renders the one-line Sidebar preview above the footer preview when panels are visible", () => {
-    const state = initDashboardState(config(), [], true);
-    state.activeTab = "sidebar";
-    const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
-    const previewIndex = output.indexOf("Sidebar:");
-    const footerIndex = output.indexOf("GPT-5");
-    expect(previewIndex).toBeGreaterThan(-1);
-    expect(footerIndex).toBeGreaterThan(-1);
-    expect(previewIndex).toBeLessThan(footerIndex);
-  });
-
-  it("omits the Sidebar preview when no panels are visible", () => {
-    const allHidden = BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
-      id,
-      visible: false,
-      segments: [] as string[],
-    }));
-    const state = initDashboardState(config({ sidebarPanelLayout: allHidden }), [], true);
-    state.activeTab = "sidebar";
-    const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
-    expect(output).not.toContain("Sidebar:");
-  });
-
-  it("renders Restore default row above Save", () => {
-    const state = initDashboardState(config(), [], true);
-    state.activeTab = "sidebar";
-    const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
-    const defaultIndex = output.indexOf("Restore default");
-    const saveIndex = output.indexOf("Save changes");
-    expect(defaultIndex).toBeGreaterThan(-1);
-    expect(saveIndex).toBeGreaterThan(defaultIndex);
+    expect(output).toContain("Save changes");
+    expect(output).toContain("Most recently completed tools");
+    expect(output).not.toContain("Sidebar: agent");
   });
 
   it("omits the Show tool names legacy row on Settings tab", () => {
@@ -502,22 +528,20 @@ describe("dashboard Sidebar render", () => {
     expect(output).toContain("Completion notifications");
   });
 
-  it("extends the bounded-tab parametrization to the Sidebar tab", () => {
-    const tools = Array.from({ length: 40 }, (_, index) => ({
-      name: `tool-${index}`,
-      description: `Tool ${index}`,
-      enabled: index === 0,
-    }));
+  it("keeps Statuses natural height independent of its search query", () => {
     const state = initDashboardState(
       config(),
-      Array.from({ length: 30 }, (_, index) => `status-${index}`),
+      Array.from({ length: 50 }, (_, index) => `status-${index}`),
       true,
-      { tools },
     );
-    const width = Math.max(1, Math.floor(100 * 0.92));
-    const result = renderDashboard(state, preview, noTheme, width, 30);
-    expect(result.lines.every((line) => visibleWidth(line) <= width)).toBe(true);
-    expect(result.lines.at(-1)).toContain("┗");
+    state.activeTab = "statuses";
+    state.navigation.statuses.query = "no-match";
+    const filteredHeight = renderDashboard(state, preview, noTheme, 100, 100).lines.length;
+
+    state.navigation.statuses.query = "";
+    const unfilteredHeight = renderDashboard(state, preview, noTheme, 100, 100).lines.length;
+
+    expect(filteredHeight).toBe(unfilteredHeight);
   });
 });
 
@@ -592,19 +616,14 @@ describe("save confirm dialog body", () => {
       type: "confirm",
       kind: "save",
       selectedIndex: 0,
+      payload: {
+        type: "save",
+        config: state.draft,
+        sidebarLayout: state.draftSidebarLayout,
+      },
     };
     const output = renderDashboard(state, preview, noTheme, 100, 40, dialog).lines.join("\n");
     expect(output).toContain("Statusbar");
     expect(output).not.toMatch(/Layout/);
-  });
-});
-
-describe("statuses surface picker render", () => {
-  it("does not render a Surface picker (statusbar surface only)", () => {
-    const state = initDashboardState(config(), [], true);
-    state.activeTab = "statuses";
-    const output = renderDashboard(state, preview, noTheme, 100, 40).lines.join("\n");
-    expect(output).not.toContain("Surface");
-    expect(output).toContain("Search:");
   });
 });

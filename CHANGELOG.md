@@ -8,10 +8,16 @@ All notable changes to `@pi-vault/pi-status` are documented in this file.
 
 - Replaced the flat `FooterRenderInput` shape and removed `DEFAULT_SEGMENTS`, `buildFooterLine()`, and `buildFooterLineFromResolved()`. Persisted legacy `segments` configuration still migrates into the top-left zone.
 - `/statusline` is now the sole dashboard command; former `tools`, `session`, `notifications`, and `preset` arguments are rejected.
-- The dashboard is a five-tab overlay: Layout, Statuses, Session, Tools, and Settings. Superseded standalone editor and command wrappers were removed.
+- The dashboard is a six-tab overlay: Statusbar, Sidebar, Statuses, Session, Tools, and Settings. Superseded standalone editor and command wrappers were removed.
 
 ### Added
 
+- Sidebar TODO rows now reflect live TODO results (`session:todo:<id>` segments) reconstructed from the session branch and updated by `tool_result` events for the `todo` tool.
+- Searchable Active-panel Sidebar editor with stable segment rows, hidden placeholder, Restore default, and Save changes.
+- Independent Statusbar and Sidebar surfaces on the Statuses tab; both Statusbar visibility and Sidebar assignment are reachable from a single editor.
+- Transactional stable/session effective-layout save: disk persistence precedes runtime replacement, and the dashboard dispatches the saved action only after `save()` returns.
+- Frozen catalog and panel metadata: re-open the dashboard to see live catalog or registry changes.
+- Per-tool Sidebar rows replace the old global tool-name switch and default disabled.
 - Added the opt-in `workspace-pulse` footer segment for a bounded, read-only Git workspace summary without retaining or displaying changed-file paths.
 - Added opt-in `turn-progress` and `response-performance` footer segments for current-turn tool activity, time-to-first-token, and response throughput.
 - Added opt-in direct-terminal completion notifications through Ghostty OSC 9; Herdr panes defer settlement delivery to the official Herdr integration and bridge questionnaire waits through `herdr:blocked`.
@@ -47,7 +53,7 @@ All notable changes to `@pi-vault/pi-status` are documented in this file.
 - Nine built-in panels ship in this default order: `agent`, `activity`, `alerts`, `statuses`, `todos`, `context`, `workspace`, `usage`, `tools`. `statuses` is a pi-status split of the combined STATUSES: text matching `error|failed?|failure|offline|unavailable` or `warn|warning|degraded|blocked` routes to `alerts`; everything else lands in `statuses`.
 - Public contribution channel `pi-status:sidebar-panels` (protocol version `1`) accepts panels over Pi's `pi.events` bus. Registry limits: 64 panels, 24 rows, 160 row chars, 48 title chars, 128 source chars, 128 id chars, 64 tracked sources. Panel IDs must be namespaced (`vendor:name`). Title and row text are sanitized for ANSI/OSC escapes, C0/C1 controls, Unicode bidi overrides, and surrogate validity.
 - Contributions are hidden by default: `normalizeSidebarPanelLayout` only seeds built-ins into the default layout, so a newly registered contribution does not appear until the user adds it via the Sidebar dashboard tab.
-- TODOS panel renders `done/total`, then one row per task with `✓`/`◐`/`○` indicator, `#id`, and task text. pi-status consumes a pre-normalized `NormalizedTodo[]` snapshot; format parsing belongs to the producer that populates the snapshot.
+- TODOS panel renders `done/total`, then one row per task with `✓`/`◐`/`○` indicator, `#id`, and task text. pi-status reconstructs the latest valid `todo` result from branch history and refreshes it from successful live results, accepting both legacy `todos` and current `tasks` details.
 - Width breakpoints: 39-column compact layout (`COMPACT_SIDEBAR_MAX_WIDTH = 39`); 92-column auto-hide (`MIN_MAIN_WIDTH(64) + MIN_SIDEBAR_WIDTH(28)`).
 - Resize shortcut `Ctrl+Shift+R` enters temporary Resize mode; keys adjust width (`Shift+Left`/`Shift+Right` ±4, `Left`/`Right` ±1, `Enter` accept, `Escape` restore); SGR mouse drag from the divider column adjusts width continuously. Mouse reporting is enabled only while in Resize mode.
 - Dashboard overlay centering beside the sidebar: `openStatusLineDashboard` anchors the dashboard at `center` and applies `offsetX: -Math.floor(effectiveSidebarWidth / 2)` when the sidebar is effectively visible, landing the dashboard in the main column. With the sidebar hidden, no offset is applied.

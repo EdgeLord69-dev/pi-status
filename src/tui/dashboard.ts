@@ -9,7 +9,12 @@ import {
   type OverlayOptions,
   type TUI,
 } from "@earendil-works/pi-tui";
-import type { PiStatusConfig, SidebarPanelId } from "../shared/types.ts";
+import type {
+  PiStatusConfig,
+  SidebarCatalogEntry,
+  SidebarEffectiveLayout,
+  SidebarPanelId,
+} from "../shared/types.ts";
 import { renderDashboard, type DashboardDialog } from "./dashboard-render.ts";
 import {
   initDashboardState,
@@ -38,8 +43,10 @@ export interface StatusLineDashboardOptions {
   discoveredStatuses: string[];
   usageAvailable: boolean;
   getPreviewInput(): Omit<FooterRenderInput, "zones" | "extensionSegments">;
-  getAvailableSidebarPanels(): readonly { id: SidebarPanelId; title: string }[];
-  save(config: PiStatusConfig): void;
+  sidebarCatalog: readonly SidebarCatalogEntry[];
+  sidebarPanels: readonly { id: SidebarPanelId; title: string }[];
+  sidebarLayout: SidebarEffectiveLayout;
+  save(config: PiStatusConfig, sidebarLayout: SidebarEffectiveLayout): void;
   getEffectiveSidebarWidth?(): number | undefined;
   done(): void;
 }
@@ -54,7 +61,9 @@ function printableAscii(data: string): string | undefined {
 }
 
 function isSearchable(state: DashboardState): boolean {
-  return state.activeTab === "statuses" || state.activeTab === "tools";
+  return (
+    state.activeTab === "sidebar" || state.activeTab === "statuses" || state.activeTab === "tools"
+  );
 }
 
 export class StatusLineDashboardComponent implements Component, Focusable {
@@ -80,7 +89,13 @@ export class StatusLineDashboardComponent implements Component, Focusable {
       options.config,
       options.discoveredStatuses,
       options.usageAvailable,
-      { tools, session },
+      {
+        tools,
+        session,
+        sidebarCatalog: options.sidebarCatalog,
+        sidebarPanels: options.sidebarPanels,
+        sidebarLayout: options.sidebarLayout,
+      },
     );
   }
 
@@ -105,7 +120,6 @@ export class StatusLineDashboardComponent implements Component, Focusable {
       width,
       this.options.tui.terminal.rows,
       this.dialog,
-      this.options.getAvailableSidebarPanels(),
     );
     if (!this.dialog && result.offset !== this.state.navigation[this.state.activeTab].offset) {
       this.state = reduceDashboardState(this.state, {
@@ -184,7 +198,7 @@ export class StatusLineDashboardComponent implements Component, Focusable {
       return;
     }
     if (effect.type === "save") {
-      this.openConfirmDialog("save");
+      this.openSaveDialog(effect);
       return;
     }
     if (effect.type === "toggle_tool") {
@@ -235,8 +249,13 @@ export class StatusLineDashboardComponent implements Component, Focusable {
     this.options.tui.requestRender();
   }
 
-  private openConfirmDialog(kind: "discard" | "compact" | "save"): void {
+  private openConfirmDialog(kind: "discard" | "compact"): void {
     this.dialog = { type: "confirm", kind, selectedIndex: 0 };
+    this.options.tui.requestRender();
+  }
+
+  private openSaveDialog(payload: Extract<DashboardEffect, { type: "save" }>): void {
+    this.dialog = { type: "confirm", kind: "save", selectedIndex: 0, payload };
     this.options.tui.requestRender();
   }
 
@@ -268,16 +287,20 @@ export class StatusLineDashboardComponent implements Component, Focusable {
         this.dismissDialog();
       } else if (dialog.kind === "discard") {
         this.close();
-      } else if (dialog.kind === "save") {
-        const draft = structuredClone(this.state.draft);
+      } else if (dialog.kind === "save" && dialog.payload) {
+        const { config, sidebarLayout } = dialog.payload;
         try {
-          this.options.save(draft);
-          this.state.baseline = structuredClone(draft);
+          this.options.save(config, sidebarLayout);
         } catch {
           this.warn("Failed to save statusline config");
           this.dismissDialog();
           return;
         }
+        this.state = reduceDashboardState(this.state, {
+          type: "saved",
+          config,
+          sidebarLayout,
+        }).state;
         this.dismissDialog();
       } else {
         this.close();

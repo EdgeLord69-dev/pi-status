@@ -1327,7 +1327,7 @@ describe("/statusline dashboard wiring", () => {
     if (action === "compact") component.handleInput("\x1b[B");
     component.handleInput("\r");
 
-    const eventCtx = event === "session_shutdown" ? ctx : createContext();
+    const eventCtx = event === "session_start" ? createContext() : ctx;
     for (const h of handlers.get(event) ?? []) h({}, eventCtx);
     if (action === "rename") {
       component.handleInput("Late");
@@ -1348,6 +1348,33 @@ describe("/statusline dashboard wiring", () => {
     ctx.ui.custom = reopenCustom as unknown as ExtensionContext["ui"]["custom"];
     await handler("", ctx);
     expect(reopenCustom).toHaveBeenCalledOnce();
+  });
+
+  it("ignores stale unrelated session_tree", async () => {
+    const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
+    const footerSpy = buildSetFooterSpy();
+    createExtension(pi);
+    const host = deferredCustomHost();
+    const ctx = createContext({
+      ui: {
+        ...createContext().ui,
+        setFooter: footerSpy.setFooter,
+        custom: host.custom as unknown as ExtensionContext["ui"]["custom"],
+      },
+    });
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+    const commandPromise = getRegisteredCommand(registerCommandCalls, "statusline").handler(
+      "",
+      ctx,
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const stale = createContext();
+    for (const h of handlers.get("session_tree") ?? []) h({}, stale);
+
+    expect(host.done).not.toHaveBeenCalled();
+    host.resolveCustom(undefined);
+    await commandPromise;
   });
 
   it("ignores stale unrelated session_shutdown", async () => {
