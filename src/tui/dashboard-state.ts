@@ -523,21 +523,17 @@ function disableSidebarSegment(layout: SidebarEffectiveLayout, id: string): void
   layout.hiddenSegments.push(id);
 }
 
-export function sidebarSegmentMetadata(state: DashboardState, id: string): SidebarCatalogEntry {
+export function sidebarSegmentMetadata(
+  state: DashboardState,
+  id: string,
+): Pick<SidebarCatalogEntry, "id" | "label" | "description" | "available"> {
   const found = state.sidebarCatalog.find((entry) => entry.id === id);
   if (found) return found;
   return {
     id,
     label: id,
     description: "Unavailable saved segment",
-    defaultPanelId: "agent",
-    persistence: "stable",
-    defaultEnabled: true,
     available: false,
-    requiresWorkspacePulse: false,
-    priority: "normal",
-    dropOrder: 0,
-    content: null,
   };
 }
 
@@ -638,12 +634,11 @@ export function reduceDashboardState(
   if (!row) return { state };
   if (action.type === "adjust") {
     if (row.type === "sidebar_active_panel") {
-      const direction: -1 | 1 = action.delta === 1 ? 1 : -1;
       const panels = state.draftSidebarLayout.panels;
       if (panels.length === 0) return { state: clampSelection(state) };
       const currentIndex = panels.findIndex((panel) => panel.id === state.activeSidebarPanelId);
       const startIndex = currentIndex >= 0 ? currentIndex : 0;
-      const nextIndex = (startIndex + direction + panels.length) % panels.length;
+      const nextIndex = (startIndex + action.delta + panels.length) % panels.length;
       state.activeSidebarPanelId = panels[nextIndex]?.id;
       return { state: clampSelection(state) };
     }
@@ -655,11 +650,11 @@ export function reduceDashboardState(
       if (target < 0 || target >= panels.length) {
         return { state: clampSelection(state) };
       }
-      const next = [...panels];
-      const [moved] = next.splice(activeIndex, 1);
-      if (!moved) return { state: clampSelection(state) };
-      next.splice(target, 0, moved);
-      state.draftSidebarLayout.panels = next;
+      const moved = panels[activeIndex];
+      const adjacent = panels[target];
+      if (!moved || !adjacent) return { state: clampSelection(state) };
+      panels[activeIndex] = adjacent;
+      panels[target] = moved;
       return { state: clampSelection(state) };
     }
     if (row.type === "sidebar_segment") {
@@ -675,11 +670,11 @@ export function reduceDashboardState(
       if (target < 0 || target >= segments.length) {
         return { state: clampSelection(state) };
       }
-      const reordered = [...segments];
-      const [moved] = reordered.splice(currentIndex, 1);
-      if (!moved) return { state: clampSelection(state) };
-      reordered.splice(target, 0, moved);
-      active.segments = reordered;
+      const moved = segments[currentIndex];
+      const adjacent = segments[target];
+      if (!moved || !adjacent) return { state: clampSelection(state) };
+      segments[currentIndex] = adjacent;
+      segments[target] = moved;
       return { state: reconcileSidebarSelection(state, row) };
     }
     if (row.type === "surface_picker") {

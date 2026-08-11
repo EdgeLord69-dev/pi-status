@@ -2,7 +2,6 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { estimateTokens } from "@earendil-works/pi-coding-agent";
 import { loadConfig, normalizeSidebarPanelLayout, saveConfig } from "./core/config.ts";
 import {
-  cloneSidebarEffectiveLayout,
   createSidebarLayoutRuntime,
   persistSidebarLayout,
   reconcileSidebarEffectiveLayout,
@@ -421,9 +420,9 @@ export default function createExtension(pi: ExtensionAPI): void {
           discoveredStatuses: discovered,
           usageAvailable: usageRuntime.getAvailable(),
           getPreviewInput: () => currentFooterInput(ctx),
-          sidebarCatalog: structuredClone(sidebarView.catalog),
-          sidebarPanels: structuredClone(sidebarPanels),
-          sidebarLayout: cloneSidebarEffectiveLayout(sidebarView.layout),
+          sidebarCatalog: sidebarView.catalog,
+          sidebarPanels,
+          sidebarLayout: sidebarView.layout,
           save: (config, sidebarLayout) =>
             saveAndApplyConfig(config, sidebarLayout, sidebarView.catalog),
           getEffectiveSidebarWidth: () => activeSidebarController?.getEffectiveWidth(),

@@ -255,12 +255,7 @@ export class StatusLineDashboardComponent implements Component, Focusable {
   }
 
   private openSaveDialog(payload: Extract<DashboardEffect, { type: "save" }>): void {
-    this.dialog = {
-      type: "confirm",
-      kind: "save",
-      selectedIndex: 0,
-      payload: structuredClone(payload),
-    };
+    this.dialog = { type: "confirm", kind: "save", selectedIndex: 0, payload };
     this.options.tui.requestRender();
   }
 
@@ -292,10 +287,10 @@ export class StatusLineDashboardComponent implements Component, Focusable {
         this.dismissDialog();
       } else if (dialog.kind === "discard") {
         this.close();
-      } else if (dialog.kind === "save") {
-        const payload = structuredClone(dialog.payload);
+      } else if (dialog.kind === "save" && dialog.payload) {
+        const { config, sidebarLayout } = dialog.payload;
         try {
-          this.options.save(payload.config, payload.sidebarLayout);
+          this.options.save(config, sidebarLayout);
         } catch {
           this.warn("Failed to save statusline config");
           this.dismissDialog();
@@ -303,8 +298,8 @@ export class StatusLineDashboardComponent implements Component, Focusable {
         }
         this.state = reduceDashboardState(this.state, {
           type: "saved",
-          config: payload.config,
-          sidebarLayout: payload.sidebarLayout,
+          config,
+          sidebarLayout,
         }).state;
         this.dismissDialog();
       } else {

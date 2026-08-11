@@ -543,6 +543,8 @@ describe("dashboard transitions", () => {
     if (saved.effect?.type !== "save") throw new Error("expected save effect");
     saved.effect.config.zones.topLeft.push("model");
     expect(saved.state.draft.zones.topLeft).toEqual(["model-with-reasoning"]);
+    saved.effect.sidebarLayout.panels[0]?.segments.push("mutated-effect");
+    expect(saved.state.draftSidebarLayout.panels[0]?.segments).not.toContain("mutated-effect");
   });
 
   it.each(["statusbar", "statuses", "settings"] as const)(
