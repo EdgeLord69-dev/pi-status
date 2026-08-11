@@ -1185,7 +1185,6 @@ let sidebarLayoutRuntime: SidebarLayoutRuntime | undefined;
 function buildCurrentSidebarSnapshot(
   fallbackCtx: ExtensionContext,
 ): SidebarSnapshot {
-  const config = runtimeState.snapshot().config;
   const activeCtx = runtimeState.snapshot().ctx ?? fallbackCtx;
   const sessionName = safeRead(() => pi.getSessionName());
   const availableToolNames =
@@ -1196,7 +1195,6 @@ function buildCurrentSidebarSnapshot(
   );
   return buildSidebarSnapshot({
     footer: currentFooterInput(fallbackCtx),
-    config,
     ...(sessionName !== undefined ? { sessionName } : {}),
     persisted: sessionFile != null,
     branchEntryCount: branchEntries ?? 0,

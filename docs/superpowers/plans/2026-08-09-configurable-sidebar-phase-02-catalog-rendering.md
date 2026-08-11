@@ -6,6 +6,8 @@
 
 **Architecture:** Each render follows `snapshot → catalog → effective layout → renderer`. The snapshot carries one cloned `LiveActivitySnapshot`; configured tool identities come from Pi’s public `getAllTools()`, and live-call count/multiplicity comes only from activity runtime data. Phase 2 owns final bounded dynamic IDs; Phase 3 consumes them for persistence without rewriting them.
 
+**TODO boundary:** Phase 2 keeps normalized TODOs as an optional snapshot/catalog input and tests their session-only identities, but does not add a production TODO parser or event source. Runtime TODO ingestion is explicitly deferred; `src/index.ts` may leave this input empty until a later plan names the supported producer and lifecycle.
+
 **Tech Stack:** TypeScript 6, Node 24.15.0, Pi public extension APIs, `@earendil-works/pi-tui`, Vitest 4, Biome 2, pnpm 11, mise.
 
 ---
@@ -214,7 +216,7 @@ const safeAvailableToolNames = safeRead(() =>
 );
 ```
 
-- [ ] Test duplicate live calls, configured tool names, staged/unstaged counts, response token-count kind, status normalization, defensive copies, and `structuredClone(snapshot)` equality.
+- [ ] Test duplicate live calls, configured tool names, staged/unstaged counts, response token-count kind, status normalization, defensive copies, and `structuredClone(snapshot)` equality. Keep normalized TODO input optional; do not infer or parse TODOs in `src/index.ts` in this phase.
 - [ ] Verify and commit:
 
 ```bash
@@ -302,4 +304,4 @@ git diff --check
 test "$(shasum -a 256 docs/superpowers/plans/2026-08-09-configurable-sidebar-phased-implementation.md | awk '{print $1}')" = "eb53718f040e21a0d123a5266be04d581a914dd22842baea7c1fe26ee49962d2"
 ```
 
-Expected: all checks pass, the Phase 1 persisted fields remain unchanged, no Phase 3 persistence code is introduced, and only the files listed above changed.
+Expected: all checks pass, the Phase 1 persisted fields remain unchanged, no Phase 3 persistence or production TODO-ingestion code is introduced, and only the files listed above changed.
