@@ -1,5 +1,7 @@
 # Configurable Sidebar Phase 02–03 Catalog and Layout Replan
 
+> **Phase 3 note:** The catalog work in this document remains the Phase 2 reference. Its Phase 3 coordination task is superseded by [2026-08-09-configurable-sidebar-phase-03-layout-persistence.md](2026-08-09-configurable-sidebar-phase-03-layout-persistence.md), which corrects session lifecycle, dashboard typing, legacy controls, and TODO-ingestion boundaries.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace the fixed sidebar renderer with a cloneable catalog/effective-layout pipeline, then persist that layout without duplicating or rewriting dynamic identity rules.
