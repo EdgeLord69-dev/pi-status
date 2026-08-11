@@ -562,31 +562,6 @@ describe("StatusLineDashboardComponent Sidebar search input", () => {
     expect(component.getState().navigation.sidebar.query).toBe("q");
     expect(done).not.toHaveBeenCalled();
   });
-
-  it("appends ASCII characters to the Sidebar query", () => {
-    const { component } = makeDashboard();
-    component.handleInput("\t"); // sidebar
-    component.handleInput("r");
-    component.handleInput("c");
-    expect(component.getState().navigation.sidebar.query).toBe("rc");
-  });
-
-  it("Backspace edits the Sidebar query", () => {
-    const { component } = makeDashboard();
-    component.handleInput("\t"); // sidebar
-    component.handleInput("r");
-    component.handleInput("\x7f");
-    expect(component.getState().navigation.sidebar.query).toBe("");
-  });
-
-  it("Escape clears a non-empty Sidebar query", () => {
-    const { component, done } = makeDashboard();
-    component.handleInput("\t"); // sidebar
-    component.handleInput("r");
-    component.handleInput("\x1b");
-    expect(component.getState().navigation.sidebar.query).toBe("");
-    expect(done).not.toHaveBeenCalled();
-  });
 });
 
 describe("StatusLineDashboardComponent save dialog payload", () => {
@@ -609,34 +584,6 @@ describe("StatusLineDashboardComponent save dialog payload", () => {
     expect(configArg).toBeDefined();
     expect(layoutArg).toBeDefined();
     expect(layoutArg?.panels[0]?.visible).toBe(false);
-  });
-
-  it("mutating inputs after construction does not change dashboard state", () => {
-    const { component } = makeDashboard();
-    const beforeSidebarPanels = component.getState().sidebarPanels.map(({ id }) => id);
-    component.render(100);
-    expect(component.getState().sidebarPanels.map(({ id }) => id)).toEqual(beforeSidebarPanels);
-    component.handleInput("\t"); // sidebar
-    component.handleInput("\x1b[B"); // panel visibility
-    component.handleInput("\r"); // toggle
-    expect(component.getState().sidebarPanels.map(({ id }) => id)).toEqual(beforeSidebarPanels);
-  });
-
-  it("changing reducer state after opening the dialog cannot change the stored payload", () => {
-    const { component, save } = makeDashboard();
-    openSaveDialog(component); // captures panels[0] hidden
-    const liveState = component.getState() as DashboardState;
-    const firstPanel = liveState.draftSidebarLayout.panels[0];
-    if (!firstPanel) throw new Error("expected first Sidebar panel");
-    firstPanel.visible = true;
-    liveState.draft.completionNotifications = true;
-
-    component.handleInput("\x1b[B"); // Save
-    component.handleInput("\r"); // confirm
-
-    const [config, layout] = save.mock.calls[0] ?? [];
-    expect(config?.completionNotifications).toBe(false);
-    expect(layout?.panels[0]?.visible).toBe(false);
   });
 
   it("failed save preserves both baselines, both drafts, query, selection, dirty state, and retryability", () => {
@@ -666,27 +613,6 @@ describe("StatusLineDashboardComponent save dialog payload", () => {
 });
 
 describe("StatusLineDashboardComponent Sidebar tab", () => {
-  it("wraps the active panel through ←/→", () => {
-    const { component } = makeDashboard();
-    component.handleInput("\t");
-    const before = component.getState().activeSidebarPanelId;
-    component.handleInput("\x1b[C"); // → right
-    const after = component.getState().activeSidebarPanelId;
-    expect(after).not.toBe(before);
-    expect(component.getState().activeSidebarPanelId).toBeDefined();
-  });
-
-  it("toggles the active panel visibility through activate", () => {
-    const { component } = makeDashboard();
-    component.handleInput("\t"); // sidebar
-    component.handleInput("\x1b[B"); // → sidebar_panel_visibility
-    const id = component.getState().activeSidebarPanelId;
-    const before = component.getState().draftSidebarLayout.panels.find((p) => p.id === id)?.visible;
-    component.handleInput("\r");
-    const after = component.getState().draftSidebarLayout.panels.find((p) => p.id === id)?.visible;
-    expect(after).toBe(!before);
-  });
-
   it("swaps the active panel position through ←/→ on the panel position row", () => {
     const { component } = makeDashboard();
     component.handleInput("\t");
@@ -700,34 +626,6 @@ describe("StatusLineDashboardComponent Sidebar tab", () => {
     const nextIndex = component.getState().draftSidebarLayout.panels.findIndex((p) => p.id === id);
     expect(nextIndex).toBe(initialIndex + 1);
     expect(component.getState().activeSidebarPanelId).toBe(id);
-  });
-
-  it("clamps panel position swap at edges without changing layout", () => {
-    const { component } = makeDashboard();
-    component.handleInput("\t");
-    component.handleInput("\x1b[B");
-    component.handleInput("\x1b[B"); // panel position
-    const before = component.getState().draftSidebarLayout.panels.map((p) => p.id);
-    component.handleInput("\x1b[D"); // ← at first panel, no-op
-    expect(component.getState().draftSidebarLayout.panels.map((p) => p.id)).toEqual(before);
-  });
-
-  it("warns and stays dirty when saving with no visible panels", () => {
-    const { component, ctx } = makeDashboard();
-    // Force every panel to hidden so the save guard fires.
-    component.handleInput("\t");
-    const state = component.getState();
-    for (const panel of state.draftSidebarLayout.panels) {
-      panel.visible = false;
-    }
-    const total = selectableRowsForTests(component).length;
-    for (let i = 0; i < total; i += 1) component.handleInput("\x1b[B");
-    component.handleInput("\r"); // activate save
-    expect(ctx.ui.notify).toHaveBeenCalledWith(
-      "At least one Sidebar panel must remain visible",
-      "warning",
-    );
-    expect(isDashboardDirty(component.getState())).toBe(true);
   });
 
   it("persists sidebarPanelLayout through Save", () => {

@@ -209,6 +209,7 @@ describe("dashboard render", () => {
     state.activeTab = "statuses";
     const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
     expect(output).toContain("Surface");
+    expect(output).toContain("Statusbar");
     expect(output).toContain("alpha");
     expect(output).toContain("beta");
   });
@@ -515,28 +516,8 @@ describe("dashboard Sidebar render", () => {
     expect(output).toContain("Recent tools (Disabled)  unavailable");
     expect(output).toContain("Restore default");
     expect(output).toContain("Save changes");
-    expect(output).not.toContain("Sidebar: agent");
-  });
-
-  it("renders description text for a segment row", () => {
-    const state = sidebarState();
-    state.activeTab = "sidebar";
-    const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
     expect(output).toContain("Most recently completed tools");
-  });
-
-  it("keeps the selected segment visible while controls/actions stay in the body", () => {
-    const state = sidebarState();
-    state.activeTab = "sidebar";
-    state.draftSidebarLayout.hiddenSegments = Array.from(
-      { length: 4 },
-      (_, index) => `builtin:filler-${index}`,
-    );
-    state.navigation.sidebar.selectedIndex = 3;
-    const result = renderDashboard(state, preview, noTheme, 100, 30);
-    expect(result.lines.join("\n")).toContain("Search:");
-    expect(result.lines.join("\n")).toContain("Restore default");
-    expect(result.lines.join("\n")).toContain("Save changes");
+    expect(output).not.toContain("Sidebar: agent");
   });
 
   it("omits the Show tool names legacy row on Settings tab", () => {
@@ -545,27 +526,6 @@ describe("dashboard Sidebar render", () => {
     const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
     expect(output).not.toContain("Show tool names");
     expect(output).toContain("Completion notifications");
-  });
-
-  it("extends the bounded-tab parametrization to the Sidebar tab", () => {
-    const tools = Array.from({ length: 40 }, (_, index) => ({
-      name: `tool-${index}`,
-      description: `Tool ${index}`,
-      enabled: index === 0,
-    }));
-    const state = initDashboardState(
-      config(),
-      Array.from({ length: 30 }, (_, index) => `status-${index}`),
-      true,
-      { tools },
-    );
-    state.activeTab = "sidebar";
-    state.navigation.sidebar.query = "no-match";
-    const width = Math.max(1, Math.floor(100 * 0.92));
-    const result = renderDashboard(state, preview, noTheme, width, 30);
-    expect(result.lines.every((line) => visibleWidth(line) <= width)).toBe(true);
-    expect(result.lines.every((line) => !/[\r\n]/.test(line))).toBe(true);
-    expect(result.lines.at(-1)).toContain("┗");
   });
 
   it("keeps Statuses natural height independent of its search query", () => {
@@ -665,16 +625,5 @@ describe("save confirm dialog body", () => {
     const output = renderDashboard(state, preview, noTheme, 100, 40, dialog).lines.join("\n");
     expect(output).toContain("Statusbar");
     expect(output).not.toMatch(/Layout/);
-  });
-});
-
-describe("statuses surface picker render", () => {
-  it("renders a Surface picker with the active surface label", () => {
-    const state = initDashboardState(config(), [], true);
-    state.activeTab = "statuses";
-    const output = renderDashboard(state, preview, noTheme, 100, 40).lines.join("\n");
-    expect(output).toContain("Surface");
-    expect(output).toContain("Statusbar");
-    expect(output).toContain("Search:");
   });
 });

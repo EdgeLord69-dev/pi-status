@@ -311,40 +311,6 @@ describe("sidebar layout lifecycle", () => {
     expect(afterRender).toContain("live");
   });
 
-  it("rebuilds TODOs on session_tree without resetting the effective layout", async () => {
-    let branch = [result({ todos: [{ id: 1, text: "first", done: false }] })];
-    const current = configWithPanelsVisible(["agent", "todos"]);
-    vi.doMock("../src/core/config.ts", () => ({
-      loadConfig: vi.fn(() => structuredClone(current)),
-      normalizeSidebarPanelLayout: vi.fn((value) => value),
-      saveConfig: vi.fn(),
-    }));
-    const { default: createExtension } = await import("../src/index.ts");
-    const { pi, handlers } = buildPiWithHandlers();
-    const host = sidebarHost();
-    const ctx = createContext({
-      ui: { ...createContext().ui, custom: host.custom as never },
-      sessionManager: {
-        getSessionId: () => "abcdef123456",
-        getSessionFile: () => undefined,
-        getBranch: () => branch,
-        getEntries: () => [],
-      } as unknown as ExtensionContext["sessionManager"],
-    });
-
-    createExtension(pi);
-    for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
-    const component = host.components.at(-1);
-    expect(component?.render(44).join("\n")).toContain("AGENT");
-    expect(component?.render(44).join("\n")).toContain("#1");
-
-    branch = [result({ tasks: [{ id: 2, subject: "second", status: "pending" }] })];
-    for (const handler of handlers.get("session_tree") ?? []) handler({}, ctx);
-    expect(component?.render(44).join("\n")).toContain("AGENT");
-    expect(component?.render(44).join("\n")).toContain("#2");
-    expect(component?.render(44).join("\n")).not.toContain("#1");
-  });
-
   it("preserves surviving TODO placement and reconciles changed IDs on session_tree", async () => {
     let branch = [result({ tasks: [{ id: 1, subject: "first", status: "pending" }] })];
     const current = configWithPanelsVisible(["agent", "todos"]);

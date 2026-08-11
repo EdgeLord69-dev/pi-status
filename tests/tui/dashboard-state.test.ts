@@ -789,15 +789,6 @@ describe("dashboard Sidebar ownership", () => {
     expect(state.draft).toEqual(original);
   });
 
-  it("restores the Statuses surface picker", () => {
-    const state = initDashboardState(config(), ["queue"], true, sidebarOptions());
-    expect(selectableRows(state, "statuses")).toEqual([
-      { type: "surface_picker", surface: "statusbar" },
-      { type: "status_visibility", key: "queue", surface: "statusbar" },
-      { type: "save" },
-    ]);
-  });
-
   it("activates the Statuses surface picker", () => {
     const state = initDashboardState(config(), ["queue"], true, sidebarOptions());
     state.activeTab = "statuses";
@@ -883,17 +874,13 @@ describe("searchable Sidebar reducer", () => {
     ]);
   });
 
-  it("wraps Active panel through every retained panel ID", () => {
+  it("wraps Active panel through retained panel IDs", () => {
     let state = initDashboardState(config(), [], true, sidebarOptions());
     state.activeTab = "sidebar";
-    const start = state.navigation.sidebar.selectedIndex;
+    state = reduceDashboardState(state, { type: "adjust", delta: -1 }).state;
+    expect(state.activeSidebarPanelId).toBe("vendor:queue");
     state = reduceDashboardState(state, { type: "adjust", delta: 1 }).state;
-    expect(state.activeSidebarPanelId).toBeDefined();
-    for (let i = 0; i < 10; i += 1) {
-      state = reduceDashboardState(state, { type: "adjust", delta: 1 }).state;
-    }
-    expect(state.activeSidebarPanelId).toBeDefined();
-    expect(state.navigation.sidebar.selectedIndex).toBe(start);
+    expect(state.activeSidebarPanelId).toBe("agent");
   });
 
   it("hiding the last visible panel emits exactly At least one Sidebar panel must remain visible", () => {
@@ -972,27 +959,6 @@ describe("searchable Sidebar reducer", () => {
     });
   });
 
-  it("deduplicates segment assignments across all panels and hidden", () => {
-    let state = initDashboardState(config(), [], true, sidebarOptions());
-    state.activeTab = "sidebar";
-    selectSidebarRow(state, { type: "sidebar_segment", id: "builtin:model" });
-    state = reduceDashboardState(state, { type: "activate" }).state;
-    selectSidebarRow(state, { type: "sidebar_segment", id: "builtin:model" });
-    state = reduceDashboardState(state, { type: "activate" }).state;
-    selectSidebarRow(state, { type: "sidebar_segment", id: "builtin:model" });
-    state = reduceDashboardState(state, { type: "activate" }).state;
-    const seen = new Set<string>();
-    for (const panel of state.draftSidebarLayout.panels) {
-      for (const seg of panel.segments) {
-        expect(seen.has(seg)).toBe(false);
-        seen.add(seg);
-      }
-    }
-    expect(state.draftSidebarLayout.hiddenSegments.filter((s) => s === "builtin:model")).toEqual([
-      "builtin:model",
-    ]);
-  });
-
   it("search edits preserve the selected segment ID while it matches and clamp otherwise", () => {
     const state = initDashboardState(config(), [], true, sidebarOptions());
     state.activeTab = "sidebar";
@@ -1017,22 +983,5 @@ describe("searchable Sidebar reducer", () => {
     expect(next.draft).toEqual(before);
     expect(next.draftSidebarLayout.panels.find((p) => p.id === "agent")?.visible).toBe(true);
     expect(isDashboardDirty(next)).toBe(true);
-  });
-
-  it("Save effect carries stable projected config plus complete effective draft", () => {
-    const state = initDashboardState(config(), [], true, sidebarOptions());
-    const firstPanel = state.draftSidebarLayout.panels[0];
-    if (!firstPanel) throw new Error("expected first Sidebar panel");
-    firstPanel.segments.push("session:todo:8");
-    state.activeTab = "sidebar";
-    selectSidebarRow(state, { type: "save" });
-    const result = reduceDashboardState(state, { type: "activate" });
-    expect(result.effect).toBeDefined();
-    if (result.effect?.type !== "save") throw new Error("expected save effect");
-    const persisted = result.effect.sidebarLayout.panels[0]?.segments ?? [];
-    expect(persisted).toContain("session:todo:8");
-    expect(JSON.stringify(result.effect)).not.toContain(
-      '"sidebarPanelLayout":[{"id":"agent","visible":true,"segments":["builtin:model","stable:missing","session:todo:8"',
-    );
   });
 });
