@@ -7,14 +7,10 @@
 
 Replace Pi's default footer with a compact, configurable status line that shows the session details you actually care about. `@pi-vault/pi-status` installs a live footer, adds `/statusline` for interactive configuration, and surfaces a sidebar with the same live session data. Optionally, install [`@pi-vault/pi-usage`](https://www.npmjs.com/package/@pi-vault/pi-usage) to light up usage-limit segments.
 
-Default footer:
+![Status UI](docs/assets/status-ui.png)
+![Status Dashboard](docs/assets/status-dashboard.png)
 
-```text
-model-with-reasoning
-current-dir
-```
-
-## Install, Upgrade, And Reload
+## Install, Upgrade, & Reload
 
 Install or upgrade the extension:
 
@@ -81,6 +77,13 @@ You can compose the footer from these segment IDs:
 The five telemetry segments (`cache-read-tokens`, `cache-write-tokens`, `cache-hit`, `session-cost`, `access-type`) are opt-in — none are enabled by default. `access-type` reads `subscription` for OAuth or `kimi-coding` models and `metered` otherwise. `session-cost` is best-effort telemetry rather than billing-grade data.
 
 The two live activity segments (`turn-progress`, `response-performance`) are also opt-in and session-local — nothing is persisted and nothing leaves the runtime. `turn-progress` shows the active tool (or the most recent one) plus counts. `response-performance` shows time-to-first-token and a streaming tokens-per-second estimate.
+
+Default footer:
+
+```text
+model-with-reasoning
+current-dir
+```
 
 ### Workspace Pulse
 
