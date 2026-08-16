@@ -1,3 +1,4 @@
+import { stripTerminalSequences } from "@earendil-works/pi-tui";
 import type { TUI } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -9,14 +10,14 @@ import {
   parseSgrMouseEvent,
 } from "../../src/tui/split-pane.ts";
 
-function harness(columns = 120) {
+function harness(columns = 120, rows = 36) {
   const baseRender = vi.fn((width: number) => [`base:${width}`]);
   const requestRender = vi.fn();
   const write = vi.fn();
   const tui = {
     render: baseRender,
     requestRender,
-    terminal: { columns, rows: 36, write },
+    terminal: { columns, rows, write },
   } as unknown as TUI;
   return { tui, baseRender, requestRender, write };
 }
@@ -145,7 +146,195 @@ describe("split pane width reservation", () => {
   });
 });
 
+describe("split pane trailing column", () => {
+  it("composes trailing lines into the final logical rows", () => {
+    const h = harness(120, 2);
+    h.baseRender.mockReturnValue(["main-0", "main-1", "main-2", "main-3"]);
+    const renderTrailing = vi.fn(() => ["side-0", "side-1"] as const);
+    const split = createSplitPaneController();
+
+    split.attach(h.tui, renderTrailing);
+    split.show();
+
+    const lines = h.tui.render(120);
+    expect(lines).toHaveLength(4);
+    expect(lines[0]).not.toContain("side-0");
+    expect(lines[1]).not.toContain("side-1");
+    expect(lines[2]).toContain("side-0");
+    expect(lines[3]).toContain("side-1");
+    const plainFirstLine = stripTerminalSequences(lines[0] ?? "");
+    expect(plainFirstLine.slice(120 - DEFAULT_SIDEBAR_WIDTH)).toBe(
+      " ".repeat(DEFAULT_SIDEBAR_WIDTH),
+    );
+    expect(renderTrailing).toHaveBeenLastCalledWith(DEFAULT_SIDEBAR_WIDTH, 2);
+    expect(h.baseRender).toHaveBeenLastCalledWith(120 - DEFAULT_SIDEBAR_WIDTH);
+  });
+
+  it("uses only the final terminal-height trailing rows", () => {
+    const h = harness(120, 2);
+    h.baseRender.mockReturnValue(["main"]);
+    const renderTrailing = vi.fn(() => ["side-0", "side-1", "side-2"] as const);
+    const split = createSplitPaneController();
+
+    split.attach(h.tui, renderTrailing);
+    split.show();
+
+    const lines = h.tui.render(120);
+    expect(lines.some((line) => line.includes("side-0"))).toBe(false);
+    expect(lines.some((line) => line.includes("side-1"))).toBe(true);
+    expect(lines.some((line) => line.includes("side-2"))).toBe(true);
+  });
+
+  it("does not compose trailing rows when terminal height is zero", () => {
+    const h = harness(120, 0);
+    h.baseRender.mockReturnValue([]);
+    const renderTrailing = vi.fn(() => ["side"] as const);
+    const split = createSplitPaneController();
+
+    split.attach(h.tui, renderTrailing);
+    split.show();
+
+    expect(h.tui.render(120)).toEqual([]);
+    expect(renderTrailing).toHaveBeenLastCalledWith(DEFAULT_SIDEBAR_WIDTH, 0);
+  });
+
+  it("does not call the trailing renderer before show, while hidden, or below the visible threshold", () => {
+    const renderTrailing = vi.fn(() => ["side-0"] as const);
+    const baseRender = vi.fn((width: number) => [`base:${width}`]);
+    const tui = {
+      render: baseRender,
+      requestRender: vi.fn(),
+      terminal: { columns: 120, rows: 36, write: vi.fn() },
+    } as unknown as TUI;
+    const split = createSplitPaneController();
+    split.attach(tui, renderTrailing);
+
+    expect(tui.render(120)).toEqual(["base:120"]);
+    expect(renderTrailing).not.toHaveBeenCalled();
+
+    split.show();
+    split.hide();
+    expect(tui.render(120)).toEqual(["base:120"]);
+    expect(renderTrailing).not.toHaveBeenCalled();
+
+    split.show();
+    expect(tui.render(MIN_MAIN_WIDTH + MIN_SIDEBAR_WIDTH - 1)).toEqual(["base:91"]);
+    expect(renderTrailing).not.toHaveBeenCalled();
+    expect(baseRender).toHaveBeenLastCalledWith(MIN_MAIN_WIDTH + MIN_SIDEBAR_WIDTH - 1);
+  });
+
+  it("passes effective width and terminal height to the trailing renderer at the visibility threshold", () => {
+    const h = harness(MIN_MAIN_WIDTH + MIN_SIDEBAR_WIDTH, 5);
+    const renderTrailing = vi.fn(() => ["s0", "s1"] as const);
+    const split = createSplitPaneController();
+
+    split.attach(h.tui, renderTrailing);
+    split.show();
+
+    h.tui.render(MIN_MAIN_WIDTH + MIN_SIDEBAR_WIDTH);
+    expect(renderTrailing).toHaveBeenLastCalledWith(MIN_SIDEBAR_WIDTH, 5);
+    expect(h.baseRender).toHaveBeenLastCalledWith(MIN_MAIN_WIDTH);
+  });
+
+  it("uses terminalWidth - MIN_MAIN_WIDTH when the configured sidebar width does not fit", () => {
+    const h = harness(100);
+    const renderTrailing = vi.fn(() => ["s0"] as const);
+    const split = createSplitPaneController();
+
+    split.attach(h.tui, renderTrailing);
+    split.show();
+    split.setSidebarWidth(MAX_SIDEBAR_WIDTH);
+
+    h.baseRender.mockReturnValue(["main"]);
+    const lines = h.tui.render(100);
+    const expected = 100 - MIN_MAIN_WIDTH;
+    const plain = stripTerminalSequences(lines.at(-1) ?? "");
+    expect(plain).toHaveLength(100);
+    const start = 100 - expected;
+    expect(plain.slice(start, start + 2)).toBe("s0");
+    expect(renderTrailing).toHaveBeenLastCalledWith(expected, 36);
+    expect(h.baseRender).toHaveBeenLastCalledWith(MIN_MAIN_WIDTH);
+  });
+
+  it("reports trailing-renderer errors via onError without disabling the split", () => {
+    const h = harness(120, 4);
+    h.baseRender.mockReturnValue(["m0", "m1", "m2", "m3"]);
+    const error = new Error("trailing failed");
+    const renderTrailing = vi.fn(() => {
+      throw error;
+    });
+    const onError = vi.fn();
+    const split = createSplitPaneController({ onError });
+
+    split.attach(h.tui, renderTrailing);
+    split.show();
+
+    expect(h.tui.render(120)).toEqual(["m0", "m1", "m2", "m3"]);
+    expect(onError).toHaveBeenCalledWith(error);
+    expect(split.isEnabled()).toBe(true);
+    expect(h.baseRender.mock.calls).toEqual([[120 - DEFAULT_SIDEBAR_WIDTH]]);
+  });
+
+  it("reports trailing composition errors via onError without breaking the base renderer", () => {
+    const h = harness(120, 1);
+    h.baseRender.mockReturnValue(["base"]);
+    const error = new Error("trailing composition failed");
+    const brokenLine = {
+      get length(): never {
+        throw error;
+      },
+    } as unknown as string;
+    const renderTrailing = vi.fn(() => [brokenLine] as const);
+    const onError = vi.fn();
+    const split = createSplitPaneController({ onError });
+
+    split.attach(h.tui, renderTrailing);
+    split.show();
+
+    expect(h.tui.render(120)).toEqual(["base"]);
+    expect(onError).toHaveBeenCalledWith(error);
+    expect(split.isEnabled()).toBe(true);
+  });
+
+  it("ignores the second trailing renderer when the same TUI is re-attached", () => {
+    const h = harness(120, 4);
+    h.baseRender.mockReturnValue(["m0", "m1", "m2", "m3"]);
+    const renderTrailingA = vi.fn(() => ["a0", "a1", "a2", "a3"] as const);
+    const renderTrailingB = vi.fn(() => ["b0", "b1", "b2", "b3"] as const);
+    const split = createSplitPaneController();
+
+    split.attach(h.tui, renderTrailingA);
+    split.attach(h.tui, renderTrailingB);
+    split.show();
+
+    const lines = h.tui.render(120);
+    expect(lines).toHaveLength(4);
+    expect(lines[0]).toContain("a0");
+    expect(lines[3]).toContain("a3");
+    expect(lines.some((line) => line.includes("b0"))).toBe(false);
+    expect(renderTrailingA).toHaveBeenCalled();
+    expect(renderTrailingB).not.toHaveBeenCalled();
+  });
+});
+
 describe("split pane render lifecycle", () => {
+  it("clears the trailing renderer when disposed", () => {
+    const h = harness(120, 1);
+    const original = h.tui.render;
+    const renderTrailing = vi.fn(() => ["side"] as const);
+    const split = createSplitPaneController();
+
+    split.attach(h.tui, renderTrailing);
+    split.show();
+    expect(h.tui.render(120)).toEqual([expect.stringContaining("side")]);
+
+    split.dispose();
+
+    expect(h.tui.render).toBe(original);
+    expect(h.tui.render(120)).toEqual(["base:120"]);
+    expect(renderTrailing).toHaveBeenCalledOnce();
+  });
+
   it("attaches once and restores the exact original method on dispose", () => {
     const h = harness();
     const original = h.tui.render;

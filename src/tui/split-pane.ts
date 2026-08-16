@@ -1,4 +1,4 @@
-import { matchesKey } from "@earendil-works/pi-tui";
+import { compositeTuiLine, matchesKey } from "@earendil-works/pi-tui";
 import type { OverlayOptions, TUI } from "@earendil-works/pi-tui";
 
 const ENABLE_MOUSE = "[?1002h[?1006h";
@@ -48,8 +48,10 @@ export interface SplitPaneControllerOptions {
   onWarning?(message: string): void;
 }
 
+type TrailingRenderer = (width: number, height: number) => readonly string[];
+
 export interface SplitPaneController {
-  attach(tui: TUI): void;
+  attach(tui: TUI, renderTrailing?: TrailingRenderer): void;
   show(): void;
   hide(): void;
   setSidebarWidth(width: number): void;
@@ -67,6 +69,30 @@ export interface SplitPaneController {
 }
 
 type RenderFunction = TUI["render"];
+
+function composeTrailingColumn(
+  baseLines: readonly string[],
+  trailingLines: readonly string[],
+  terminalWidth: number,
+  reservedWidth: number,
+  terminalHeight: number,
+): string[] {
+  const safeHeight = Math.max(0, Math.trunc(terminalHeight));
+  const visibleTrailing = safeHeight === 0 ? [] : trailingLines.slice(-safeHeight);
+  const totalLines = Math.max(baseLines.length, safeHeight);
+  const trailingStart = totalLines - visibleTrailing.length;
+  const startCol = terminalWidth - reservedWidth;
+
+  return Array.from({ length: totalLines }, (_, index) =>
+    compositeTuiLine(
+      baseLines[index] ?? "",
+      index >= trailingStart ? (visibleTrailing[index - trailingStart] ?? "") : "",
+      startCol,
+      reservedWidth,
+      terminalWidth,
+    ),
+  );
+}
 
 export function createSplitPaneController(
   options: SplitPaneControllerOptions = {},
@@ -91,6 +117,7 @@ export function createSplitPaneController(
   let tui: TUI | undefined;
   let originalRender: RenderFunction | undefined;
   let wrappedRender: RenderFunction | undefined;
+  let trailingRenderer: TrailingRenderer | undefined;
   let enabled = false;
   let disposed = false;
   let resizing = false;
@@ -165,24 +192,35 @@ export function createSplitPaneController(
     sidebarWidth = clamp(sidebarWidth, minimumSidebar, Math.max(minimumSidebar, effectiveMax));
   };
 
-  const attach = (nextTui: TUI) => {
+  const attach = (nextTui: TUI, renderTrailing?: TrailingRenderer) => {
     if (disposed) throw new Error("Cannot attach a disposed split pane");
     if (tui === nextTui) return;
     if (tui) throw new Error("Split pane is already attached to another TUI");
     tui = nextTui;
+    trailingRenderer = renderTrailing;
     originalRender = nextTui.render;
     const previousRender = nextTui.render;
     wrappedRender = function (this: TUI, terminalWidth: number): string[] {
       reconcileResizeWidth(terminalWidth);
       const reserved = effectiveSidebarWidth(terminalWidth);
       syncOverlayWidth(terminalWidth);
+      let baseLines: string[];
       try {
-        return previousRender.call(nextTui, terminalWidth - reserved);
+        baseLines = previousRender.call(nextTui, terminalWidth - reserved);
       } catch (error) {
         stopResize(true);
         enabled = false;
         safely(() => options.onError?.(error));
         return previousRender.call(nextTui, terminalWidth);
+      }
+      if (reserved === 0 || !trailingRenderer) return baseLines;
+      const height = Math.max(0, Math.trunc(nextTui.terminal.rows));
+      try {
+        const trailingLines = trailingRenderer(reserved, height);
+        return composeTrailingColumn(baseLines, trailingLines, terminalWidth, reserved, height);
+      } catch (error) {
+        safely(() => options.onError?.(error));
+        return baseLines;
       }
     };
     nextTui.render = wrappedRender;
@@ -312,6 +350,7 @@ export function createSplitPaneController(
       tui = undefined;
       originalRender = undefined;
       wrappedRender = undefined;
+      trailingRenderer = undefined;
     },
   };
   return controller;
