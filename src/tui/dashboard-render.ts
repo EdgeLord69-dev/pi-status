@@ -1,7 +1,7 @@
 import { truncateToWidth, type Input, visibleWidth } from "@earendil-works/pi-tui";
 import { resolveFooter } from "../core/resolve-footer.ts";
 import { sidebarStatusSegmentId } from "../core/sidebar-layout.ts";
-import type { StatusLineZone } from "../shared/types.ts";
+import type { StatusLineZone, SidebarPanelId } from "../shared/types.ts";
 import {
   bodyRowBudget,
   fitViewport,
@@ -90,11 +90,14 @@ function selectableLine(
   description: string,
   width: number,
   theme: StatusLineTheme,
+  labelColor?: FooterRenderColor,
 ): string {
   const marker = selected ? theme.fg("accent", "▸") : " ";
-  const prefix = `${marker} ${checkbox} `;
+  const prefix = `${marker} `;
   const remaining = Math.max(0, width - visibleWidth(prefix));
-  const text = description ? `${label} - ${theme.dim(description)}` : label;
+  const checkboxLabel = `${checkbox} ${label}`;
+  const colored = labelColor ? theme.fg(labelColor, checkboxLabel) : checkboxLabel;
+  const text = description ? `${colored} - ${theme.dim(description)}` : colored;
   return truncateToWidth(`${prefix}${truncateToWidth(text, remaining, "")}`, width, "");
 }
 
@@ -104,6 +107,18 @@ const ZONE_ROW_COLORS: Record<StatusLineZone, FooterRenderColor> = {
   topRight: "success",
   bottomLeft: "warning",
   bottomRight: "dim",
+};
+
+const SIDEBAR_PANEL_COLORS: Readonly<Partial<Record<SidebarPanelId, FooterRenderColor>>> = {
+  agent: "accent",
+  activity: "success",
+  alerts: "error",
+  statuses: "dim",
+  todos: "warning",
+  context: "thinkingLow",
+  workspace: "accent",
+  usage: "thinkingHigh",
+  tools: "thinkingMedium",
 };
 
 function stateForNaturalHeight(
@@ -135,10 +150,15 @@ function logicalBody(
   const lines: string[] = [];
   let interactiveIndex = 0;
   let selectedLine: number | undefined;
-  const pushSelectable = (checkbox: string, label: string, description = ""): void => {
+  const pushSelectable = (
+    checkbox: string,
+    label: string,
+    description = "",
+    labelColor?: FooterRenderColor,
+  ): void => {
     const selected = !ignoreQuery && interactiveIndex === selectedIndex;
     if (selected) selectedLine = lines.length;
-    lines.push(selectableLine(selected, checkbox, label, description, width, theme));
+    lines.push(selectableLine(selected, checkbox, label, description, width, theme, labelColor));
     interactiveIndex += 1;
   };
 
@@ -157,11 +177,12 @@ function logicalBody(
         const position = assignment
           ? `${ZONE_LABELS[assignment.zone]} ${assignment.index + 1}`
           : "Disabled";
-        const checkbox = assignment ? theme.fg(ZONE_ROW_COLORS[assignment.zone], "[•]") : "[ ]";
+        const checkbox = assignment ? "[•]" : "[ ]";
         pushSelectable(
           checkbox,
           `${metadata?.label ?? row.id} (${position})`,
           metadata?.description ?? "",
+          assignment ? ZONE_ROW_COLORS[assignment.zone] : undefined,
         );
       }
     }
@@ -260,6 +281,7 @@ function logicalBody(
           assignment ? "[•]" : "[ ]",
           `${metadata.label} (${location})${metadata.available ? "" : "  unavailable"}`,
           metadata.description,
+          assignment ? (SIDEBAR_PANEL_COLORS[assignment.panelId] ?? "accent") : undefined,
         );
       } else if (row.type === "sidebar_default") {
         pushSelectable(" ", "Restore default", "Reset known items to catalog defaults");

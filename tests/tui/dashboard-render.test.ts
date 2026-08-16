@@ -235,10 +235,11 @@ describe("dashboard render", () => {
     };
     const result = renderDashboard(state, preview, fromPiTheme(piTheme), 100, 60);
     const lines = result.lines.join("\n");
-    expect(lines).toMatch(/\[accent:\[•\]\]/);
-    expect(lines).toMatch(/\[success:\[•\]\]/);
-    expect(lines).toMatch(/\[warning:\[•\]\]/);
-    expect(lines).toMatch(/\[dim:\[•\]\]/);
+    expect(lines).toContain("[accent:[•] Model (Top Left 1)]");
+    expect(lines).toContain("[success:[•] Git Branch (Top Right 1)]");
+    expect(lines).toContain("[warning:[•] Current Dir (Bottom Left 1)]");
+    expect(lines).toContain("[dim:[•] Run State (Bottom Right 1)]");
+    expect(lines).toContain("[dim:Current model name]");
   });
 
   it.each(["statusbar", "statuses"] as const)(
@@ -518,6 +519,30 @@ describe("dashboard Sidebar render", () => {
     expect(output).toContain("Save changes");
     expect(output).toContain("Most recently completed tools");
     expect(output).not.toContain("Sidebar: agent");
+  });
+
+  it("Sidebar tab colors assigned segment rows by their panel", () => {
+    const state = sidebarState();
+    state.activeTab = "sidebar";
+    const piTheme = {
+      fg: (color: string, text: string) => `[${color}:${text}]`,
+      bold: (text: string) => `[bold:${text}]`,
+      rainbow: (text: string) => `[rainbow:${text}]`,
+    };
+    const output = renderDashboard(state, preview, fromPiTheme(piTheme), 100, 60).lines.join("\n");
+    expect(output).toContain("[accent:[•] Model (Agent 1)]");
+    expect(output).toContain("[dim:Current model name]");
+    expect(output).toContain("[success:[•] Ship Phase 4 (Activity 1)]");
+    expect(output).toContain("[dim:One TODO row for this session.]");
+    expect(output).toContain("[ ] Recent tools (Disabled)  unavailable");
+  });
+
+  it("preserves the complete checkbox and label before truncating descriptions", () => {
+    const state = sidebarState();
+    state.activeTab = "sidebar";
+    const output = renderDashboard(state, preview, noTheme, 40, 60).lines.join("\n");
+
+    expect(output).toContain("[•] Model (Agent 1)");
   });
 
   it("omits the Show tool names legacy row on Settings tab", () => {
