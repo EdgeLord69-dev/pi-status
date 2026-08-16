@@ -15,7 +15,10 @@ import {
   initDashboardState,
   selectableRows,
 } from "../../src/tui/dashboard-state.ts";
-import { renderDashboard, type DashboardDialog } from "../../src/tui/dashboard-render.ts";
+import {
+  renderDashboard,
+  type DashboardDialog,
+} from "../../src/tui/dashboard-render.ts";
 import { noTheme } from "../../src/tui/theme.ts";
 
 function zones(overrides: Partial<StatusLineZones> = {}): StatusLineZones {
@@ -37,7 +40,11 @@ function config(overrides: Partial<PiStatusConfig> = {}): PiStatusConfig {
     sidebarPanelLayout: BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
       id,
       visible: true,
-      segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]],
+      segments: [
+        ...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[
+          id
+        ],
+      ],
     })),
     sidebarHiddenSegments: [],
     ...overrides,
@@ -45,7 +52,10 @@ function config(overrides: Partial<PiStatusConfig> = {}): PiStatusConfig {
 }
 
 function stripAnsi(value: string): string {
-  return value.replace(new RegExp(`${String.fromCharCode(27)}\\[[\\d;]*m`, "g"), "");
+  return value.replace(
+    new RegExp(`${String.fromCharCode(27)}\\[[\\d;]*m`, "g"),
+    "",
+  );
 }
 
 const snapshotInput = {
@@ -98,10 +108,14 @@ describe("dashboard render", () => {
       ...snapshotInput,
       extensionStatuses: new Map([["build", "build: ready"]]),
     });
-    expect(renderDashboard(state, live, noTheme, 100, 60).lines.join("\n")).toContain("ready");
+    expect(
+      renderDashboard(state, live, noTheme, 100, 60).lines.join("\n"),
+    ).toContain("ready");
 
     state.draft.extensionSegments.hidden = ["build"];
-    expect(renderDashboard(state, live, noTheme, 100, 60).lines.join("\n")).not.toContain("ready");
+    expect(
+      renderDashboard(state, live, noTheme, 100, 60).lines.join("\n"),
+    ).not.toContain("ready");
   });
 
   it("normalizes line breaks in dynamic dashboard content", () => {
@@ -115,7 +129,11 @@ describe("dashboard render", () => {
     state.activeTab = "statuses";
     const statuses = renderDashboard(state, live, noTheme, 100, 60);
 
-    expect([...layout.lines, ...statuses.lines].every((line) => !/[\r\n]/.test(line))).toBe(true);
+    expect(
+      [...layout.lines, ...statuses.lines].every(
+        (line) => !/[\r\n]/.test(line),
+      ),
+    ).toBe(true);
     expect(layout.lines.join("\n")).toContain("ready INJECT");
     expect(statuses.lines.join("\n")).toContain("build broken");
   });
@@ -125,44 +143,55 @@ describe("dashboard render", () => {
     { columns: 100, rows: 30 },
     { columns: 60, rows: 18 },
     { columns: 30, rows: 8 },
-  ])("bounds every tab at $columns x $rows without mutating queries", ({ columns, rows }) => {
-    const tools = Array.from({ length: 40 }, (_, index) => ({
-      name: `tool-${index}`,
-      description: `Tool ${index}`,
-      enabled: index === 0,
-    }));
-    const state = initDashboardState(
-      config(),
-      Array.from({ length: 30 }, (_, index) => `status-${index}`),
-      true,
-      { tools },
-    );
-    state.navigation.statuses.query = "no-match";
-    state.navigation.tools.query = "no-match";
-    const width = Math.max(1, Math.floor(columns * 0.92));
-    const results = DASHBOARD_TABS.map(({ id }) => {
-      state.activeTab = id;
-      const result = renderDashboard(state, preview, noTheme, width, rows);
-      if (rows > 8 && id === "statuses") {
-        expect(result.lines.join("\n")).toContain("No matching statuses.");
-      } else if (rows > 8 && id === "tools") {
-        expect(result.lines.join("\n")).toContain("No matching tools.");
-      }
-      expect(result.lines.every((line) => visibleWidth(line) <= width)).toBe(true);
-      return result;
-    });
-    expect(new Set(results.map(({ lines }) => lines.length)).size).toBe(1);
-    if (rows === 8) {
-      expect(results.every(({ lines }) => lines.join("\n").includes("Terminal too small"))).toBe(
+  ])(
+    "bounds every tab at $columns x $rows without mutating queries",
+    ({ columns, rows }) => {
+      const tools = Array.from({ length: 40 }, (_, index) => ({
+        name: `tool-${index}`,
+        description: `Tool ${index}`,
+        enabled: index === 0,
+      }));
+      const state = initDashboardState(
+        config(),
+        Array.from({ length: 30 }, (_, index) => `status-${index}`),
         true,
+        { tools },
       );
-    } else {
-      expect(results.every(({ lines }) => lines[0]?.includes("┏"))).toBe(true);
-      expect(results.every(({ lines }) => lines.at(-1)?.includes("┗"))).toBe(true);
-    }
-    expect(state.navigation.statuses.query).toBe("no-match");
-    expect(state.navigation.tools.query).toBe("no-match");
-  });
+      state.navigation.statuses.query = "no-match";
+      state.navigation.tools.query = "no-match";
+      const width = Math.max(1, Math.floor(columns * 0.92));
+      const results = DASHBOARD_TABS.map(({ id }) => {
+        state.activeTab = id;
+        const result = renderDashboard(state, preview, noTheme, width, rows);
+        if (rows > 8 && id === "statuses") {
+          expect(result.lines.join("\n")).toContain("No matching statuses.");
+        } else if (rows > 8 && id === "tools") {
+          expect(result.lines.join("\n")).toContain("No matching tools.");
+        }
+        expect(result.lines.every((line) => visibleWidth(line) <= width)).toBe(
+          true,
+        );
+        return result;
+      });
+      expect(new Set(results.map(({ lines }) => lines.length)).size).toBe(1);
+      if (rows === 8) {
+        expect(
+          results.every(({ lines }) =>
+            lines.join("\n").includes("Terminal too small"),
+          ),
+        ).toBe(true);
+      } else {
+        expect(results.every(({ lines }) => lines[0]?.includes("┏"))).toBe(
+          true,
+        );
+        expect(results.every(({ lines }) => lines.at(-1)?.includes("┗"))).toBe(
+          true,
+        );
+      }
+      expect(state.navigation.statuses.query).toBe("no-match");
+      expect(state.navigation.tools.query).toBe("no-match");
+    },
+  );
 
   it("keeps the selected Statusbar row visible when capped", () => {
     const state = initDashboardState(config(), [], true);
@@ -175,7 +204,9 @@ describe("dashboard render", () => {
   it("renders empty Statuses with a reachable Save row", () => {
     const state = initDashboardState(config(), [], true);
     state.activeTab = "statuses";
-    const output = renderDashboard(state, preview, noTheme, 100, 24).lines.join("\n");
+    const output = renderDashboard(state, preview, noTheme, 100, 24).lines.join(
+      "\n",
+    );
 
     expect(output).toContain("No matching statuses.");
     expect(output).toContain("Save changes");
@@ -184,7 +215,9 @@ describe("dashboard render", () => {
   it("renders the Settings tab without the legacy tool names row", () => {
     const state = initDashboardState(config(), [], true);
     state.activeTab = "settings";
-    const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
+    const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join(
+      "\n",
+    );
     expect(output).toContain("Completion notifications");
     expect(output).not.toContain("Show tool names");
   });
@@ -192,14 +225,22 @@ describe("dashboard render", () => {
   it("does not render Show tool names on the Sidebar tab", () => {
     const state = initDashboardState(config(), [], true);
     state.activeTab = "sidebar";
-    const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
+    const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join(
+      "\n",
+    );
     expect(output).not.toContain("Show tool names");
   });
 
   it("renders the extension status zone row on the Statusbar tab", () => {
-    const state = initDashboardState(config({ extensionStatusZone: "topLeft" }), [], true);
+    const state = initDashboardState(
+      config({ extensionStatusZone: "topLeft" }),
+      [],
+      true,
+    );
     state.activeTab = "statusbar";
-    const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
+    const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join(
+      "\n",
+    );
     expect(output).toContain("Extension statuses");
     expect(output).toContain("Top Left");
   });
@@ -207,7 +248,9 @@ describe("dashboard render", () => {
   it("Statuses tab renders per-status checkboxes and the surface picker", () => {
     const state = initDashboardState(config(), ["alpha", "beta"], true);
     state.activeTab = "statuses";
-    const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
+    const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join(
+      "\n",
+    );
     expect(output).toContain("Surface");
     expect(output).toContain("Statusbar");
     expect(output).toContain("alpha");
@@ -233,12 +276,19 @@ describe("dashboard render", () => {
       bold: (text: string) => `[bold:${text}]`,
       rainbow: (text: string) => `[rainbow:${text}]`,
     };
-    const result = renderDashboard(state, preview, fromPiTheme(piTheme), 100, 60);
+    const result = renderDashboard(
+      state,
+      preview,
+      fromPiTheme(piTheme),
+      100,
+      60,
+    );
     const lines = result.lines.join("\n");
-    expect(lines).toMatch(/\[accent:\[•\]\]/);
-    expect(lines).toMatch(/\[success:\[•\]\]/);
-    expect(lines).toMatch(/\[warning:\[•\]\]/);
-    expect(lines).toMatch(/\[dim:\[•\]\]/);
+    expect(lines).toContain("[accent:[•] Model (Top Left 1)]");
+    expect(lines).toContain("[success:[•] Git Branch (Top Right 1)]");
+    expect(lines).toContain("[warning:[•] Current Dir (Bottom Left 1)]");
+    expect(lines).toContain("[dim:[•] Run State (Bottom Right 1)]");
+    expect(lines).toContain("[dim:Current model name]");
   });
 
   it.each(["statusbar", "statuses"] as const)(
@@ -254,7 +304,9 @@ describe("dashboard render", () => {
       const result = renderDashboard(state, preview, noTheme, 80, 20);
       const output = result.lines.join("\n");
       expect(output).toContain("Save changes");
-      expect(result.lines.find((line) => line.includes("Save changes"))).toContain("▸");
+      expect(
+        result.lines.find((line) => line.includes("Save changes")),
+      ).toContain("▸");
       expect(result.lines.at(-1)).toContain("┗");
       expect(result.offset).toBeGreaterThan(0);
     },
@@ -274,7 +326,9 @@ describe("dashboard render", () => {
     const result = renderDashboard(state, preview, noTheme, 80, 20);
     const output = result.lines.join("\n");
     expect(output).toContain("tool-39");
-    expect(result.lines.find((line) => line.includes("tool-39"))).toContain("▸");
+    expect(result.lines.find((line) => line.includes("tool-39"))).toContain(
+      "▸",
+    );
     expect(output).toContain("Type Search");
     expect(result.lines.at(-1)).toContain("┗");
     expect(result.offset).toBeGreaterThan(0);
@@ -361,7 +415,9 @@ describe("dashboard render", () => {
     });
 
     expect(result.lines.join("\n")).toContain("Compact session?");
-    expect(result.lines.join("\n")).toContain("Pi will summarize older context.");
+    expect(result.lines.join("\n")).toContain(
+      "Pi will summarize older context.",
+    );
     expect(result.lines.find((line) => line.includes("Cancel"))).toContain("▸");
     expect(result.lines.every((line) => visibleWidth(line) === 80)).toBe(true);
   });
@@ -374,26 +430,37 @@ describe("dashboard render", () => {
       selectedIndex: 1,
     });
 
-    expect(result.lines.find((line) => line.includes("Discard changes"))).toContain("▸");
-    expect(result.lines.find((line) => line.includes("Cancel"))).not.toContain("▸");
+    expect(
+      result.lines.find((line) => line.includes("Discard changes")),
+    ).toContain("▸");
+    expect(result.lines.find((line) => line.includes("Cancel"))).not.toContain(
+      "▸",
+    );
   });
 
   it.each([
     { kind: "discard", action: "Discard changes" },
     { kind: "compact", action: "Compact session" },
-  ] as const)("keeps the selected $kind action visible in a one-row dialog viewport", (dialog) => {
-    const state = initDashboardState(config(), [], true);
-    const result = renderDashboard(state, preview, noTheme, 80, 11, {
-      type: "confirm",
-      kind: dialog.kind,
-      selectedIndex: 1,
-    });
+  ] as const)(
+    "keeps the selected $kind action visible in a one-row dialog viewport",
+    (dialog) => {
+      const state = initDashboardState(config(), [], true);
+      const result = renderDashboard(state, preview, noTheme, 80, 11, {
+        type: "confirm",
+        kind: dialog.kind,
+        selectedIndex: 1,
+      });
 
-    expect(result.lines.find((line) => line.includes(dialog.action))).toContain("▸");
-    expect(result.lines.join("\n")).toContain("Space/Enter Choose");
-    expect(result.lines.at(-1)).toContain("┗");
-    expect(result.lines.every((line) => visibleWidth(line) === 80)).toBe(true);
-  });
+      expect(
+        result.lines.find((line) => line.includes(dialog.action)),
+      ).toContain("▸");
+      expect(result.lines.join("\n")).toContain("Space/Enter Choose");
+      expect(result.lines.at(-1)).toContain("┗");
+      expect(result.lines.every((line) => visibleWidth(line) === 80)).toBe(
+        true,
+      );
+    },
+  );
 
   it("preserves normal overlay height while Rename is open", () => {
     const state = initDashboardState(config(), [], true);
@@ -486,8 +553,16 @@ describe("dashboard Sidebar render", () => {
     ],
     layout: {
       panels: [
-        { id: "agent" as const, visible: true, segments: ["builtin:model", "stable:missing"] },
-        { id: "activity" as const, visible: true, segments: ["session:todo:7"] },
+        {
+          id: "agent" as const,
+          visible: true,
+          segments: ["builtin:model", "stable:missing"],
+        },
+        {
+          id: "activity" as const,
+          visible: true,
+          segments: ["session:todo:7"],
+        },
         { id: "statuses" as const, visible: false, segments: [] },
         { id: "vendor:queue" as const, visible: true, segments: [] },
       ],
@@ -506,7 +581,9 @@ describe("dashboard Sidebar render", () => {
   it("renders searchable Sidebar rows from state", () => {
     const state = sidebarState();
     state.activeTab = "sidebar";
-    const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
+    const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join(
+      "\n",
+    );
     expect(output).toContain("Search:");
     expect(output).toContain("Active panel - Agent");
     expect(output).toContain("Panel visible - visible");
@@ -520,10 +597,34 @@ describe("dashboard Sidebar render", () => {
     expect(output).not.toContain("Sidebar: agent");
   });
 
+  it("Sidebar tab colors assigned segment rows by their panel", () => {
+    const state = sidebarState();
+    state.activeTab = "sidebar";
+    const piTheme = {
+      fg: (color: string, text: string) => `[${color}:${text}]`,
+      bold: (text: string) => `[bold:${text}]`,
+      rainbow: (text: string) => `[rainbow:${text}]`,
+    };
+    const output = renderDashboard(
+      state,
+      preview,
+      fromPiTheme(piTheme),
+      100,
+      60,
+    ).lines.join("\n");
+    expect(output).toContain("[accent:[•] Model (Agent 1)]");
+    expect(output).toContain("[dim:Current model name]");
+    expect(output).toContain("[success:[•] Ship Phase 4 (Activity 1)]");
+    expect(output).toContain("[dim:One TODO row for this session.]");
+    expect(output).not.toContain("[accent:[ ] Recent tools (Disabled)");
+  });
+
   it("omits the Show tool names legacy row on Settings tab", () => {
     const state = initDashboardState(config(), [], true);
     state.activeTab = "settings";
-    const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
+    const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join(
+      "\n",
+    );
     expect(output).not.toContain("Show tool names");
     expect(output).toContain("Completion notifications");
   });
@@ -536,10 +637,12 @@ describe("dashboard Sidebar render", () => {
     );
     state.activeTab = "statuses";
     state.navigation.statuses.query = "no-match";
-    const filteredHeight = renderDashboard(state, preview, noTheme, 100, 100).lines.length;
+    const filteredHeight = renderDashboard(state, preview, noTheme, 100, 100)
+      .lines.length;
 
     state.navigation.statuses.query = "";
-    const unfilteredHeight = renderDashboard(state, preview, noTheme, 100, 100).lines.length;
+    const unfilteredHeight = renderDashboard(state, preview, noTheme, 100, 100)
+      .lines.length;
 
     expect(filteredHeight).toBe(unfilteredHeight);
   });
@@ -562,7 +665,9 @@ describe("dashboard Session and Tools rendering", () => {
   it("renders session details above two selectable actions", () => {
     const state = initDashboardState(config(), [], true, { tools, session });
     state.activeTab = "session";
-    const output = renderDashboard(state, preview, noTheme, 100, 40).lines.join("\n");
+    const output = renderDashboard(state, preview, noTheme, 100, 40).lines.join(
+      "\n",
+    );
 
     expect(output).toContain("Name: Work");
     expect(output).toContain("ID: session-1");
@@ -576,16 +681,18 @@ describe("dashboard Session and Tools rendering", () => {
   it("renders an unavailable session without interactive rows", () => {
     const state = initDashboardState(config(), [], true, { tools });
     state.activeTab = "session";
-    expect(renderDashboard(state, preview, noTheme, 100, 40).lines.join("\n")).toContain(
-      "Session details unavailable.",
-    );
+    expect(
+      renderDashboard(state, preview, noTheme, 100, 40).lines.join("\n"),
+    ).toContain("Session details unavailable.");
   });
 
   it("renders and filters live tools", () => {
     const state = initDashboardState(config(), [], true, { tools, session });
     state.activeTab = "tools";
     state.navigation.tools.query = "rf";
-    const output = renderDashboard(state, preview, noTheme, 100, 40).lines.join("\n");
+    const output = renderDashboard(state, preview, noTheme, 100, 40).lines.join(
+      "\n",
+    );
 
     expect(output).toContain("Search: rf");
     expect(output).toContain("read");
@@ -596,16 +703,16 @@ describe("dashboard Session and Tools rendering", () => {
   it("distinguishes no tools from no matching tools", () => {
     const empty = initDashboardState(config(), [], true, { session });
     empty.activeTab = "tools";
-    expect(renderDashboard(empty, preview, noTheme, 100, 40).lines.join("\n")).toContain(
-      "No tools available.",
-    );
+    expect(
+      renderDashboard(empty, preview, noTheme, 100, 40).lines.join("\n"),
+    ).toContain("No tools available.");
 
     const filtered = initDashboardState(config(), [], true, { tools, session });
     filtered.activeTab = "tools";
     filtered.navigation.tools.query = "zzz";
-    expect(renderDashboard(filtered, preview, noTheme, 100, 40).lines.join("\n")).toContain(
-      "No matching tools.",
-    );
+    expect(
+      renderDashboard(filtered, preview, noTheme, 100, 40).lines.join("\n"),
+    ).toContain("No matching tools.");
   });
 });
 
@@ -622,7 +729,14 @@ describe("save confirm dialog body", () => {
         sidebarLayout: state.draftSidebarLayout,
       },
     };
-    const output = renderDashboard(state, preview, noTheme, 100, 40, dialog).lines.join("\n");
+    const output = renderDashboard(
+      state,
+      preview,
+      noTheme,
+      100,
+      40,
+      dialog,
+    ).lines.join("\n");
     expect(output).toContain("Statusbar");
     expect(output).not.toMatch(/Layout/);
   });
