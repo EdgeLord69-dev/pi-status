@@ -277,14 +277,11 @@ function logicalBody(
         const location = assignment
           ? `${assignedPanel ? (panels.get(assignedPanel.id) ?? assignedPanel.id) : assignment.panelId} ${assignment.index + 1}`
           : "Disabled";
-        const panelColor = assignment
-          ? (SIDEBAR_PANEL_COLORS[assignment.panelId] ?? "accent")
-          : undefined;
         pushSelectable(
           assignment ? "[•]" : "[ ]",
           `${metadata.label} (${location})${metadata.available ? "" : "  unavailable"}`,
           metadata.description,
-          panelColor,
+          assignment ? (SIDEBAR_PANEL_COLORS[assignment.panelId] ?? "accent") : undefined,
         );
       } else if (row.type === "sidebar_default") {
         pushSelectable(" ", "Restore default", "Reset known items to catalog defaults");

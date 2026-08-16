@@ -487,16 +487,8 @@ describe("dashboard Sidebar render", () => {
     ],
     layout: {
       panels: [
-        {
-          id: "agent" as const,
-          visible: true,
-          segments: ["builtin:model", "stable:missing"],
-        },
-        {
-          id: "activity" as const,
-          visible: true,
-          segments: ["session:todo:7"],
-        },
+        { id: "agent" as const, visible: true, segments: ["builtin:model", "stable:missing"] },
+        { id: "activity" as const, visible: true, segments: ["session:todo:7"] },
         { id: "statuses" as const, visible: false, segments: [] },
         { id: "vendor:queue" as const, visible: true, segments: [] },
       ],
@@ -542,7 +534,7 @@ describe("dashboard Sidebar render", () => {
     expect(output).toContain("[dim:Current model name]");
     expect(output).toContain("[success:[•] Ship Phase 4 (Activity 1)]");
     expect(output).toContain("[dim:One TODO row for this session.]");
-    expect(output).not.toContain("[accent:[ ] Recent tools (Disabled)");
+    expect(output).toContain("[ ] Recent tools (Disabled)  unavailable");
   });
 
   it("preserves the complete checkbox and label before truncating descriptions", () => {
