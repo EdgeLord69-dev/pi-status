@@ -48,7 +48,7 @@ export interface SplitPaneControllerOptions {
   onWarning?(message: string): void;
 }
 
-export type TrailingRenderer = (width: number, height: number) => readonly string[];
+type TrailingRenderer = (width: number, height: number) => readonly string[];
 
 export interface SplitPaneController {
   attach(tui: TUI, renderTrailing?: TrailingRenderer): void;
@@ -215,14 +215,13 @@ export function createSplitPaneController(
       }
       if (reserved === 0 || !trailingRenderer) return baseLines;
       const height = Math.max(0, Math.trunc(nextTui.terminal.rows));
-      let trailingLines: readonly string[];
       try {
-        trailingLines = trailingRenderer(reserved, height);
+        const trailingLines = trailingRenderer(reserved, height);
+        return composeTrailingColumn(baseLines, trailingLines, terminalWidth, reserved, height);
       } catch (error) {
         safely(() => options.onError?.(error));
         return baseLines;
       }
-      return composeTrailingColumn(baseLines, trailingLines, terminalWidth, reserved, height);
     };
     nextTui.render = wrappedRender;
     requestRender();
