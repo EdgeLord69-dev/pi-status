@@ -1,8 +1,4 @@
-import {
-  truncateToWidth,
-  type Input,
-  visibleWidth,
-} from "@earendil-works/pi-tui";
+import { truncateToWidth, type Input, visibleWidth } from "@earendil-works/pi-tui";
 import { resolveFooter } from "../core/resolve-footer.ts";
 import { sidebarStatusSegmentId } from "../core/sidebar-layout.ts";
 import type { StatusLineZone, SidebarPanelId } from "../shared/types.ts";
@@ -78,17 +74,13 @@ const PRESET_LABELS = {
 } as const;
 
 const FOOTERS: Record<DashboardTabId, string> = {
-  statusbar:
-    "↑/↓ Select  •  ←/→ Adjust  •  Space/Enter Apply  •  Tab Switch  •  q/Esc Close",
-  statuses:
-    "Type Search  •  ↑/↓ Select  •  Space/Enter Toggle  •  Esc Clear/Close",
+  statusbar: "↑/↓ Select  •  ←/→ Adjust  •  Space/Enter Apply  •  Tab Switch  •  q/Esc Close",
+  statuses: "Type Search  •  ↑/↓ Select  •  Space/Enter Toggle  •  Esc Clear/Close",
   session: "↑/↓ Select  •  Space/Enter Open  •  Tab Switch  •  q/Esc Close",
-  tools:
-    "Type Search  •  ↑/↓ Select  •  Space/Enter Toggle  •  Esc Clear/Close",
+  tools: "Type Search  •  ↑/↓ Select  •  Space/Enter Toggle  •  Esc Clear/Close",
   sidebar:
     "Type Search  •  ↑/↓ Select  •  ←/→ Adjust/Reorder  •  Space/Enter Apply  •  Esc Clear/Close",
-  settings:
-    "↑/↓ Select  •  Space/Enter Toggle/Save  •  Tab Switch  •  q/Esc Close",
+  settings: "↑/↓ Select  •  Space/Enter Toggle/Save  •  Tab Switch  •  q/Esc Close",
 };
 
 function selectableLine(
@@ -103,15 +95,10 @@ function selectableLine(
   const marker = selected ? theme.fg("accent", "▸") : " ";
   const prefix = `${marker} `;
   const remaining = Math.max(0, width - visibleWidth(prefix));
-  const dimDescription = description ? ` - ${theme.dim(description)}` : "";
-  const dimLength = visibleWidth(dimDescription);
-  const labelWidth = Math.max(0, remaining - dimLength);
   const checkboxLabel = `${checkbox} ${label}`;
-  const trimmedLabel = truncateToWidth(checkboxLabel, labelWidth, "");
-  const colored = labelColor
-    ? theme.fg(labelColor, trimmedLabel)
-    : trimmedLabel;
-  return truncateToWidth(`${prefix}${colored}${dimDescription}`, width, "");
+  const colored = labelColor ? theme.fg(labelColor, checkboxLabel) : checkboxLabel;
+  const text = description ? `${colored} - ${theme.dim(description)}` : colored;
+  return truncateToWidth(`${prefix}${truncateToWidth(text, remaining, "")}`, width, "");
 }
 
 // ponytail: fixed 4-color zone mapping; per-user override deferred until requested.
@@ -122,9 +109,7 @@ const ZONE_ROW_COLORS: Record<StatusLineZone, FooterRenderColor> = {
   bottomRight: "dim",
 };
 
-const SIDEBAR_PANEL_COLORS: Readonly<
-  Partial<Record<SidebarPanelId, FooterRenderColor>>
-> = {
+const SIDEBAR_PANEL_COLORS: Readonly<Partial<Record<SidebarPanelId, FooterRenderColor>>> = {
   agent: "accent",
   activity: "success",
   alerts: "error",
@@ -141,8 +126,7 @@ function stateForNaturalHeight(
   tab: DashboardTabId,
   ignoreQuery: boolean,
 ): DashboardState {
-  if (!ignoreQuery || !["sidebar", "statuses", "tools"].includes(tab))
-    return state;
+  if (!ignoreQuery || !["sidebar", "statuses", "tools"].includes(tab)) return state;
   return {
     ...state,
     navigation: {
@@ -174,17 +158,7 @@ function logicalBody(
   ): void => {
     const selected = !ignoreQuery && interactiveIndex === selectedIndex;
     if (selected) selectedLine = lines.length;
-    lines.push(
-      selectableLine(
-        selected,
-        checkbox,
-        label,
-        description,
-        width,
-        theme,
-        labelColor,
-      ),
-    );
+    lines.push(selectableLine(selected, checkbox, label, description, width, theme, labelColor));
     interactiveIndex += 1;
   };
 
@@ -196,11 +170,7 @@ function logicalBody(
       } else if (row.type === "zone") {
         pushSelectable("↔", "Active zone", ZONE_LABELS[state.activeZone]);
       } else if (row.type === "extension_status_zone") {
-        pushSelectable(
-          "↔",
-          "Extension statuses",
-          ZONE_LABELS[state.draft.extensionStatusZone],
-        );
+        pushSelectable("↔", "Extension statuses", ZONE_LABELS[state.draft.extensionStatusZone]);
       } else if (row.type === "segment") {
         const metadata = SEGMENT_METADATA.get(row.id);
         const assignment = findSegmentAssignment(state.draft.zones, row.id);
@@ -218,11 +188,7 @@ function logicalBody(
     }
     lines.push(
       "",
-      ...buildFooterRowsFromResolved(
-        resolveFooter(previewInput, state.draft, theme),
-        theme,
-        width,
-      ),
+      ...buildFooterRowsFromResolved(resolveFooter(previewInput, state.draft, theme), theme, width),
     );
   } else if (tab === "statuses") {
     lines.push(`Search: ${renderState.navigation.statuses.query}`);
@@ -230,20 +196,13 @@ function logicalBody(
     let visibilityCount = 0;
     for (const row of rows) {
       if (row.type === "surface_picker") {
-        pushSelectable(
-          "↔",
-          "Surface",
-          surface === "statusbar" ? "Statusbar" : "Sidebar",
-        );
+        pushSelectable("↔", "Surface", surface === "statusbar" ? "Statusbar" : "Sidebar");
       } else if (row.type === "status_visibility") {
         const statusId = sidebarStatusSegmentId(row.key);
         const assigned =
           row.surface === "sidebar"
             ? statusId !== undefined &&
-              !!findSidebarSegmentAssignment(
-                renderState.draftSidebarLayout,
-                statusId,
-              )
+              !!findSidebarSegmentAssignment(renderState.draftSidebarLayout, statusId)
             : !renderState.draft.extensionSegments.hidden.includes(row.key);
         pushSelectable(assigned ? "[•]" : "[ ]", "", row.key);
         visibilityCount += 1;
@@ -280,16 +239,12 @@ function logicalBody(
       );
     }
   } else if (tab === "sidebar") {
-    const panels = new Map(
-      renderState.sidebarPanels.map(({ id, title }) => [id, title]),
-    );
+    const panels = new Map(renderState.sidebarPanels.map(({ id, title }) => [id, title]));
     const activePanel = renderState.draftSidebarLayout.panels.find(
       ({ id }) => id === renderState.activeSidebarPanelId,
     );
     const activeIndex = activePanel
-      ? renderState.draftSidebarLayout.panels.findIndex(
-          ({ id }) => id === activePanel.id,
-        )
+      ? renderState.draftSidebarLayout.panels.findIndex(({ id }) => id === activePanel.id)
       : -1;
     lines.push(`Search: ${renderState.navigation.sidebar.query}`);
     for (const row of rows) {
@@ -315,14 +270,9 @@ function logicalBody(
         );
       } else if (row.type === "sidebar_segment") {
         const metadata = sidebarSegmentMetadata(renderState, row.id);
-        const assignment = findSidebarSegmentAssignment(
-          renderState.draftSidebarLayout,
-          row.id,
-        );
+        const assignment = findSidebarSegmentAssignment(renderState.draftSidebarLayout, row.id);
         const assignedPanel = assignment
-          ? renderState.draftSidebarLayout.panels.find(
-              ({ id }) => id === assignment.panelId,
-            )
+          ? renderState.draftSidebarLayout.panels.find(({ id }) => id === assignment.panelId)
           : undefined;
         const location = assignment
           ? `${assignedPanel ? (panels.get(assignedPanel.id) ?? assignedPanel.id) : assignment.panelId} ${assignment.index + 1}`
@@ -337,11 +287,7 @@ function logicalBody(
           panelColor,
         );
       } else if (row.type === "sidebar_default") {
-        pushSelectable(
-          " ",
-          "Restore default",
-          "Reset known items to catalog defaults",
-        );
+        pushSelectable(" ", "Restore default", "Reset known items to catalog defaults");
       }
     }
   } else {
@@ -357,18 +303,12 @@ function logicalBody(
   if (rows.at(-1)?.type === "save") pushSelectable(" ", "Save changes");
 
   return {
-    lines: lines.map((line) =>
-      truncateToWidth(line.replace(/[\r\n]+/g, " "), width, ""),
-    ),
+    lines: lines.map((line) => truncateToWidth(line.replace(/[\r\n]+/g, " "), width, "")),
     selectedLine,
   };
 }
 
-function dialogBody(
-  dialog: DashboardDialog,
-  width: number,
-  theme: StatusLineTheme,
-): LogicalBody {
+function dialogBody(dialog: DashboardDialog, width: number, theme: StatusLineTheme): LogicalBody {
   if (dialog.type === "rename") {
     return {
       lines: ["Rename session", dialog.input.render(width)[0] ?? ""],
@@ -378,11 +318,7 @@ function dialogBody(
 
   const compact = dialog.kind === "compact";
   const save = dialog.kind === "save";
-  const action = compact
-    ? "Compact session"
-    : save
-      ? "Save"
-      : "Discard changes";
+  const action = compact ? "Compact session" : save ? "Save" : "Discard changes";
   const heading = compact
     ? "Compact session?"
     : save
@@ -397,14 +333,7 @@ function dialogBody(
     lines: [
       heading,
       body,
-      selectableLine(
-        dialog.selectedIndex === 0,
-        "",
-        "Cancel",
-        "",
-        width,
-        theme,
-      ),
+      selectableLine(dialog.selectedIndex === 0, "", "Cancel", "", width, theme),
       selectableLine(dialog.selectedIndex === 1, "", action, "", width, theme),
     ],
     selectedLine: 2 + dialog.selectedIndex,
@@ -440,14 +369,7 @@ export function renderDashboard(
 
   const active = dialog
     ? dialogBody(dialog, contentWidth, theme)
-    : logicalBody(
-        state,
-        state.activeTab,
-        previewInput,
-        theme,
-        contentWidth,
-        false,
-      );
+    : logicalBody(state, state.activeTab, previewInput, theme, contentWidth, false);
   const viewport = fitViewport(
     active.lines,
     active.selectedLine,
@@ -460,11 +382,7 @@ export function renderDashboard(
     ...viewport.lines,
     "",
     theme.dim(
-      truncateToWidth(
-        dialog ? dialogFooter(dialog) : FOOTERS[state.activeTab],
-        contentWidth,
-        "",
-      ),
+      truncateToWidth(dialog ? dialogFooter(dialog) : FOOTERS[state.activeTab], contentWidth, ""),
     ),
   ];
   return { lines: frame(content, safeWidth, theme), offset: viewport.offset };
