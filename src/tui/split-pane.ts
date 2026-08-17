@@ -79,18 +79,20 @@ function composeTrailingColumn(
   const safeHeight = Math.max(0, Math.trunc(terminalHeight));
   const visibleTrailing = safeHeight === 0 ? [] : trailingLines.slice(-safeHeight);
   const totalLines = Math.max(baseLines.length, safeHeight);
+  const viewportStart = totalLines - safeHeight;
   const trailingStart = totalLines - visibleTrailing.length;
   const startCol = terminalWidth - reservedWidth;
 
-  return Array.from({ length: totalLines }, (_, index) =>
-    compositeTuiLine(
+  return Array.from({ length: totalLines }, (_, index) => {
+    if (index < viewportStart) return baseLines[index] ?? "";
+    return compositeTuiLine(
       baseLines[index] ?? "",
       index >= trailingStart ? (visibleTrailing[index - trailingStart] ?? "") : "",
       startCol,
       reservedWidth,
       terminalWidth,
-    ),
-  );
+    );
+  });
 }
 
 export function createSplitPaneController(

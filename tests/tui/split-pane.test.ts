@@ -137,7 +137,7 @@ describe("split pane width reservation", () => {
 });
 
 describe("split pane trailing column", () => {
-  it("composes trailing lines into the final logical rows", () => {
+  it("preserves historical rows and composes trailing lines into the final terminal rows", () => {
     const h = harness(120, 2);
     h.baseRender.mockReturnValue(["main-0", "main-1", "main-2", "main-3"]);
     const renderTrailing = vi.fn(() => ["side-0", "side-1"] as const);
@@ -148,17 +148,34 @@ describe("split pane trailing column", () => {
 
     const lines = h.tui.render(120);
     expect(lines).toHaveLength(4);
-    expect(lines[0]).not.toContain("side-0");
-    expect(lines[1]).not.toContain("side-1");
+    expect(lines[0]).toBe("main-0");
+    expect(lines[1]).toBe("main-1");
     expect(lines[2]).toContain("side-0");
     expect(lines[3]).toContain("side-1");
-    const plainFirstLine = stripTerminalSequences(lines[0] ?? "");
-    expect(plainFirstLine.slice(120 - DEFAULT_SIDEBAR_WIDTH)).toBe(
-      " ".repeat(DEFAULT_SIDEBAR_WIDTH),
-    );
     expect(renderTrailing).toHaveBeenLastCalledWith(DEFAULT_SIDEBAR_WIDTH, 2);
     expect(h.baseRender).toHaveBeenLastCalledWith(120 - DEFAULT_SIDEBAR_WIDTH);
   });
+
+  it.each([
+    { base: ["main-0", "main-1", "main-2", "main-3", "main-4"], firstVisible: 2 },
+    { base: ["main-0"], firstVisible: 0 },
+  ])(
+    "composes every visible row when trailing output is short: $base",
+    ({ base, firstVisible }) => {
+      const h = harness(120, 3);
+      h.baseRender.mockReturnValue(base);
+      const renderTrailing = vi.fn(() => ["side"] as const);
+      const split = createSplitPaneController();
+
+      split.attach(h.tui, renderTrailing);
+      split.show();
+
+      const lines = h.tui.render(120);
+      expect(lines.slice(0, firstVisible)).toEqual(base.slice(0, firstVisible));
+      expect(stripTerminalSequences(lines[firstVisible] ?? "")).toHaveLength(120);
+      expect(lines.at(-1)).toContain("side");
+    },
+  );
 
   it("uses only the final terminal-height trailing rows", () => {
     const h = harness(120, 2);
