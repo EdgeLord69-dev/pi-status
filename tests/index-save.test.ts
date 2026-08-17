@@ -83,7 +83,6 @@ function deferredCustomHost() {
     custom,
     resolveCustom: (value: unknown) => done(value),
     component: () => components.at(-1) as StatusLineDashboardComponent | undefined,
-    sidebar: () => components[0],
     dashboard: () => components.at(-1) as StatusLineDashboardComponent | undefined,
     components: () => components,
     done,

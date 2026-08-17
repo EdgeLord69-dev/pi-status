@@ -1524,13 +1524,8 @@ describe("sidebar lifecycle", () => {
             requestRender: vi.fn(),
             render: vi.fn((width: number) => [`main:${width}`]),
           };
-          const component = (
-            factory as (...args: unknown[]) => { render: (width: number) => string[] }
-          )(sidebarTui, null, {}, () => {});
-          if (typeof component === "object" && component !== null && "render" in component) {
-            (component as { render: (w: number) => string[] }).render(44);
-            sidebarTui.render(120);
-          }
+          (factory as (...args: unknown[]) => unknown)(sidebarTui, null, {}, () => {});
+          sidebarTui.render(120);
           return Promise.resolve(null);
         }
         // Second overlay call: dashboard open. Capture options and resolve immediately.

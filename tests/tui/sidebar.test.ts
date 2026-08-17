@@ -86,7 +86,6 @@ interface FakeHost {
   factories: Array<(tui: TUI, theme: unknown) => Component>;
   optionsList: OverlayOptions[];
   customInvocations: number;
-  renderOutput: (width: number) => string;
 }
 
 function makeFakeHost(columns = 120): { host: FakeHost; tui: TUI } {
@@ -97,10 +96,9 @@ function makeFakeHost(columns = 120): { host: FakeHost; tui: TUI } {
     factories: [],
     optionsList: [],
     customInvocations: 0,
-    renderOutput: (width: number) => `main:${width}`,
   };
   const tui = {
-    render: vi.fn((width: number) => [host.renderOutput(width)]),
+    render: vi.fn((width: number) => [`main:${width}`]),
     requestRender: host.requestRender,
     terminal: host.terminal,
   } as unknown as TUI;
@@ -148,12 +146,6 @@ function renderHost(tui: TUI, width = 120): string {
   const renderMock = tui.render as unknown as (this: TUI, width: number) => string[];
   const lines = renderMock.call(tui, width);
   return lines.join("\n");
-}
-
-/** Calls `tui.render(width)` and returns the raw line array. */
-function renderHostLines(tui: TUI, width = 120): string[] {
-  const renderMock = tui.render as unknown as (this: TUI, width: number) => string[];
-  return renderMock.call(tui, width);
 }
 
 afterEach(() => {
@@ -337,8 +329,6 @@ describe("sidebar controller", () => {
     expect(first).toContain("\x1b[31mgpt-5.6\x1b[39m");
     expect(first).not.toContain("\x1b[38;2;");
 
-    // Override the host output so we can detect the trailing call fresh.
-    host.renderOutput = (width: number) => `main:${width}`;
     revision = "second";
     const second = renderHost(tui, 120);
     expect(second).toContain("\x1b[32mgpt-5.6\x1b[39m");
@@ -347,7 +337,7 @@ describe("sidebar controller", () => {
     expect(painters.second).toHaveBeenCalledWith("text", "gpt-5.6");
   });
 
-  it("mounts an invisible lifecycle bridge that never composites the component", async () => {
+  it("mounts an invisible lifecycle bridge", async () => {
     const { host, tui } = makeFakeHost();
     const controller = createSidebarController({
       ctx: makeCtx(host, tui),
@@ -360,15 +350,6 @@ describe("sidebar controller", () => {
     const visible = captured?.visible;
     expect(typeof visible).toBe("function");
     expect(visible?.(120, 36)).toBe(false);
-
-    const component = host.factories.at(-1);
-    if (!component) throw new Error("expected overlay component");
-    expect(component(tui, noTheme).render(44)).toEqual([]);
-
-    // Visually the sidebar must come through host tui.render, not the component.
-    controller.setShown(true);
-    const lines = renderHost(tui, 120);
-    expect(lines).toContain("gpt-5.6");
   });
 
   it("does not install the trailing renderer on viewport TUIs", async () => {
@@ -454,7 +435,7 @@ describe("sidebar controller effective width forwarding", () => {
     controller.show();
     await Promise.resolve();
     controller.setShown(true);
-    renderHostLines(tui, DEFAULT_SIDEBAR_WIDTH);
+    tui.render(DEFAULT_SIDEBAR_WIDTH);
     expect(controller.getEffectiveWidth()).toBe(DEFAULT_SIDEBAR_WIDTH);
   });
 

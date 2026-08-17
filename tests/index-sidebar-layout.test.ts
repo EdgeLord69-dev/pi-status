@@ -84,7 +84,6 @@ function sidebarHost() {
     components,
     custom,
     requestRender,
-    tui,
     renderHostText: (width = 120) => {
       const renderMock = tui.render as unknown as (this: TUI, width: number) => string[];
       const lines = renderMock.call(tui, width);

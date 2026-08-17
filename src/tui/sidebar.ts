@@ -28,8 +28,6 @@ export interface SidebarController {
   isSupported(): boolean;
   isEffectivelyVisible(): boolean;
   beginResize(): boolean;
-  isResizing(): boolean;
-  getWidth(): number;
   getEffectiveWidth(): number;
   requestRender(): void;
   dispose(): void;
@@ -58,7 +56,6 @@ export function createSidebarController(options: SidebarControllerOptions): Side
   let requestOverlayRender: (() => void) | undefined;
   let animationTimer: ReturnType<typeof setInterval> | undefined;
   let capturedTui: TUI | undefined;
-  let currentColumns = 0;
 
   const safely = (action: () => unknown) => {
     try {
@@ -87,10 +84,6 @@ export function createSidebarController(options: SidebarControllerOptions): Side
     animationTimer.unref?.();
   };
 
-  const refreshColumns = () => {
-    if (capturedTui) currentColumns = capturedTui.terminal.columns;
-  };
-
   const show = () => {
     if (disposed || mounted) return;
     mounted = true;
@@ -100,12 +93,10 @@ export function createSidebarController(options: SidebarControllerOptions): Side
       const pending = options.ctx.ui.custom<void>(
         (tui, theme) => {
           capturedTui = tui;
-          currentColumns = tui.terminal.columns;
           requestOverlayRender = () => tui.requestRender?.();
           const statusTheme = theme as unknown as StatusLineTheme;
 
           const renderSidebar = (width: number, height: number): string[] => {
-            currentColumns = tui.terminal.columns;
             try {
               const view = options.getView();
               return renderSidebarLines(
@@ -183,15 +174,13 @@ export function createSidebarController(options: SidebarControllerOptions): Side
     isShown: () => shown,
     isSupported: () => supportsSidebar(capturedTui),
     isEffectivelyVisible: () => {
-      refreshColumns();
-      return shown && supportsSidebar(capturedTui) && split.isVisibleAtWidth(currentColumns);
+      const terminalWidth = capturedTui?.terminal.columns ?? 0;
+      return shown && supportsSidebar(capturedTui) && split.isVisibleAtWidth(terminalWidth);
     },
     beginResize: () => split.beginResize(),
-    isResizing: () => split.isResizing(),
-    getWidth: () => split.getSidebarWidth(),
     getEffectiveWidth: () => {
-      refreshColumns();
-      return shown && supportsSidebar(capturedTui) && split.isVisibleAtWidth(currentColumns)
+      const terminalWidth = capturedTui?.terminal.columns ?? 0;
+      return shown && supportsSidebar(capturedTui) && split.isVisibleAtWidth(terminalWidth)
         ? split.getEffectiveWidth()
         : 0;
     },
