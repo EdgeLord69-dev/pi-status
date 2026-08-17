@@ -12,7 +12,7 @@ import {
   MIN_MAIN_WIDTH,
   MIN_SIDEBAR_WIDTH,
 } from "../../src/tui/split-pane.ts";
-import { noTheme, type StatusLineTheme } from "../../src/tui/theme.ts";
+import { noTheme } from "../../src/tui/theme.ts";
 import { withDefaults } from "../helpers.ts";
 
 const FIXED_SNAPSHOT: SidebarSnapshot = buildSidebarSnapshot({
@@ -86,6 +86,7 @@ interface FakeHost {
   factories: Array<(tui: TUI, theme: unknown) => Component>;
   optionsList: OverlayOptions[];
   customInvocations: number;
+  renderOutput: (width: number) => string;
 }
 
 function makeFakeHost(columns = 120): { host: FakeHost; tui: TUI } {
@@ -96,9 +97,10 @@ function makeFakeHost(columns = 120): { host: FakeHost; tui: TUI } {
     factories: [],
     optionsList: [],
     customInvocations: 0,
+    renderOutput: (width: number) => `main:${width}`,
   };
-  const tui: TUI = {
-    render: vi.fn((width: number) => [`main:${width}`]),
+  const tui = {
+    render: vi.fn((width: number) => [host.renderOutput(width)]),
     requestRender: host.requestRender,
     terminal: host.terminal,
   } as unknown as TUI;
@@ -139,6 +141,19 @@ function makeCtx(host: FakeHost, tui: TUI, factoryTheme: unknown = noTheme): Ext
       notify: vi.fn(),
     },
   } as unknown as ExtensionContext;
+}
+
+/** Calls `tui.render(width)` and returns the joined text. */
+function renderHost(tui: TUI, width = 120): string {
+  const renderMock = tui.render as unknown as (this: TUI, width: number) => string[];
+  const lines = renderMock.call(tui, width);
+  return lines.join("\n");
+}
+
+/** Calls `tui.render(width)` and returns the raw line array. */
+function renderHostLines(tui: TUI, width = 120): string[] {
+  const renderMock = tui.render as unknown as (this: TUI, width: number) => string[];
+  return renderMock.call(tui, width);
 }
 
 afterEach(() => {
@@ -276,7 +291,7 @@ describe("sidebar controller", () => {
     expect(controller.isEffectivelyVisible()).toBe(false);
   });
 
-  it("renders the snapshot through the overlay component using the host's theme", async () => {
+  it("renders the snapshot through the host tui.render() using the live theme", async () => {
     const { host, tui } = makeFakeHost();
     const controller = createSidebarController({
       ctx: makeCtx(host, tui),
@@ -284,17 +299,19 @@ describe("sidebar controller", () => {
     });
     controller.show();
     await Promise.resolve();
-    const theme: StatusLineTheme = noTheme;
-    const component = host.factories[host.factories.length - 1];
+    controller.setShown(true);
+    const output = renderHost(tui, 120);
+
+    // Trailing block now belongs to the regular TUI render buffer.
+    expect(output).toContain("gpt-5.6");
+    expect(output).not.toContain("Sidebar unavailable");
+    // Bridge component itself must render nothing.
+    const component = host.factories.at(-1);
     if (!component) throw new Error("expected overlay component");
-    const lines = component(tui, theme).render(44);
-    expect(lines.length).toBe(36);
-    // Theme-dependent render: must not collapse to the "Sidebar unavailable" dock.
-    expect(lines.some((l) => l.includes("gpt-5.6"))).toBe(true);
-    expect(lines.some((l) => l.includes("Sidebar unavailable"))).toBe(false);
+    expect(component(tui, noTheme).render(44)).toEqual([]);
   });
 
-  it("uses a named host theme's live semantic colors on every render", async () => {
+  it("uses a named host theme's live semantic colors on every host render", async () => {
     const { host, tui } = makeFakeHost();
     let revision: "first" | "second" = "first";
     const painters = {
@@ -315,19 +332,60 @@ describe("sidebar controller", () => {
 
     controller.show();
     await Promise.resolve();
-    const component = host.factories.at(-1);
-    if (!component) throw new Error("expected overlay component");
-
-    const first = component(tui, noTheme).render(44).join("\n");
+    controller.setShown(true);
+    const first = renderHost(tui, 120);
     expect(first).toContain("\x1b[31mgpt-5.6\x1b[39m");
     expect(first).not.toContain("\x1b[38;2;");
 
+    // Override the host output so we can detect the trailing call fresh.
+    host.renderOutput = (width: number) => `main:${width}`;
     revision = "second";
-    const second = component(tui, noTheme).render(44).join("\n");
+    const second = renderHost(tui, 120);
     expect(second).toContain("\x1b[32mgpt-5.6\x1b[39m");
     expect(second).not.toContain("\x1b[31mgpt-5.6\x1b[39m");
     expect(painters.first).toHaveBeenCalledWith("text", "gpt-5.6");
     expect(painters.second).toHaveBeenCalledWith("text", "gpt-5.6");
+  });
+
+  it("mounts an invisible lifecycle bridge that never composites the component", async () => {
+    const { host, tui } = makeFakeHost();
+    const controller = createSidebarController({
+      ctx: makeCtx(host, tui),
+      getView: () => sidebarView(),
+    });
+    controller.show();
+    await Promise.resolve();
+    const captured = host.optionsList[0];
+    expect(captured).toBeDefined();
+    const visible = captured?.visible;
+    expect(typeof visible).toBe("function");
+    expect(visible?.(120, 36)).toBe(false);
+
+    const component = host.factories.at(-1);
+    if (!component) throw new Error("expected overlay component");
+    expect(component(tui, noTheme).render(44)).toEqual([]);
+
+    // Visually the sidebar must come through host tui.render, not the component.
+    controller.setShown(true);
+    const lines = renderHost(tui, 120);
+    expect(lines).toContain("gpt-5.6");
+  });
+
+  it("does not install the trailing renderer on viewport TUIs", async () => {
+    const { host, tui } = makeFakeHost();
+    (tui as unknown as Record<symbol, boolean>)[Symbol.for("@earendil-works/pi-tui/viewport")] =
+      true;
+    const controller = createSidebarController({
+      ctx: makeCtx(host, tui),
+      getView: () => sidebarView(),
+    });
+    controller.show();
+    await Promise.resolve();
+    controller.setShown(true);
+
+    // No trailing inject means render returns the raw host line and the controller reserves 0 width.
+    expect(controller.getEffectiveWidth()).toBe(0);
+    expect(renderHost(tui, 120)).toBe("main:120");
   });
 
   it("beginResize() returns true and wires ctx.ui.onTerminalInput", async () => {
@@ -342,6 +400,26 @@ describe("sidebar controller", () => {
     controller.setShown(true);
     expect(controller.beginResize()).toBe(true);
     expect(ctx.ui.onTerminalInput).toHaveBeenCalled();
+  });
+
+  it("falls back to a 'Sidebar unavailable' dock when the view provider throws", async () => {
+    const { host, tui } = makeFakeHost();
+    const getView = vi.fn(() => {
+      throw new Error("view explode");
+    });
+    const onError = vi.fn();
+    const controller = createSidebarController({
+      ctx: makeCtx(host, tui),
+      getView,
+      onError,
+    });
+    controller.show();
+    await Promise.resolve();
+    controller.setShown(true);
+
+    const output = renderHost(tui, 120);
+    expect(output).toContain("Sidebar unavailable");
+    expect(onError).toHaveBeenCalled();
   });
 });
 
@@ -376,9 +454,7 @@ describe("sidebar controller effective width forwarding", () => {
     controller.show();
     await Promise.resolve();
     controller.setShown(true);
-    const last = host.factories.at(-1);
-    if (!last) throw new Error("expected overlay factory");
-    last(tui, noTheme).render(DEFAULT_SIDEBAR_WIDTH);
+    renderHostLines(tui, DEFAULT_SIDEBAR_WIDTH);
     expect(controller.getEffectiveWidth()).toBe(DEFAULT_SIDEBAR_WIDTH);
   });
 
@@ -396,7 +472,7 @@ describe("sidebar controller effective width forwarding", () => {
 });
 
 describe("sidebar controller view boundary", () => {
-  it("captures one coherent view exactly once per render", async () => {
+  it("captures one coherent view exactly once per host render", async () => {
     const { host, tui } = makeFakeHost();
     const catalog = buildSidebarSegmentCatalog(FIXED_SNAPSHOT);
     const getView = vi.fn(() => ({
@@ -410,17 +486,15 @@ describe("sidebar controller view boundary", () => {
     });
     controller.show();
     await Promise.resolve();
-    const component = host.factories.at(-1);
-    if (!component) throw new Error("expected overlay component");
-    const mounted = component(tui, noTheme);
+    controller.setShown(true);
 
-    expect(mounted.render(44).join("\n")).toContain("gpt-5.6");
+    expect(renderHost(tui, 120)).toContain("gpt-5.6");
     expect(getView).toHaveBeenCalledTimes(1);
-    mounted.render(44);
+    renderHost(tui, 120);
     expect(getView).toHaveBeenCalledTimes(2);
   });
 
-  it("rebuilds the catalog and layout from the current snapshot on every render", async () => {
+  it("rebuilds the catalog and layout from the current snapshot on every host render", async () => {
     const { host, tui } = makeFakeHost();
     let snapshot = FIXED_SNAPSHOT;
     const controller = createSidebarController({
@@ -429,14 +503,12 @@ describe("sidebar controller view boundary", () => {
     });
     controller.show();
     await Promise.resolve();
-    const component = host.factories.at(-1);
-    if (!component) throw new Error("expected overlay component");
-    const mounted = component(tui, noTheme);
+    controller.setShown(true);
 
-    expect(mounted.render(44).join("\n")).toContain("gpt-5.6");
+    expect(renderHost(tui, 120)).toContain("gpt-5.6");
 
     snapshot = { ...snapshot, modelLabel: "opus-5" };
-    const second = mounted.render(44).join("\n");
+    const second = renderHost(tui, 120);
     expect(second).toContain("opus-5");
     expect(second).not.toContain("gpt-5.6");
     expect(host.customInvocations).toBe(1);

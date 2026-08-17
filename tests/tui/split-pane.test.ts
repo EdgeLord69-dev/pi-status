@@ -62,7 +62,7 @@ describe("SGR mouse parsing", () => {
 });
 
 describe("split pane width reservation", () => {
-  it("reserves the default sidebar width without changing overlay coordinates", () => {
+  it("reserves the default sidebar width and forwards the reduced base width", () => {
     const h = harness(120);
     const split = createSplitPaneController();
     split.attach(h.tui);
@@ -70,26 +70,16 @@ describe("split pane width reservation", () => {
 
     expect(h.tui.render(120)).toEqual(["base:76"]);
     expect(h.baseRender).toHaveBeenLastCalledWith(120 - DEFAULT_SIDEBAR_WIDTH);
-    expect(split.overlayOptions()).toMatchObject({
-      anchor: "top-right",
-      width: 44,
-      maxHeight: "100%",
-      margin: 0,
-      nonCapturing: true,
-    });
   });
 
-  it("keeps one overlay options object and updates its width with the split", () => {
+  it("updates the split width reservation and keeps the reduced base width", () => {
     const h = harness(120);
     const split = createSplitPaneController();
     split.attach(h.tui);
     split.show();
-    const retainedOptions = split.overlayOptions();
 
     split.setSidebarWidth(36);
 
-    expect(split.overlayOptions()).toBe(retainedOptions);
-    expect(retainedOptions.width).toBe(36);
     expect(h.tui.render(120)).toEqual(["base:84"]);
   });
 
@@ -135,7 +125,7 @@ describe("split pane width reservation", () => {
     split.setSidebarWidth(999);
     expect(split.getSidebarWidth()).toBe(MAX_SIDEBAR_WIDTH);
     expect(h.tui.render(100)).toEqual([`base:${MIN_MAIN_WIDTH}`]);
-    expect(split.overlayOptions()).toMatchObject({ width: 36 });
+    expect(split.getEffectiveWidth()).toBe(100 - MIN_MAIN_WIDTH);
 
     split.setSidebarWidth(Number.NaN);
     expect(split.getSidebarWidth()).toBe(MAX_SIDEBAR_WIDTH);
