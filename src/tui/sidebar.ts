@@ -35,6 +35,11 @@ export interface SidebarController {
   dispose(): void;
 }
 
+const VIEWPORT_TUI = Symbol.for("@earendil-works/pi-tui/viewport");
+
+const supportsSidebar = (tui: TUI | undefined): boolean =>
+  tui !== undefined && (tui as unknown as Record<symbol, unknown>)[VIEWPORT_TUI] !== true;
+
 export function createSidebarController(options: SidebarControllerOptions): SidebarController {
   const split: SplitPaneController = createSplitPaneController({
     ...(options.onWarning ? { onWarning: options.onWarning } : {}),
@@ -94,41 +99,51 @@ export function createSidebarController(options: SidebarControllerOptions): Side
     try {
       const pending = options.ctx.ui.custom<void>(
         (tui, theme) => {
-          split.attach(tui);
           capturedTui = tui;
           currentColumns = tui.terminal.columns;
           requestOverlayRender = () => tui.requestRender?.();
           const statusTheme = theme as unknown as StatusLineTheme;
+
+          const renderSidebar = (width: number, height: number): string[] => {
+            currentColumns = tui.terminal.columns;
+            try {
+              const view = options.getView();
+              return renderSidebarLines(
+                view.snapshot,
+                view.catalog,
+                view.layout,
+                statusTheme,
+                width,
+                height,
+                {
+                  ...(options.colorEnabled === undefined
+                    ? {}
+                    : { colorEnabled: options.colorEnabled }),
+                  resizing: split.isResizing(),
+                },
+              );
+            } catch (error) {
+              safely(() => options.onError?.(error));
+              return Array.from(
+                { length: Math.max(0, Math.trunc(height)) },
+                () => "Sidebar unavailable",
+              );
+            }
+          };
+
+          if (supportsSidebar(tui)) {
+            split.attach(tui, renderSidebar);
+          }
+
+          // Lifecycle-only bridge: Pi composes no visible output from this component.
           return {
-            render(width: number) {
-              currentColumns = tui.terminal.columns;
-              try {
-                const view = options.getView();
-                return renderSidebarLines(
-                  view.snapshot,
-                  view.catalog,
-                  view.layout,
-                  statusTheme,
-                  width,
-                  tui.terminal.rows,
-                  {
-                    ...(options.colorEnabled === undefined
-                      ? {}
-                      : { colorEnabled: options.colorEnabled }),
-                    resizing: split.isResizing(),
-                  },
-                );
-              } catch (error) {
-                safely(() => options.onError?.(error));
-                return Array.from({ length: tui.terminal.rows }, () => "Sidebar unavailable");
-              }
-            },
+            render: () => [],
             invalidate: () => undefined,
           };
         },
         {
           overlay: true,
-          overlayOptions: () => split.overlayOptions(),
+          overlayOptions: { visible: () => false },
           onHandle: (handle) => {
             if (generation !== currentGeneration) {
               safely(() => handle.hide());
@@ -151,7 +166,7 @@ export function createSidebarController(options: SidebarControllerOptions): Side
       if (!mounted) show();
       shown = true;
       safely(() => overlayHandle?.setHidden(false));
-      safely(() => split.show());
+      if (supportsSidebar(capturedTui)) safely(() => split.show());
       syncAnimation();
     } else {
       if (!shown) return;
@@ -166,23 +181,19 @@ export function createSidebarController(options: SidebarControllerOptions): Side
     show,
     setShown,
     isShown: () => shown,
-    isSupported: () => {
-      if (!capturedTui) return false;
-      const viewportFlag = (capturedTui as unknown as { [key: symbol]: unknown })[
-        Symbol.for("@earendil-works/pi-tui/viewport")
-      ];
-      return viewportFlag !== true;
-    },
+    isSupported: () => supportsSidebar(capturedTui),
     isEffectivelyVisible: () => {
       refreshColumns();
-      return shown && split.isVisibleAtWidth(currentColumns);
+      return shown && supportsSidebar(capturedTui) && split.isVisibleAtWidth(currentColumns);
     },
     beginResize: () => split.beginResize(),
     isResizing: () => split.isResizing(),
     getWidth: () => split.getSidebarWidth(),
     getEffectiveWidth: () => {
       refreshColumns();
-      return shown && split.isVisibleAtWidth(currentColumns) ? split.getEffectiveWidth() : 0;
+      return shown && supportsSidebar(capturedTui) && split.isVisibleAtWidth(currentColumns)
+        ? split.getEffectiveWidth()
+        : 0;
     },
     requestRender: () => {
       safely(() => requestOverlayRender?.());
