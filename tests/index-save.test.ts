@@ -42,9 +42,17 @@ function config(): PiStatusConfig {
   };
 }
 
+/** After Phase 3 the Sidebar lives on the regular TUI render buffer; the
+ *  helper exposes a base `tui.render` implementation plus a text helper. */
 function deferredCustomHost() {
   let resolveCustom!: (value: unknown) => void;
   const components: Component[] = [];
+  const requestRender = vi.fn();
+  const tui = {
+    terminal: { columns: 120, rows: 30 },
+    requestRender,
+    render: vi.fn((width: number) => [`main:${width}`]),
+  } as unknown as TUI;
   const customPromise = new Promise((resolve) => {
     resolveCustom = resolve;
   });
@@ -61,24 +69,24 @@ function deferredCustomHost() {
     isFocused: vi.fn(() => false),
   } as unknown as OverlayHandle;
   const custom = vi.fn((factory, options) => {
-    const component = factory(
-      { terminal: { columns: 120, rows: 30 }, requestRender: vi.fn() } as unknown as TUI,
-      options?.onHandle ? noTheme : null,
-      {},
-      done,
-    ) as Component;
+    const component = factory(tui, options?.onHandle ? noTheme : null, {}, done) as Component;
     components.push(component);
     options?.onHandle?.(handle);
     return customPromise;
   });
+  const hostRenderText = (width = 120) => {
+    const renderMock = tui.render as unknown as (this: TUI, width: number) => string[];
+    const lines = renderMock.call(tui, width);
+    return lines.join("\n");
+  };
   return {
     custom,
     resolveCustom: (value: unknown) => done(value),
     component: () => components.at(-1) as StatusLineDashboardComponent | undefined,
-    sidebar: () => components[0],
     dashboard: () => components.at(-1) as StatusLineDashboardComponent | undefined,
     components: () => components,
     done,
+    renderHostText: hostRenderText,
   };
 }
 
@@ -231,7 +239,7 @@ describe("/statusline persistence", () => {
       } as never,
     });
     for (const h of handlers.get("session_start") ?? []) h({}, ctx);
-    expect(host.sidebar()?.render(120).join("\n")).not.toContain("Ship Phase 4");
+    expect(host.renderHostText()).not.toContain("Ship Phase 4");
     const commandPromise = getRegisteredCommand(registerCommandCalls, "statusline").handler(
       "",
       ctx,
@@ -277,7 +285,7 @@ describe("/statusline persistence", () => {
       "builtin:recent-tools",
     );
     expect(JSON.stringify(persisted)).not.toContain("session:todo:7");
-    expect(host.sidebar()?.render(120).join("\n")).toContain("Ship Phase 4");
+    expect(host.renderHostText()).toContain("Ship Phase 4");
     expect(component.getState().draftSidebarLayout.panels[0]?.segments).toContain("session:todo:7");
     expect(isDashboardDirty(component.getState())).toBe(false);
 
@@ -307,7 +315,7 @@ describe("/statusline persistence", () => {
       },
     });
     for (const h of handlers.get("session_start") ?? []) h({}, ctx);
-    const runtimeBefore = host.sidebar()?.render(120).join("\n");
+    const runtimeBefore = host.renderHostText();
     const commandPromise = getRegisteredCommand(registerCommandCalls, "statusline").handler(
       "",
       ctx,
@@ -327,7 +335,7 @@ describe("/statusline persistence", () => {
     component.handleInput("\r"); // confirm Save
     expect(ctx.ui.notify).toHaveBeenCalledWith("Failed to save statusline config", "warning");
     expect(component.getState().draftSidebarLayout).toEqual(beforeSidebar);
-    expect(host.sidebar()?.render(120).join("\n")).toBe(runtimeBefore);
+    expect(host.renderHostText()).toBe(runtimeBefore);
     expect(isDashboardDirty(component.getState())).toBe(true);
 
     saveConfig.mockImplementation(() => undefined);

@@ -171,6 +171,8 @@ RPC and print contexts do not receive direct notifications.
 
 `@pi-vault/pi-status` installs a right-edge, non-capturing sidebar that surfaces the same live data the footer tracks — session, run, turn, tools, workspace pulse, extension statuses — alongside optional contributions from other extensions. The sidebar is on by default and runs only in TUI sessions.
 
+On the regular Pi TUI, the live Sidebar is composed into the trailing logical render block of `tui.render()` and scrolls away with that block rather than staying fixed to the viewport. Pi exposes no arbitrary historical scroll-position API, so the Sidebar does not pin to a separately selected terminal scroll position. Fullscreen and viewport TUIs do not render the Sidebar: the custom overlay lifecycle bridge is mounted but its component is invisible, and the trailing renderer is not installed.
+
 ### Built-in panels and order
 
 Nine built-in panels ship in this default order:

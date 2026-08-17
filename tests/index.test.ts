@@ -1446,14 +1446,19 @@ describe("sidebar lifecycle", () => {
     });
     for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
     await new Promise((resolve) => setImmediate(resolve));
-    const sidebarMounted = customMock.mock.calls.some(
-      (call: unknown[]) =>
+    const sidebarCall = (customMock.mock.calls as unknown[][]).find(
+      (call) =>
         Array.isArray(call) &&
         call[1] !== undefined &&
         typeof call[1] === "object" &&
         (call[1] as { overlay?: unknown }).overlay === true,
     );
-    expect(sidebarMounted).toBe(true);
+    expect(sidebarCall).toBeDefined();
+    const sidebarOptions = sidebarCall?.[1] as
+      | { overlayOptions?: { visible?: (w: number, h: number) => boolean } }
+      | undefined;
+    expect(sidebarOptions?.overlayOptions).toEqual({ visible: expect.any(Function) });
+    expect(sidebarOptions?.overlayOptions?.visible?.(120, 36)).toBe(false);
   });
 
   it("does not recreate the registry or controller on session_tree", async () => {
@@ -1511,14 +1516,16 @@ describe("sidebar lifecycle", () => {
         const current = callIndex;
         callIndex += 1;
         if (current === 0) {
-          // First overlay call: sidebar mount. Invoke the factory so the controller
-          // captures a wide terminal and is effectively visible.
-          const component = (
-            factory as (...args: unknown[]) => { render: (width: number) => string[] }
-          )({ terminal: { columns: 120, rows: 30 }, requestRender: vi.fn() }, null, {}, () => {});
-          if (typeof component === "object" && component !== null && "render" in component) {
-            (component as { render: (w: number) => string[] }).render(44);
-          }
+          // First overlay call: sidebar mount. Phase 3 makes the bridge lifecycle-only;
+          // the bridge renders [] and the live Sidebar is composed into the host tui.render()
+          // output. We give the controller a renderable tui so getEffectiveWidth resolves.
+          const sidebarTui = {
+            terminal: { columns: 120, rows: 30 },
+            requestRender: vi.fn(),
+            render: vi.fn((width: number) => [`main:${width}`]),
+          };
+          (factory as (...args: unknown[]) => unknown)(sidebarTui, null, {}, () => {});
+          sidebarTui.render(120);
           return Promise.resolve(null);
         }
         // Second overlay call: dashboard open. Capture options and resolve immediately.

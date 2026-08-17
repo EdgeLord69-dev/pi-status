@@ -1,5 +1,5 @@
 import { compositeTuiLine, matchesKey } from "@earendil-works/pi-tui";
-import type { OverlayOptions, TUI } from "@earendil-works/pi-tui";
+import type { TUI } from "@earendil-works/pi-tui";
 
 const ENABLE_MOUSE = "[?1002h[?1006h";
 const DISABLE_MOUSE = "[?1006l[?1002l";
@@ -63,7 +63,6 @@ export interface SplitPaneController {
   finishResize(): void;
   cancelResize(): void;
   isResizing(): boolean;
-  overlayOptions(): OverlayOptions;
   requestRender(): void;
   dispose(): void;
 }
@@ -150,26 +149,11 @@ export function createSplitPaneController(
     );
   };
 
-  const overlayLayout: OverlayOptions = {
-    anchor: "top-right",
-    width: sidebarWidth,
-    maxHeight: "100%",
-    margin: 0,
-    nonCapturing: true,
-    visible: (terminalWidth: number) => visibleAt(terminalWidth),
-  };
-
-  const syncOverlayWidth = (terminalWidth: number | undefined = tui?.terminal.columns) => {
-    const effectiveWidth = terminalWidth === undefined ? 0 : effectiveSidebarWidth(terminalWidth);
-    overlayLayout.width = effectiveWidth > 0 ? effectiveWidth : sidebarWidth;
-  };
-
   const requestRender = () => tui?.requestRender();
 
   const stopResize = (restore: boolean) => {
     if (!resizing && !mouseReportingEnabled && !unsubscribeInput) return;
     if (restore) sidebarWidth = resizeStartWidth;
-    syncOverlayWidth();
     const shouldDisableMouse = mouseReportingEnabled;
     const unsubscribe = unsubscribeInput;
     dragging = false;
@@ -203,7 +187,6 @@ export function createSplitPaneController(
     wrappedRender = function (this: TUI, terminalWidth: number): string[] {
       reconcileResizeWidth(terminalWidth);
       const reserved = effectiveSidebarWidth(terminalWidth);
-      syncOverlayWidth(terminalWidth);
       let baseLines: string[];
       try {
         baseLines = previousRender.call(nextTui, terminalWidth - reserved);
@@ -243,7 +226,6 @@ export function createSplitPaneController(
         const proposed = tui.terminal.columns - mouse.x + 1;
         const effectiveMax = Math.min(maximumSidebar, tui.terminal.columns - minimumMain);
         sidebarWidth = clamp(proposed, minimumSidebar, Math.max(minimumSidebar, effectiveMax));
-        syncOverlayWidth();
         requestRender();
       }
       return { consume: true };
@@ -280,7 +262,6 @@ export function createSplitPaneController(
     show() {
       if (disposed || enabled) return;
       enabled = true;
-      syncOverlayWidth();
       requestRender();
     },
     hide() {
@@ -293,7 +274,6 @@ export function createSplitPaneController(
       const next = clamp(finiteInteger(width, sidebarWidth), minimumSidebar, maximumSidebar);
       if (next === sidebarWidth) return;
       sidebarWidth = next;
-      syncOverlayWidth();
       requestRender();
     },
     getSidebarWidth: () => sidebarWidth,
@@ -316,7 +296,6 @@ export function createSplitPaneController(
         return false;
       }
       sidebarWidth = effectiveSidebarWidth(tui.terminal.columns);
-      syncOverlayWidth();
       resizeStartWidth = sidebarWidth;
       dragging = false;
       resizing = true;
@@ -338,7 +317,6 @@ export function createSplitPaneController(
     isResizing: () => resizing,
     isEnabled: () => enabled,
     isVisibleAtWidth: visibleAt,
-    overlayOptions: () => overlayLayout,
     requestRender,
     dispose() {
       if (disposed) return;

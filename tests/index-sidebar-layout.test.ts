@@ -65,7 +65,7 @@ function sidebarHost() {
   const tui = {
     terminal: { columns: 120, rows: 30 },
     requestRender,
-    render: vi.fn(),
+    render: vi.fn((width: number) => [`main:${width}`]),
   } as unknown as TUI;
   const handle = {
     hide: vi.fn(),
@@ -80,7 +80,16 @@ function sidebarHost() {
     options?.onHandle?.(handle);
     return undefined;
   });
-  return { components, custom, requestRender };
+  return {
+    components,
+    custom,
+    requestRender,
+    renderHostText: (width = 120) => {
+      const renderMock = tui.render as unknown as (this: TUI, width: number) => string[];
+      const lines = renderMock.call(tui, width);
+      return lines.join("\n");
+    },
+  };
 }
 
 afterEach(() => {
@@ -105,7 +114,7 @@ describe("sidebar layout lifecycle", () => {
 
     createExtension(pi);
     for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
-    const text = host.components.at(-1)?.render(44).join("\n") ?? "";
+    const text = host.renderHostText();
 
     expect(text).toContain("USAGE");
     expect(text).toContain("GPT-5");
@@ -167,8 +176,7 @@ describe("sidebar layout lifecycle", () => {
 
     createExtension(pi);
     for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
-    const component = host.components.at(-1);
-    expect(component?.render(44).join("\n")).not.toContain("queued");
+    expect(host.renderHostText()).not.toContain("queued");
     const rendersBeforeRegister = host.requestRender.mock.calls.length;
 
     events.emit(SIDEBAR_PANEL_CHANNEL, {
@@ -183,7 +191,7 @@ describe("sidebar layout lifecycle", () => {
       },
     });
     expect(host.requestRender.mock.calls.length).toBeGreaterThan(rendersBeforeRegister);
-    expect(component?.render(44).join("\n")).toContain("queued");
+    expect(host.renderHostText()).toContain("queued");
 
     events.emit(SIDEBAR_PANEL_CHANNEL, {
       version: SIDEBAR_PANEL_PROTOCOL_VERSION,
@@ -192,7 +200,7 @@ describe("sidebar layout lifecycle", () => {
       revision: 2,
       id: "vendor:queue",
     });
-    expect(component?.render(44).join("\n")).not.toContain("queued");
+    expect(host.renderHostText()).not.toContain("queued");
   });
 
   it("preserves layout on session_tree and reloads it on session_start", async () => {
@@ -214,13 +222,13 @@ describe("sidebar layout lifecycle", () => {
     for (const handler of handlers.get("session_start") ?? []) handler({}, first);
     current = configWithModelIn("agent");
     for (const handler of handlers.get("session_tree") ?? []) handler({}, first);
-    expect(host.components.at(-1)?.render(44).join("\n")).toContain("USAGE");
+    expect(host.renderHostText()).toContain("USAGE");
 
     const second = createContext({
       ui: { ...createContext().ui, custom: host.custom as never },
     });
     for (const handler of handlers.get("session_start") ?? []) handler({}, second);
-    const resetText = host.components.at(-1)?.render(44).join("\n") ?? "";
+    const resetText = host.renderHostText();
     expect(resetText).toContain("AGENT");
     expect(resetText).not.toContain("USAGE");
   });
@@ -256,9 +264,8 @@ describe("sidebar layout lifecycle", () => {
 
     createExtension(pi);
     for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
-    const component = host.components.at(-1);
-    expect(component?.render(44).join("\n")).toContain("#7");
-    expect(component?.render(44).join("\n")).toContain("from branch");
+    expect(host.renderHostText()).toContain("#7");
+    expect(host.renderHostText()).toContain("from branch");
 
     for (const handler of handlers.get("tool_result") ?? []) {
       handler(
@@ -271,10 +278,10 @@ describe("sidebar layout lifecycle", () => {
         ctx,
       );
     }
-    expect(component?.render(44).join("\n")).toContain("#8");
-    expect(component?.render(44).join("\n")).toContain("live");
+    expect(host.renderHostText()).toContain("#8");
+    expect(host.renderHostText()).toContain("live");
 
-    const beforeRender = component?.render(44).join("\n") ?? "";
+    const beforeRender = host.renderHostText();
 
     for (const handler of handlers.get("tool_result") ?? []) {
       handler(
@@ -305,7 +312,7 @@ describe("sidebar layout lifecycle", () => {
         ctx,
       );
     }
-    const afterRender = component?.render(44).join("\n") ?? "";
+    const afterRender = host.renderHostText();
     expect(afterRender).toBe(beforeRender);
     expect(afterRender).toContain("#8");
     expect(afterRender).toContain("live");
@@ -429,8 +436,7 @@ describe("sidebar layout lifecycle", () => {
 
     createExtension(pi);
     for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
-    const component = host.components.at(-1);
-    expect(component?.render(44).join("\n")).toContain("#5");
+    expect(host.renderHostText()).toContain("#5");
 
     for (const handler of handlers.get("session_shutdown") ?? []) handler({}, ctx);
     const fresh = createContext({
@@ -443,7 +449,6 @@ describe("sidebar layout lifecycle", () => {
       } as unknown as ExtensionContext["sessionManager"],
     });
     for (const handler of handlers.get("session_start") ?? []) handler({}, fresh);
-    const replacement = host.components.at(-1);
-    expect(replacement?.render(44).join("\n")).not.toContain("#5");
+    expect(host.renderHostText()).not.toContain("#5");
   });
 });
