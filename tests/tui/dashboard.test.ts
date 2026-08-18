@@ -8,11 +8,7 @@ import {
   type PiStatusConfig,
 } from "../../src/shared/types.ts";
 import { openStatusLineDashboard, StatusLineDashboardComponent } from "../../src/tui/dashboard.ts";
-import {
-  type DashboardState,
-  isDashboardDirty,
-  selectableRows,
-} from "../../src/tui/dashboard-state.ts";
+import { isDashboardDirty, selectableRows } from "../../src/tui/dashboard-state.ts";
 import type { FooterRenderInput } from "../../src/tui/render.ts";
 import { noTheme } from "../../src/tui/theme.ts";
 
@@ -163,9 +159,7 @@ function dirtySettings(component: StatusLineDashboardComponent): void {
   const notificationIndex = selectableRows(component.getState(), "settings").findIndex(
     (row) => row.type === "notifications",
   );
-  while (
-    component.getState().navigation.settings.selectedIndex < notificationIndex
-  ) {
+  while (component.getState().navigation.settings.selectedIndex < notificationIndex) {
     component.handleInput("\x1b[B");
   }
   component.handleInput("\r"); // toggle notifications (row 2)

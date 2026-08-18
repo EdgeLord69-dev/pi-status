@@ -258,11 +258,7 @@ describe("dashboard Statusbar tab initialization", () => {
     );
     expect(
       selectableRows(
-        initDashboardState(
-          config({ statusbarEnabled: false, sidebarEnabled: false }),
-          [],
-          true,
-        ),
+        initDashboardState(config({ statusbarEnabled: false, sidebarEnabled: false }), [], true),
         "settings",
       ),
     ).toEqual(expectedRows);
@@ -581,9 +577,10 @@ describe("dashboard transitions", () => {
     expect(moved.state).not.toBe(state);
 
     moved.state.activeTab = "settings";
-    moved.state.navigation.settings.selectedIndex = selectableRows(moved.state, "settings").findIndex(
-      (row) => row.type === "save",
-    );
+    moved.state.navigation.settings.selectedIndex = selectableRows(
+      moved.state,
+      "settings",
+    ).findIndex((row) => row.type === "save");
     const saved = reduceDashboardState(moved.state, { type: "activate" });
     if (saved.effect?.type !== "save") throw new Error("expected save effect");
     saved.effect.config.zones.topLeft.push("model");
