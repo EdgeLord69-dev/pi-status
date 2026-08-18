@@ -178,7 +178,6 @@ export default function createExtension(pi: ExtensionAPI): void {
     }
     saveConfig(next);
     runtimeState.update({ type: "config_reload", config: next });
-    syncWorkspacePulse(next);
   }
 
   let dashboardOpen = false;
@@ -364,9 +363,7 @@ export default function createExtension(pi: ExtensionAPI): void {
     footerProviderState.extensionStatuses = new Map(footerData.getExtensionStatuses().entries());
   }
 
-  function installFooter(ctx: ExtensionContext, config = runtimeState.snapshot().config): void {
-    if (ctx.mode !== "tui") return;
-
+  function installFooter(ctx: ExtensionContext, config: PiStatusConfig): void {
     if (!workspacePulseRuntime) {
       workspacePulseRuntime = createWorkspacePulseRuntime({ directory: ctx.cwd });
     }
