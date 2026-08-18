@@ -65,7 +65,10 @@ describe("config — surface visibility", () => {
     const store = new MemoryConfigStore();
     store.seed(
       getConfigPath("/agent"),
-      JSON.stringify({ zones: DEFAULT_ZONES, extensionSegments: { hidden: [] } }),
+      JSON.stringify({
+        zones: DEFAULT_ZONES,
+        extensionSegments: { hidden: [] },
+      }),
     );
 
     expect(loadConfig({ agentDir: "/agent", store })).toMatchObject({
@@ -74,57 +77,63 @@ describe("config — surface visibility", () => {
     });
   });
 
-  it.each([true, null, 0, "false", {}, []])(
-    "treats non-false statusbar/sidebar values as enabled: %j",
-    (value) => {
+  it.each(["statusbarEnabled", "sidebarEnabled"] as const)(
+    "treats non-false %s values as enabled",
+    (field) => {
+      for (const value of [true, null, 0, "false", {}, []]) {
+        const store = new MemoryConfigStore();
+        store.seed(
+          getConfigPath("/agent"),
+          JSON.stringify({
+            zones: DEFAULT_ZONES,
+            extensionSegments: { hidden: [] },
+            [field]: value,
+          }),
+        );
+
+        expect(loadConfig({ agentDir: "/agent", store })[field]).toBe(true);
+      }
+    },
+  );
+
+  it.each([
+    { statusbarEnabled: false, sidebarEnabled: true },
+    { statusbarEnabled: true, sidebarEnabled: false },
+    { statusbarEnabled: false, sidebarEnabled: false },
+  ] as const)(
+    "disables only the surface whose stored value is literal false: %j",
+    (surfaceValues) => {
       const store = new MemoryConfigStore();
       store.seed(
         getConfigPath("/agent"),
         JSON.stringify({
           zones: DEFAULT_ZONES,
           extensionSegments: { hidden: [] },
-          statusbarEnabled: value,
-          sidebarEnabled: value,
+          ...surfaceValues,
         }),
       );
 
-      expect(loadConfig({ agentDir: "/agent", store })).toMatchObject({
-        statusbarEnabled: true,
-        sidebarEnabled: true,
-      });
+      expect(loadConfig({ agentDir: "/agent", store })).toMatchObject(
+        surfaceValues,
+      );
     },
   );
-
-  it("disables each surface only for the literal false value", () => {
-    const store = new MemoryConfigStore();
-    store.seed(
-      getConfigPath("/agent"),
-      JSON.stringify({
-        zones: DEFAULT_ZONES,
-        extensionSegments: { hidden: [] },
-        statusbarEnabled: false,
-        sidebarEnabled: false,
-      }),
-    );
-
-    expect(loadConfig({ agentDir: "/agent", store })).toMatchObject({
-      statusbarEnabled: false,
-      sidebarEnabled: false,
-    });
-  });
 
   it("round-trips both surface fields and publishes them in the schema", () => {
     const store = new MemoryConfigStore();
     const disabled = {
       ...config,
       statusbarEnabled: false,
-      sidebarEnabled: false,
+      sidebarEnabled: true,
     } as PiStatusConfig;
 
     saveConfig(disabled, { agentDir: "/agent", store });
 
     const written = JSON.parse(store.read(getConfigPath("/agent")) as string);
-    expect(written).toMatchObject({ statusbarEnabled: false, sidebarEnabled: false });
+    expect(written).toMatchObject({
+      statusbarEnabled: false,
+      sidebarEnabled: true,
+    });
     expect(loadConfig({ agentDir: "/agent", store })).toMatchObject(disabled);
     expect(Object.keys(written).sort()).toContain("sidebarEnabled");
     expect(Object.keys(written).sort()).toContain("statusbarEnabled");
@@ -194,7 +203,9 @@ function cloneDefaultConfig(): PiStatusConfig {
     extensionSegments: { hidden: [...DEFAULT_CONFIG.extensionSegments.hidden] },
     extensionStatusZone: DEFAULT_CONFIG.extensionStatusZone,
     completionNotifications: DEFAULT_CONFIG.completionNotifications,
-    sidebarPanelLayout: cloneSidebarPanelLayout(DEFAULT_CONFIG.sidebarPanelLayout),
+    sidebarPanelLayout: cloneSidebarPanelLayout(
+      DEFAULT_CONFIG.sidebarPanelLayout,
+    ),
     sidebarHiddenSegments: [...DEFAULT_CONFIG.sidebarHiddenSegments],
   };
 }
@@ -239,7 +250,9 @@ const next: PiStatusConfig = {
   extensionStatusZone: config.extensionStatusZone,
   completionNotifications: config.completionNotifications,
   sidebarPanelLayout: sidebar.sidebarPanelLayout,
-  sidebarHiddenSegments: sidebar.sidebarHiddenSegments.filter(isPersistedSidebarSegmentId),
+  sidebarHiddenSegments: sidebar.sidebarHiddenSegments.filter(
+    isPersistedSidebarSegmentId,
+  ),
 };
 ```
 
@@ -270,8 +283,8 @@ Expected: both commands exit successfully; no typed fixture reports a missing su
 ## Phase acceptance checklist
 
 - [ ] Missing fields load as `true`/`true`.
-- [ ] Literal `false` loads as disabled for each field.
-- [ ] Invalid non-false values load as enabled.
+- [ ] Literal `false` independently disables either field without affecting the other.
+- [ ] Invalid non-false values load as enabled for either field.
 - [ ] Save/reload preserves both fields.
 - [ ] Serialized schema contains both keys.
 - [ ] Full TypeScript typecheck passes.
