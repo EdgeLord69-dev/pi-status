@@ -22,6 +22,26 @@ afterEach(() => {
   vi.resetModules();
 });
 
+function moveToSettingsRow(
+  component: StatusLineDashboardComponent,
+  rowType: "statusbar_enabled" | "sidebar_enabled" | "save",
+): void {
+  const state = component.getState();
+  const rows = selectableRows(state, "settings");
+  const target = rows.findIndex((row) => row.type === rowType);
+  if (target < 0) throw new Error(`Missing Settings row: ${rowType}`);
+  const delta = target - state.navigation.settings.selectedIndex;
+  const key = delta >= 0 ? "\x1b[B" : "\x1b[A";
+  for (let index = 0; index < Math.abs(delta); index += 1) component.handleInput(key);
+}
+
+function saveSettings(component: StatusLineDashboardComponent): void {
+  moveToSettingsRow(component, "save");
+  component.handleInput("\r");
+  component.handleInput("\x1b[B");
+  component.handleInput("\r");
+}
+
 function config(): PiStatusConfig {
   return {
     statusbarEnabled: true,
@@ -83,6 +103,8 @@ function deferredCustomHost() {
   };
   return {
     custom,
+    handle,
+    requestRender,
     resolveCustom: (value: unknown) => done(value),
     component: () => components.at(-1) as StatusLineDashboardComponent | undefined,
     dashboard: () => components.at(-1) as StatusLineDashboardComponent | undefined,
@@ -130,7 +152,6 @@ describe("/statusline persistence", () => {
     component.handleInput("\t");
     component.handleInput("\t");
     // Settings rows are Statusbar (0), Sidebar (1), Completion notifications (2), Save (3).
-    component.handleInput("\r"); // toggle Statusbar off
     component.handleInput("\x1b[B"); // → Sidebar (row 1)
     component.handleInput("\r"); // toggle Sidebar off
     component.handleInput("\x1b[B"); // → Completion notifications (row 2)
@@ -142,11 +163,11 @@ describe("/statusline persistence", () => {
 
     expect(saveConfig).toHaveBeenCalledWith(
       expect.objectContaining({
-        statusbarEnabled: false,
         sidebarEnabled: false,
         completionNotifications: true,
       }),
     );
+    expect(typeof footerSpy.calls.at(-1)).toBe("function");
     expect(renderWithFactory(footerSpy.calls.at(-1))).toContain("project");
     expect(isDashboardDirty(component.getState())).toBe(false);
     expect(host.done).not.toHaveBeenCalled();
@@ -358,6 +379,70 @@ describe("/statusline persistence", () => {
     component.handleInput("\r");
     expect(saveConfig).toHaveBeenCalledTimes(2);
     expect(isDashboardDirty(component.getState())).toBe(false);
+
+    host.resolveCustom(undefined);
+    await commandPromise;
+  });
+
+  it("applies saved surface visibility immediately and keeps Sidebar invalidation live", async () => {
+    const initial = config();
+    const loadConfig = vi.fn(() => initial);
+    const saveConfig = vi.fn();
+    vi.doMock("../src/core/config.ts", () => ({ loadConfig, saveConfig }));
+
+    const { default: createExtension } = await import("../src/index.ts");
+    const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
+    const footerSpy = buildSetFooterSpy();
+    createExtension(pi);
+
+    const host = deferredCustomHost();
+    const ctx = createContext({
+      ui: {
+        ...createContext().ui,
+        setFooter: footerSpy.setFooter,
+        custom: host.custom as unknown as ExtensionCommandContext["ui"]["custom"],
+      },
+    });
+    for (const h of handlers.get("session_start") ?? []) h({}, ctx);
+
+    const commandPromise = getRegisteredCommand(registerCommandCalls, "statusline").handler(
+      "",
+      ctx,
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+    const component = host.component();
+    if (!component) throw new Error("expected dashboard component");
+
+    // The dashboard starts on Statusbar; five tabs reach Settings.
+    for (let index = 0; index < 5; index += 1) component.handleInput("\t");
+    moveToSettingsRow(component, "statusbar_enabled");
+    component.handleInput("\r");
+    moveToSettingsRow(component, "sidebar_enabled");
+    component.handleInput("\r");
+    saveSettings(component);
+
+    expect(saveConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ statusbarEnabled: false, sidebarEnabled: false }),
+    );
+    expect(footerSpy.calls.at(-1)).toBeUndefined();
+    expect(host.handle.setHidden).toHaveBeenLastCalledWith(true);
+
+    host.requestRender.mockClear();
+    for (const handler of handlers.get("model_select") ?? []) handler({}, ctx);
+    expect(host.requestRender).toHaveBeenCalled();
+
+    moveToSettingsRow(component, "statusbar_enabled");
+    component.handleInput("\r");
+    moveToSettingsRow(component, "sidebar_enabled");
+    component.handleInput("\r");
+    saveSettings(component);
+
+    expect(saveConfig).toHaveBeenLastCalledWith(
+      expect.objectContaining({ statusbarEnabled: true, sidebarEnabled: true }),
+    );
+    expect(typeof footerSpy.calls.at(-1)).toBe("function");
+    expect(host.handle.setHidden).toHaveBeenLastCalledWith(false);
+    expect(host.custom).toHaveBeenCalledTimes(2); // Sidebar mount + dashboard; no replacement Sidebar.
 
     host.resolveCustom(undefined);
     await commandPromise;

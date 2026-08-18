@@ -1560,6 +1560,91 @@ describe("sidebar lifecycle", () => {
       overlayOptions: expect.objectContaining({ offsetX: -22 }),
     });
   });
+
+  it.each([
+    {
+      statusbarEnabled: true,
+      sidebarEnabled: true,
+      footer: "custom",
+      hidden: false,
+    },
+    {
+      statusbarEnabled: true,
+      sidebarEnabled: false,
+      footer: "custom",
+      hidden: true,
+    },
+    {
+      statusbarEnabled: false,
+      sidebarEnabled: true,
+      footer: "builtin",
+      hidden: false,
+    },
+    {
+      statusbarEnabled: false,
+      sidebarEnabled: false,
+      footer: "builtin",
+      hidden: true,
+    },
+  ] as const)("applies the $statusbarEnabled/$sidebarEnabled surface matrix", async (choice) => {
+    mkdirSync(join(agentDir, "extensions"), { recursive: true });
+    writeFileSync(
+      join(agentDir, "extensions", "statusline.json"),
+      JSON.stringify({
+        zones: {
+          topLeft: ["model"],
+          topRight: [],
+          bottomLeft: [],
+          bottomRight: [],
+        },
+        extensionSegments: { hidden: [] },
+        statusbarEnabled: choice.statusbarEnabled,
+        sidebarEnabled: choice.sidebarEnabled,
+      }),
+      "utf8",
+    );
+
+    const { pi, handlers } = buildPiWithHandlers();
+    const footerSpy = buildSetFooterSpy();
+    const handle = {
+      hide: vi.fn(),
+      setHidden: vi.fn(),
+      isHidden: vi.fn(() => false),
+      focus: vi.fn(),
+      unfocus: vi.fn(),
+      isFocused: vi.fn(() => false),
+    };
+    const custom = vi.fn(
+      async (_factory: unknown, options?: { onHandle?: (value: unknown) => void }) => {
+        options?.onHandle?.(handle);
+        return null;
+      },
+    );
+
+    createExtension(pi);
+    const ctx = createContext({
+      ui: {
+        ...createContext().ui,
+        setFooter: footerSpy.setFooter,
+        custom: custom as never,
+      },
+    });
+
+    for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(typeof footerSpy.calls[0]).toBe(choice.footer === "custom" ? "function" : "undefined");
+    expect(custom).toHaveBeenCalledOnce();
+    expect(handle.setHidden).toHaveBeenLastCalledWith(choice.hidden);
+
+    for (const handler of handlers.get("session_tree") ?? []) handler({}, ctx);
+
+    expect(typeof footerSpy.calls.at(-1)).toBe(
+      choice.footer === "custom" ? "function" : "undefined",
+    );
+    expect(custom).toHaveBeenCalledOnce();
+    expect(handle.setHidden).toHaveBeenLastCalledWith(choice.hidden);
+  });
 });
 
 describe("public sidebar catalog contracts", () => {

@@ -171,15 +171,13 @@ export default function createExtension(pi: ExtensionAPI): void {
         commit: (committed, committedLayout) => {
           sidebarLayoutRuntime?.replace(committedLayout, catalog);
           runtimeState.update({ type: "config_reload", config: committed });
+          applySurfaceVisibility(ctx, committed);
         },
       });
-      syncWorkspacePulse(runtimeState.snapshot().config);
-      activeSidebarController?.requestRender();
       return;
     }
     saveConfig(next);
     runtimeState.update({ type: "config_reload", config: next });
-    syncWorkspacePulse(next);
   }
 
   let dashboardOpen = false;
@@ -303,11 +301,41 @@ export default function createExtension(pi: ExtensionAPI): void {
 
   function syncWorkspacePulse(config: PiStatusConfig): void {
     if (!workspacePulseRuntime) return;
-    if (isWorkspacePulseEnabled(config.zones) || sidebarWorkspaceDemand()) {
+
+    const statusbarDemand = config.statusbarEnabled && isWorkspacePulseEnabled(config.zones);
+    const sidebarDemand = config.sidebarEnabled && sidebarWorkspaceDemand();
+
+    if (statusbarDemand || sidebarDemand) {
       workspacePulseRuntime.start();
     } else {
       workspacePulseRuntime.stop();
     }
+  }
+
+  function clearRenderSubscriptions(): void {
+    runtimeState.onInvalidate(undefined);
+    usageRuntime.setOnChange(undefined);
+    activityRuntime.setOnChange(undefined);
+    workspacePulseRuntime?.setOnChange(undefined);
+  }
+
+  function setSidebarRenderSubscriptions(): void {
+    if (!activeSidebarController) return;
+    const requestRender = () => activeSidebarController?.requestRender();
+    runtimeState.onInvalidate(requestRender);
+    usageRuntime.setOnChange(requestRender);
+    activityRuntime.setOnChange(requestRender);
+    workspacePulseRuntime?.setOnChange(requestRender);
+  }
+
+  function applySurfaceVisibility(ctx: ExtensionContext, config: PiStatusConfig): void {
+    if (ctx.mode !== "tui") return;
+
+    activeSidebarController?.setShown(config.sidebarEnabled);
+    installFooter(ctx, config);
+    if (!config.statusbarEnabled) setSidebarRenderSubscriptions();
+    syncWorkspacePulse(config);
+    activeSidebarController?.requestRender();
   }
 
   let notifications = createNotificationsWiring({
@@ -335,11 +363,14 @@ export default function createExtension(pi: ExtensionAPI): void {
     footerProviderState.extensionStatuses = new Map(footerData.getExtensionStatuses().entries());
   }
 
-  function installFooter(ctx: ExtensionContext): void {
-    if (ctx.mode !== "tui") return;
-
+  function installFooter(ctx: ExtensionContext, config: PiStatusConfig): void {
     if (!workspacePulseRuntime) {
       workspacePulseRuntime = createWorkspacePulseRuntime({ directory: ctx.cwd });
+    }
+
+    if (!config.statusbarEnabled) {
+      ctx.ui.setFooter(undefined);
+      return;
     }
 
     const factory: FooterFactory = (tui, theme, footerData) => {
@@ -356,10 +387,7 @@ export default function createExtension(pi: ExtensionAPI): void {
       return {
         dispose() {
           unsubscribe?.();
-          runtimeState.onInvalidate(undefined);
-          usageRuntime.setOnChange(undefined);
-          activityRuntime.setOnChange(undefined);
-          workspacePulseRuntime?.setOnChange(undefined);
+          clearRenderSubscriptions();
         },
         invalidate() {
           requestRender();
@@ -380,7 +408,6 @@ export default function createExtension(pi: ExtensionAPI): void {
     };
 
     ctx.ui.setFooter(factory as never);
-    syncWorkspacePulse(runtimeState.snapshot().config);
   }
 
   pi.registerCommand("statusline", {
@@ -448,11 +475,10 @@ export default function createExtension(pi: ExtensionAPI): void {
     activeSidebarRegistry = undefined;
     sidebarLayoutRuntime = undefined;
     currentTodos = [];
-    workspacePulseRuntime?.setOnChange(undefined);
+    clearRenderSubscriptions();
     workspacePulseRuntime?.dispose();
     workspacePulseRuntime = undefined;
     resetFooterProviderState();
-    activityRuntime.setOnChange(undefined);
     activityRuntime.reset();
     usageRuntime.requestCurrent();
     runtimeState.update({ type: "session_start", ctx });
@@ -464,7 +490,6 @@ export default function createExtension(pi: ExtensionAPI): void {
     });
     runtimeState.update({ type: "config_reload", config: loadConfig() });
     attachNotificationsForCurrentSession();
-    installFooter(ctx);
     if (ctx.mode === "tui") {
       activeSidebarRegistry = createSidebarPanelRegistry({
         events: pi.events as unknown as SidebarPanelEventTransport,
@@ -484,8 +509,7 @@ export default function createExtension(pi: ExtensionAPI): void {
           onError: (error) =>
             ctx.ui.notify(error instanceof Error ? error.message : String(error), "warning"),
         });
-        activeSidebarController.setShown(true);
-        syncWorkspacePulse(runtimeState.snapshot().config);
+        activeSidebarController.show();
       } catch (error) {
         // Spec: partway-through setup disposes the resources already created and reports one warning.
         safelyDisposeSidebarRegistry();
@@ -499,6 +523,7 @@ export default function createExtension(pi: ExtensionAPI): void {
           "warning",
         );
       }
+      applySurfaceVisibility(ctx, runtimeState.snapshot().config);
     }
   });
 
@@ -517,12 +542,12 @@ export default function createExtension(pi: ExtensionAPI): void {
       level: String(ctx.thinkingLevel ?? pi.getThinkingLevel()),
     });
     attachNotificationsForCurrentSession();
-    installFooter(ctx);
-    if (ctx.mode === "tui" && activeSidebarController) {
-      currentTodos = readCurrentTodos(ctx);
-      captureSidebarView(ctx);
-      syncWorkspacePulse(runtimeState.snapshot().config);
-      activeSidebarController.requestRender();
+    if (ctx.mode === "tui") {
+      if (activeSidebarController) {
+        currentTodos = readCurrentTodos(ctx);
+        captureSidebarView(ctx);
+      }
+      applySurfaceVisibility(ctx, runtimeState.snapshot().config);
     }
   });
 
@@ -624,6 +649,8 @@ export default function createExtension(pi: ExtensionAPI): void {
     const activeCtx = runtimeState.snapshot().ctx;
     if (activeCtx && activeCtx.sessionManager !== ctx.sessionManager) return;
     closeActiveDashboard();
+    if (ctx.mode === "tui") ctx.ui.setFooter(undefined);
+    clearRenderSubscriptions();
     safelyDisposeSidebarController();
     safelyDisposeSidebarRegistry();
     activeSidebarController = undefined;
@@ -645,6 +672,5 @@ export default function createExtension(pi: ExtensionAPI): void {
     }
     runtimeState.update({ type: "session_shutdown" });
     usageRuntime.setOnChange(undefined);
-    if (ctx.mode === "tui") ctx.ui.setFooter(undefined);
   });
 }
