@@ -71,6 +71,8 @@ export type DashboardSelectableRow =
   | { type: "sidebar_panel_position" }
   | { type: "sidebar_segment"; id: string }
   | { type: "sidebar_default" }
+  | { type: "statusbar_enabled" }
+  | { type: "sidebar_enabled" }
   | { type: "notifications" }
   | { type: "save" };
 
@@ -207,6 +209,8 @@ export function configsEqual(left: PiStatusConfig, right: PiStatusConfig): boole
     sameArray(left.extensionSegments.hidden, right.extensionSegments.hidden) &&
     sameArray(left.sidebarHiddenSegments, right.sidebarHiddenSegments) &&
     left.extensionStatusZone === right.extensionStatusZone &&
+    left.statusbarEnabled === right.statusbarEnabled &&
+    left.sidebarEnabled === right.sidebarEnabled &&
     sameSidebarPanelLayout(left, right) &&
     left.completionNotifications === right.completionNotifications
   );
@@ -388,7 +392,14 @@ export function selectableRows(
       { type: "save" },
     ];
   }
-  if (tab === "settings") return [{ type: "notifications" }, { type: "save" }];
+  if (tab === "settings") {
+    return [
+      { type: "statusbar_enabled" },
+      { type: "sidebar_enabled" },
+      { type: "notifications" },
+      { type: "save" },
+    ];
+  }
   return [];
 }
 
@@ -756,7 +767,11 @@ export function reduceDashboardState(
     flipStatusesSurface(state);
     return { state: clampSelection(state) };
   }
-  if (row.type === "notifications") {
+  if (row.type === "statusbar_enabled") {
+    state.draft.statusbarEnabled = !state.draft.statusbarEnabled;
+  } else if (row.type === "sidebar_enabled") {
+    state.draft.sidebarEnabled = !state.draft.sidebarEnabled;
+  } else if (row.type === "notifications") {
     state.draft.completionNotifications = !state.draft.completionNotifications;
   } else if (row.type === "sidebar_panel_visibility") {
     const active = activeSidebarPanel(state);

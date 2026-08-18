@@ -625,8 +625,11 @@ describe("extension wiring", () => {
       component.handleInput("\t");
       component.handleInput("\t");
       component.handleInput("\t");
-      component.handleInput("\r"); // toggle notifications (row 0)
-      component.handleInput("\x1b[B"); // → Save (row 1)
+      // Settings rows are Statusbar (0), Sidebar (1), Completion notifications (2), Save (3).
+      component.handleInput("\x1b[B"); // → Sidebar (row 1)
+      component.handleInput("\x1b[B"); // → Completion notifications (row 2)
+      component.handleInput("\r"); // toggle notifications
+      component.handleInput("\x1b[B"); // → Save (row 3)
       component.handleInput("\r"); // open dialog
       component.handleInput("\x1b[B"); // → Save
       component.handleInput("\r"); // confirm Save
@@ -729,13 +732,15 @@ describe("extension wiring", () => {
       const component = (
         factory as (...args: unknown[]) => { handleInput: (data: string) => void }
       )({ terminal: { columns: 80, rows: 30 }, requestRender: () => {} }, null, {}, () => {});
-      // Navigate to the Settings tab (5 forward tabs from statusbar), open the
-      // Save dialog, and confirm. Matches the old 2-step "open then confirm" flow.
+      // Navigate to the Settings tab (5 forward tabs from statusbar). Settings
+      // rows are Statusbar (0), Sidebar (1), Completion notifications (2), Save (3),
+      // so three Down inputs land on Save.
       component.handleInput("\t");
       component.handleInput("\t");
       component.handleInput("\t");
       component.handleInput("\t");
       component.handleInput("\t");
+      component.handleInput("\x1b[B");
       component.handleInput("\x1b[B");
       component.handleInput("\x1b[B");
       component.handleInput("\r"); // activate Save → opens dialog

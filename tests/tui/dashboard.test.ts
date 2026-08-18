@@ -160,8 +160,21 @@ function dirtySettings(component: StatusLineDashboardComponent): void {
   component.handleInput("\t");
   component.handleInput("\t");
   component.handleInput("\t");
-  component.handleInput("\r"); // toggle notifications (row 0)
-  component.handleInput("\x1b[B"); // → Save (row 1)
+  const notificationIndex = selectableRows(component.getState(), "settings").findIndex(
+    (row) => row.type === "notifications",
+  );
+  while (
+    component.getState().navigation.settings.selectedIndex < notificationIndex
+  ) {
+    component.handleInput("\x1b[B");
+  }
+  component.handleInput("\r"); // toggle notifications (row 2)
+  const saveIndex = selectableRows(component.getState(), "settings").findIndex(
+    (row) => row.type === "save",
+  );
+  while (component.getState().navigation.settings.selectedIndex < saveIndex) {
+    component.handleInput("\x1b[B");
+  }
   component.handleInput("\r"); // open Save dialog
 }
 
@@ -640,8 +653,11 @@ describe("StatusLineDashboardComponent Sidebar tab", () => {
     component.handleInput("\t"); // statuses → session
     component.handleInput("\t"); // session → tools
     component.handleInput("\t"); // tools → settings
-    component.handleInput("\r"); // toggle notifications (row 0)
-    component.handleInput("\x1b[B"); // → Save (row 1)
+    // Settings rows are Statusbar (0), Sidebar (1), Completion notifications (2), Save (3).
+    component.handleInput("\x1b[B"); // → Sidebar (row 1)
+    component.handleInput("\x1b[B"); // → Completion notifications (row 2)
+    component.handleInput("\r"); // toggle notifications
+    component.handleInput("\x1b[B"); // → Save (row 3)
     component.handleInput("\r"); // open dialog
     component.handleInput("\x1b[B"); // → Save
     component.handleInput("\r"); // confirm Save
