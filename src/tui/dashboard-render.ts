@@ -288,13 +288,26 @@ function logicalBody(
       }
     }
   } else {
-    const notifications = rows[0];
-    if (notifications?.type === "notifications") {
-      pushSelectable(
-        state.draft.completionNotifications ? "[•]" : "[ ]",
-        "Completion notifications",
-        "Notify when Pi finishes a response",
-      );
+    for (const row of rows) {
+      if (row.type === "statusbar_enabled") {
+        pushSelectable(
+          state.draft.statusbarEnabled ? "[•]" : "[ ]",
+          "Statusbar",
+          "Use the pi-status footer instead of Pi's built-in footer",
+        );
+      } else if (row.type === "sidebar_enabled") {
+        pushSelectable(
+          state.draft.sidebarEnabled ? "[•]" : "[ ]",
+          "Sidebar",
+          "Show the pi-status Sidebar",
+        );
+      } else if (row.type === "notifications") {
+        pushSelectable(
+          state.draft.completionNotifications ? "[•]" : "[ ]",
+          "Completion notifications",
+          "Notify when Pi finishes a response",
+        );
+      }
     }
   }
   if (rows.at(-1)?.type === "save") pushSelectable(" ", "Save changes");

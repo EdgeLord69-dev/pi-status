@@ -187,6 +187,10 @@ describe("dashboard render", () => {
     const state = initDashboardState(config(), [], true);
     state.activeTab = "settings";
     const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
+    expect(output).toContain("Statusbar");
+    expect(output).toContain("Use the pi-status footer instead of Pi's built-in footer");
+    expect(output).toContain("Sidebar");
+    expect(output).toContain("Show the pi-status Sidebar");
     expect(output).toContain("Completion notifications");
     expect(output).not.toContain("Show tool names");
   });

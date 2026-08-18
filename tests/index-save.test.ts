@@ -129,14 +129,23 @@ describe("/statusline persistence", () => {
     component.handleInput("\t");
     component.handleInput("\t");
     component.handleInput("\t");
-    component.handleInput("\r"); // toggle notifications (row 0)
-    component.handleInput("\x1b[B"); // → Save (row 1)
+    // Settings rows are Statusbar (0), Sidebar (1), Completion notifications (2), Save (3).
+    component.handleInput("\r"); // toggle Statusbar off
+    component.handleInput("\x1b[B"); // → Sidebar (row 1)
+    component.handleInput("\r"); // toggle Sidebar off
+    component.handleInput("\x1b[B"); // → Completion notifications (row 2)
+    component.handleInput("\r"); // toggle notifications
+    component.handleInput("\x1b[B"); // → Save (row 3)
     component.handleInput("\r"); // open dialog
     component.handleInput("\x1b[B"); // → Save
     component.handleInput("\r"); // confirm Save
 
     expect(saveConfig).toHaveBeenCalledWith(
-      expect.objectContaining({ completionNotifications: true }),
+      expect.objectContaining({
+        statusbarEnabled: false,
+        sidebarEnabled: false,
+        completionNotifications: true,
+      }),
     );
     expect(renderWithFactory(footerSpy.calls.at(-1))).toContain("project");
     expect(isDashboardDirty(component.getState())).toBe(false);
@@ -182,8 +191,11 @@ describe("/statusline persistence", () => {
     component.handleInput("\t");
     component.handleInput("\t");
     component.handleInput("\t");
-    component.handleInput("\r"); // toggle notifications (row 0)
-    component.handleInput("\x1b[B"); // → Save (row 1)
+    // Settings rows are Statusbar (0), Sidebar (1), Completion notifications (2), Save (3).
+    component.handleInput("\x1b[B"); // → Sidebar (row 1)
+    component.handleInput("\x1b[B"); // → Completion notifications (row 2)
+    component.handleInput("\r"); // toggle notifications
+    component.handleInput("\x1b[B"); // → Save (row 3)
     component.handleInput("\r"); // open dialog
     component.handleInput("\x1b[B"); // → Save
     component.handleInput("\r"); // confirm Save

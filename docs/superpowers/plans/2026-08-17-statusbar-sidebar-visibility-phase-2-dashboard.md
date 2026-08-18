@@ -38,6 +38,7 @@ This phase is complete when the Settings tab exposes four reachable rows, toggli
 - Modify: `tests/tui/dashboard-render.test.ts` — labels and descriptions.
 - Modify: `tests/tui/dashboard.test.ts` — navigation sequences and fixture expectations.
 - Modify: `tests/index-save.test.ts` — Settings navigation remains correct with the expanded row list.
+- Modify: `tests/index.test.ts` — direct-config Save flows remain correct with the expanded row list.
 
 ---
 
@@ -54,14 +55,26 @@ In `tests/tui/dashboard-state.test.ts`, add the new Settings row order and toggl
 
 ```ts
 it("lists surface toggles before completion notifications and Save", () => {
-  const state = initDashboardState(config(), [], true);
-
-  expect(selectableRows(state, "settings")).toEqual([
+  const expectedRows = [
     { type: "statusbar_enabled" },
     { type: "sidebar_enabled" },
     { type: "notifications" },
     { type: "save" },
-  ]);
+  ] as const;
+
+  expect(
+    selectableRows(initDashboardState(config(), [], true), "settings"),
+  ).toEqual(expectedRows);
+  expect(
+    selectableRows(
+      initDashboardState(
+        config({ statusbarEnabled: false, sidebarEnabled: false }),
+        [],
+        true,
+      ),
+      "settings",
+    ),
+  ).toEqual(expectedRows);
 });
 
 it.each([
@@ -194,19 +207,24 @@ Replace the current single-row Settings branch in `src/tui/dashboard-render.ts` 
 
 Keep the existing shared `Save changes` append after the tab-specific branch so Save remains reachable.
 
-- [ ] **Step 7: Update existing dashboard integration navigation**
+- [ ] **Step 7: Update all Settings navigation**
 
-The new Settings indexes are Statusbar `0`, Sidebar `1`, Completion notifications `2`, Save `3`. In `tests/tui/dashboard.test.ts` and `tests/index-save.test.ts`, replace notification-row assumptions with:
+The new Settings indexes are Statusbar `0`, Sidebar `1`, Completion notifications `2`, Save `3`.
 
-```ts
-component.handleInput("\x1b[B"); // Sidebar
-component.handleInput("\x1b[B"); // Completion notifications
-component.handleInput("\r"); // toggle notifications
-```
-
-Where a test already has the dashboard state, locate Save by row identity instead of a fixed numeric index:
+In `tests/tui/dashboard.test.ts` and `tests/index-save.test.ts`, update every Settings flow. From the initial Settings selection, move down twice before toggling Notifications, then move to Save. Where the test has a `StatusLineDashboardComponent`, locate rows by identity instead of assuming numeric indexes:
 
 ```ts
+const notificationIndex = selectableRows(
+  component.getState(),
+  "settings",
+).findIndex((row) => row.type === "notifications");
+while (
+  component.getState().navigation.settings.selectedIndex < notificationIndex
+) {
+  component.handleInput("\x1b[B");
+}
+component.handleInput("\r");
+
 const saveIndex = selectableRows(component.getState(), "settings").findIndex(
   (row) => row.type === "save",
 );
@@ -216,7 +234,11 @@ while (component.getState().navigation.settings.selectedIndex < saveIndex) {
 component.handleInput("\r");
 ```
 
-Update comments and expected row arrays to include all four rows.
+Update `tests/tui/dashboard-state.test.ts` to replace its fixed Settings Save index with the same `findIndex` pattern.
+
+`tests/index.test.ts` uses a raw component mock without dashboard state. In its persisted-save flow, send two Down inputs before toggling Notifications and one additional Down before opening Save. In its malformed-config flow, send three Down inputs before activating Save. Update comments to name the four-row order.
+
+Update all affected comments and expected row arrays to include Statusbar, Sidebar, Completion notifications, and Save.
 
 - [ ] **Step 8: Run GREEN checks**
 
@@ -227,7 +249,8 @@ pnpm exec vitest run \
   tests/tui/dashboard-state.test.ts \
   tests/tui/dashboard-render.test.ts \
   tests/tui/dashboard.test.ts \
-  tests/index-save.test.ts
+  tests/index-save.test.ts \
+  tests/index.test.ts
 ```
 
 Expected: PASS, including notification toggling, Save confirmation, cancel behavior, and dirty-state reset after `saved`.

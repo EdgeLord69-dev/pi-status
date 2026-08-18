@@ -121,6 +121,8 @@ describe("dashboard draft initialization", () => {
     if (!firstPanel) throw new Error("expected default sidebar panel");
     expect(configsEqual(first, structuredClone(first))).toBe(true);
     expect(configsEqual(first, config({ completionNotifications: true }))).toBe(false);
+    expect(configsEqual(first, config({ statusbarEnabled: false }))).toBe(false);
+    expect(configsEqual(first, config({ sidebarEnabled: false }))).toBe(false);
     expect(configsEqual(first, config({ sidebarHiddenSegments: ["alpha"] }))).toBe(false);
     expect(configsEqual(first, config({ extensionStatusZone: "topLeft" }))).toBe(false);
     expect(configsEqual(first, config({ extensionSegments: { hidden: ["alpha"] } }))).toBe(false);
@@ -238,13 +240,28 @@ describe("dashboard Statusbar tab initialization", () => {
 
   it("omits sidebar tool names from the Settings tab", () => {
     const state = initDashboardState(config(), [], true);
-    expect(selectableRows(state, "settings")).toEqual([
-      { type: "notifications" },
-      { type: "save" },
-    ]);
     expect(selectableRows(state, "settings").some((row) => row.type === "sidebar_segment")).toBe(
       false,
     );
+  });
+
+  it("lists surface toggles before completion notifications and Save", () => {
+    const expectedRows = [
+      { type: "statusbar_enabled" },
+      { type: "sidebar_enabled" },
+      { type: "notifications" },
+      { type: "save" },
+    ] as const;
+
+    expect(selectableRows(initDashboardState(config(), [], true), "settings")).toEqual(
+      expectedRows,
+    );
+    expect(
+      selectableRows(
+        initDashboardState(config({ statusbarEnabled: false, sidebarEnabled: false }), [], true),
+        "settings",
+      ),
+    ).toEqual(expectedRows);
   });
 
   it("Statusbar tab exposes the extension_status_zone row between zone and segments", () => {
@@ -487,9 +504,29 @@ describe("dashboard transitions", () => {
   it("toggles notification draft without saving", () => {
     let state = initDashboardState(config(), [], true);
     state.activeTab = "settings";
+    state.navigation.settings.selectedIndex = selectableRows(state, "settings").findIndex(
+      (row) => row.type === "notifications",
+    );
     state = dispatch(state, { type: "activate" });
     expect(state.draft.completionNotifications).toBe(true);
     expect(state.baseline.completionNotifications).toBe(false);
+  });
+
+  it.each([
+    ["statusbar_enabled", "statusbarEnabled"],
+    ["sidebar_enabled", "sidebarEnabled"],
+  ] as const)("toggles %s in draft only", (rowType, field) => {
+    let state = initDashboardState(config(), [], true);
+    state.activeTab = "settings";
+    state.navigation.settings.selectedIndex = selectableRows(state, "settings").findIndex(
+      (row) => row.type === rowType,
+    );
+
+    state = reduceDashboardState(state, { type: "activate" }).state;
+
+    expect(state.draft[field]).toBe(false);
+    expect(state.baseline[field]).toBe(true);
+    expect(isDashboardDirty(state)).toBe(true);
   });
 
   it("keeps the same segment selected after moving and reordering it", () => {
@@ -540,7 +577,10 @@ describe("dashboard transitions", () => {
     expect(moved.state).not.toBe(state);
 
     moved.state.activeTab = "settings";
-    moved.state.navigation.settings.selectedIndex = 1; // Save row
+    moved.state.navigation.settings.selectedIndex = selectableRows(
+      moved.state,
+      "settings",
+    ).findIndex((row) => row.type === "save");
     const saved = reduceDashboardState(moved.state, { type: "activate" });
     if (saved.effect?.type !== "save") throw new Error("expected save effect");
     saved.effect.config.zones.topLeft.push("model");
