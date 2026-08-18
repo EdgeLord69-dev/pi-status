@@ -545,9 +545,11 @@ export default function createExtension(pi: ExtensionAPI): void {
       level: String(ctx.thinkingLevel ?? pi.getThinkingLevel()),
     });
     attachNotificationsForCurrentSession();
-    if (ctx.mode === "tui" && activeSidebarController) {
-      currentTodos = readCurrentTodos(ctx);
-      captureSidebarView(ctx);
+    if (ctx.mode === "tui") {
+      if (activeSidebarController) {
+        currentTodos = readCurrentTodos(ctx);
+        captureSidebarView(ctx);
+      }
       applySurfaceVisibility(ctx, runtimeState.snapshot().config);
     }
   });
