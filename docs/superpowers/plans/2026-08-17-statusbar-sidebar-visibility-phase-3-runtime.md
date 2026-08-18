@@ -357,14 +357,10 @@ The runtime state and each source expose only one callback slot, so these helper
 
 - [ ] **Step 2: Make footer installation conditional and remove synchronization from it**
 
-Change `installFooter` to accept the config it is applying, while retaining the existing default argument for callers that only have a context:
+Change `installFooter` to require the config it is applying. It is only called by the TUI-guarded `applySurfaceVisibility()` path, so do not retain a default argument or a duplicate mode guard:
 
 ```ts
-function installFooter(
-  ctx: ExtensionContext,
-  config = runtimeState.snapshot().config,
-): void {
-  if (ctx.mode !== "tui") return;
+function installFooter(ctx: ExtensionContext, config: PiStatusConfig): void {
 
   if (!workspacePulseRuntime) {
     workspacePulseRuntime = createWorkspacePulseRuntime({ directory: ctx.cwd });
