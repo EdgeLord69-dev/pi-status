@@ -881,7 +881,7 @@ describe("config — surface visibility", () => {
       ...config,
       statusbarEnabled: false,
       sidebarEnabled: true,
-    } as PiStatusConfig;
+    };
 
     saveConfig(disabled, { agentDir: "/agent", store });
 
@@ -891,7 +891,5 @@ describe("config — surface visibility", () => {
       sidebarEnabled: true,
     });
     expect(loadConfig({ agentDir: "/agent", store })).toMatchObject(disabled);
-    expect(Object.keys(written).sort()).toContain("sidebarEnabled");
-    expect(Object.keys(written).sort()).toContain("statusbarEnabled");
   });
 });
