@@ -42,14 +42,16 @@ const FIXED_SNAPSHOT: SidebarSnapshot = buildSidebarSnapshot({
   sidebarPanels: [],
 });
 
-const FIXED_CONFIG = {
+const FIXED_CONFIG: PiStatusConfig = {
+  statusbarEnabled: true,
+  sidebarEnabled: true,
   zones: DEFAULT_ZONES,
   extensionSegments: { hidden: [] },
   extensionStatusZone: "bottomRight",
   completionNotifications: false,
   sidebarPanelLayout: [...DEFAULT_SIDEBAR_PANEL_LAYOUT],
   sidebarHiddenSegments: [],
-} as unknown as PiStatusConfig;
+};
 
 function sidebarView(snapshot = FIXED_SNAPSHOT) {
   const catalog = buildSidebarSegmentCatalog(snapshot);

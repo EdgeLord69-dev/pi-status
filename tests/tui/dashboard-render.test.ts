@@ -30,6 +30,8 @@ function zones(overrides: Partial<StatusLineZones> = {}): StatusLineZones {
 
 function config(overrides: Partial<PiStatusConfig> = {}): PiStatusConfig {
   return {
+    statusbarEnabled: true,
+    sidebarEnabled: true,
     zones: zones(),
     extensionSegments: { hidden: [] },
     extensionStatusZone: "bottomRight",

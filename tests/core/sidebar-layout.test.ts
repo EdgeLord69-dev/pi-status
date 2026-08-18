@@ -25,6 +25,8 @@ import {
 
 function config(overrides: Partial<PiStatusConfig> = {}): PiStatusConfig {
   return {
+    statusbarEnabled: true,
+    sidebarEnabled: true,
     zones: structuredClone(DEFAULT_ZONES),
     extensionSegments: { hidden: [] },
     extensionStatusZone: "bottomRight",

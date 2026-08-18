@@ -39,6 +39,8 @@ export {
 };
 
 export const DEFAULT_CONFIG: PiStatusConfig = {
+  statusbarEnabled: true,
+  sidebarEnabled: true,
   zones: cloneZones(DEFAULT_ZONES),
   extensionSegments: { hidden: [] },
   extensionStatusZone: "bottomRight",
@@ -49,6 +51,8 @@ export const DEFAULT_CONFIG: PiStatusConfig = {
 
 function cloneDefaultConfig(): PiStatusConfig {
   return {
+    statusbarEnabled: DEFAULT_CONFIG.statusbarEnabled,
+    sidebarEnabled: DEFAULT_CONFIG.sidebarEnabled,
     zones: cloneZones(DEFAULT_CONFIG.zones),
     extensionSegments: { hidden: [...DEFAULT_CONFIG.extensionSegments.hidden] },
     extensionStatusZone: DEFAULT_CONFIG.extensionStatusZone,
@@ -249,6 +253,8 @@ function normalizeLegacyHiddenSegments(input: unknown): string[] {
 function normalizeConfig(input: Record<string, unknown>): PiStatusConfig {
   const layout = normalizeSidebarLayout(input);
   return {
+    statusbarEnabled: input.statusbarEnabled !== false,
+    sidebarEnabled: input.sidebarEnabled !== false,
     zones: Object.hasOwn(input, "zones")
       ? normalizeZones(input.zones)
       : Object.hasOwn(input, "segments") && Array.isArray(input.segments)
@@ -340,6 +346,8 @@ export function saveConfig(
     sidebarHiddenSegments: config.sidebarHiddenSegments,
   });
   const next: PiStatusConfig = {
+    statusbarEnabled: config.statusbarEnabled,
+    sidebarEnabled: config.sidebarEnabled,
     zones: cloneZones(config.zones),
     extensionSegments: { hidden: [...config.extensionSegments.hidden] },
     extensionStatusZone: config.extensionStatusZone,

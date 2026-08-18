@@ -198,6 +198,8 @@ export interface StatusLineZones {
 }
 
 export type PiStatusConfig = {
+  statusbarEnabled: boolean;
+  sidebarEnabled: boolean;
   zones: StatusLineZones;
   extensionSegments: ExtensionSegments;
   extensionStatusZone: StatusLineZone;

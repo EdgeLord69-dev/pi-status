@@ -18,6 +18,8 @@ import { noTheme } from "../../src/tui/theme.ts";
 
 function config(): PiStatusConfig {
   return {
+    statusbarEnabled: true,
+    sidebarEnabled: true,
     zones: {
       topLeft: ["model-with-reasoning"],
       topRight: [],

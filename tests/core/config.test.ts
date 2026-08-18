@@ -40,6 +40,8 @@ const expectedDefaultLayout = (): SidebarPanelLayout =>
 const expectedDefault = expectedDefaultLayout;
 
 const config: PiStatusConfig = {
+  statusbarEnabled: true,
+  sidebarEnabled: true,
   zones: { topLeft: ["git-branch"], topRight: [], bottomLeft: [], bottomRight: [] },
   extensionSegments: { hidden: ["alpha"] },
   extensionStatusZone: "bottomRight",
@@ -500,6 +502,8 @@ describe("config — direct extension file", () => {
     );
 
     expect(loadConfig({ agentDir, store })).toEqual({
+      statusbarEnabled: true,
+      sidebarEnabled: true,
       zones: DEFAULT_ZONES,
       extensionSegments: { hidden: [] },
       extensionStatusZone: "bottomRight",
@@ -534,6 +538,8 @@ describe("config — direct extension file", () => {
       store.seed(getConfigPath("/agent"), content);
 
       expect(loadConfig({ agentDir: "/agent", store })).toEqual({
+        statusbarEnabled: true,
+        sidebarEnabled: true,
         zones: DEFAULT_ZONES,
         extensionSegments: { hidden: [] },
         extensionStatusZone: "bottomRight",
@@ -674,6 +680,8 @@ describe("config — filesystem", () => {
     const path = join(agentDir, "extensions", "statusline.json");
 
     expect(loadConfig()).toEqual({
+      statusbarEnabled: true,
+      sidebarEnabled: true,
       zones: DEFAULT_ZONES,
       extensionSegments: { hidden: [] },
       extensionStatusZone: "bottomRight",
@@ -783,8 +791,10 @@ describe("config — completion notifications", () => {
         "completionNotifications",
         "extensionSegments",
         "extensionStatusZone",
+        "sidebarEnabled",
         "sidebarHiddenSegments",
         "sidebarPanelLayout",
+        "statusbarEnabled",
         "zones",
       ].sort(),
     );
@@ -805,5 +815,81 @@ describe("config — completion notifications", () => {
     const store = new MemoryConfigStore();
     store.seed(getConfigPath("/agent"), "{ bad");
     expect(loadConfig({ agentDir: "/agent", store }).completionNotifications).toBe(false);
+  });
+});
+
+describe("config — surface visibility", () => {
+  it("defaults both surfaces to enabled when the fields are absent", () => {
+    const store = new MemoryConfigStore();
+    store.seed(
+      getConfigPath("/agent"),
+      JSON.stringify({
+        zones: DEFAULT_ZONES,
+        extensionSegments: { hidden: [] },
+      }),
+    );
+
+    expect(loadConfig({ agentDir: "/agent", store })).toMatchObject({
+      statusbarEnabled: true,
+      sidebarEnabled: true,
+    });
+  });
+
+  it.each(["statusbarEnabled", "sidebarEnabled"] as const)(
+    "treats non-false %s values as enabled",
+    (field) => {
+      for (const value of [true, null, 0, "false", {}, []]) {
+        const store = new MemoryConfigStore();
+        store.seed(
+          getConfigPath("/agent"),
+          JSON.stringify({
+            zones: DEFAULT_ZONES,
+            extensionSegments: { hidden: [] },
+            [field]: value,
+          }),
+        );
+
+        expect(loadConfig({ agentDir: "/agent", store })[field]).toBe(true);
+      }
+    },
+  );
+
+  it.each([
+    { statusbarEnabled: false, sidebarEnabled: true },
+    { statusbarEnabled: true, sidebarEnabled: false },
+    { statusbarEnabled: false, sidebarEnabled: false },
+  ] as const)(
+    "disables only the surface whose stored value is literal false: %j",
+    (surfaceValues) => {
+      const store = new MemoryConfigStore();
+      store.seed(
+        getConfigPath("/agent"),
+        JSON.stringify({
+          zones: DEFAULT_ZONES,
+          extensionSegments: { hidden: [] },
+          ...surfaceValues,
+        }),
+      );
+
+      expect(loadConfig({ agentDir: "/agent", store })).toMatchObject(surfaceValues);
+    },
+  );
+
+  it("round-trips both surface fields and publishes them in the schema", () => {
+    const store = new MemoryConfigStore();
+    const disabled = {
+      ...config,
+      statusbarEnabled: false,
+      sidebarEnabled: true,
+    };
+
+    saveConfig(disabled, { agentDir: "/agent", store });
+
+    const written = JSON.parse(store.read(getConfigPath("/agent")) as string);
+    expect(written).toMatchObject({
+      statusbarEnabled: false,
+      sidebarEnabled: true,
+    });
+    expect(loadConfig({ agentDir: "/agent", store })).toMatchObject(disabled);
   });
 });
