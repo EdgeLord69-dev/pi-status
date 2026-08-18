@@ -31,6 +31,8 @@ function result(details: unknown, overrides: Record<string, unknown> = {}) {
 
 function configWithModelIn(panelId: SidebarPanelId): PiStatusConfig {
   return {
+    statusbarEnabled: true,
+    sidebarEnabled: true,
     zones: structuredClone(DEFAULT_ZONES),
     extensionSegments: { hidden: [] },
     extensionStatusZone: "bottomRight",
@@ -46,6 +48,8 @@ function configWithModelIn(panelId: SidebarPanelId): PiStatusConfig {
 
 function configWithPanelsVisible(panels: SidebarPanelId[]): PiStatusConfig {
   return {
+    statusbarEnabled: true,
+    sidebarEnabled: true,
     zones: structuredClone(DEFAULT_ZONES),
     extensionSegments: { hidden: [] },
     extensionStatusZone: "bottomRight",

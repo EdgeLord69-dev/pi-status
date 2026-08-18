@@ -643,6 +643,8 @@ describe("extension wiring", () => {
     expect(
       JSON.parse(readFileSync(join(agentDir, "extensions", "statusline.json"), "utf8")),
     ).toEqual({
+      statusbarEnabled: true,
+      sidebarEnabled: true,
       zones: {
         topLeft: ["model-with-reasoning"],
         topRight: [],

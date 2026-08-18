@@ -24,6 +24,8 @@ afterEach(() => {
 
 function config(): PiStatusConfig {
   return {
+    statusbarEnabled: true,
+    sidebarEnabled: true,
     zones: {
       topLeft: ["model-with-reasoning"],
       topRight: [],

@@ -8,6 +8,8 @@ import {
 } from "../../src/shared/types.ts";
 
 const defaultConfig: PiStatusConfig = {
+  statusbarEnabled: true,
+  sidebarEnabled: true,
   zones: {
     topLeft: ["model-with-reasoning"],
     topRight: [],
@@ -83,6 +85,8 @@ describe("RuntimeStateMachine", () => {
   it("updates config on config_reload", () => {
     const sm = createRuntimeStateMachine(defaultConfig, "medium");
     const newConfig: PiStatusConfig = {
+      statusbarEnabled: true,
+      sidebarEnabled: true,
       zones: { topLeft: ["git-branch"], topRight: [], bottomLeft: [], bottomRight: [] },
       extensionSegments: { hidden: ["x"] },
       extensionStatusZone: "bottomRight",
