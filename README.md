@@ -39,9 +39,11 @@ Once installed, the footer updates automatically. Run `/statusline` inside Pi to
 - **Statuses** — per-key visibility for extension-reported status text.
 - **Session** — current session details, with Rename and Compact inside the same overlay.
 - **Tools** — per-tool enable/disable; applies immediately.
-- **Settings** — opt-in completion notifications.
+- **Settings** — independently toggle the Statusbar and Sidebar visibility and opt in to completion notifications.
 
 `Tab` / `Shift+Tab` moves between tabs, arrow keys navigate, `Space` toggles, type to search. The saved footer remains visible behind the dashboard overlay.
+
+`/statusline` stays available even when both the Statusbar and Sidebar are disabled — you can re-enable either surface from the Settings tab at any time.
 
 Pi 0.84.1 or newer is required.
 
@@ -142,6 +144,8 @@ If another extension reports status text, it appears in the bottom-right zone.
 
 ```json
 {
+  "statusbarEnabled": true,
+  "sidebarEnabled": true,
   "zones": {
     "topLeft": ["model-with-reasoning"],
     "topRight": [],
@@ -153,9 +157,24 @@ If another extension reports status text, it appears in the bottom-right zone.
 }
 ```
 
+`statusbarEnabled` and `sidebarEnabled` both default to `true`. Only the literal JSON value `false` disables a surface; any other value (`true`, missing, `null`, numbers, strings, arrays, objects) leaves that surface enabled. Older or hand-edited files therefore load with both surfaces on. The next successful `/statusline` save rewrites both fields as canonical booleans.
+
+When the Statusbar is disabled, pi-status restores Pi's built-in footer through `ctx.ui.setFooter(undefined)` rather than installing a blank custom footer. When the Sidebar is disabled, the live right-edge Sidebar is hidden but `/statusline`, panel discovery, and the controller lifecycle remain available so you can re-enable it later.
+
 Missing, malformed, or empty layouts fall back to the default layout. A legacy direct config with a `"segments"` array still loads by placing those segments in TL; the first save from `/statusline` rewrites it to the `zones` shape. There are no project-specific overrides — pi-status no longer reads or writes Pi's global or project `settings.json`.
 
 Set `NO_COLOR` (even to an empty string) to disable color in both the footer and `/statusline`; its presence, not its value, is what matters.
+
+## Surface Visibility Outcomes
+
+The two Settings-tab checkboxes are independent and take effect immediately after Save (and again at the next session start):
+
+- **Statusbar enabled** installs the pi-status custom footer.
+- **Statusbar disabled** restores Pi's built-in footer; pi-status does not leave a blank footer behind.
+- **Sidebar enabled** shows the right-edge pi-status Sidebar.
+- **Sidebar disabled** hides the live Sidebar; `/statusline`, the panel registry, and the controller lifecycle stay mounted so you can re-enable the Sidebar later from the Settings tab.
+
+All four combinations of the two checkboxes are supported. `/statusline` remains reachable even when both surfaces are disabled.
 
 ## Completion Notifications
 
