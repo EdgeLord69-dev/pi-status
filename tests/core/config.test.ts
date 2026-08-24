@@ -761,6 +761,7 @@ describe("config — direct extension file", () => {
       completionNotifications: false,
       sidebarPanelLayout: expectedDefault(),
       sidebarHiddenSegments: [],
+      colors: structuredClone(DEFAULT_COLOR_SETTINGS),
     });
     expect(store.accessPaths).toEqual([path]);
     expect(store.accessPaths.some((accessed) => accessed.includes("settings.json"))).toBe(false);
@@ -797,6 +798,7 @@ describe("config — direct extension file", () => {
         completionNotifications: false,
         sidebarPanelLayout: expectedDefault(),
         sidebarHiddenSegments: [],
+        colors: structuredClone(DEFAULT_COLOR_SETTINGS),
       });
     },
   );
@@ -939,6 +941,7 @@ describe("config — filesystem", () => {
       completionNotifications: false,
       sidebarPanelLayout: expectedDefault(),
       sidebarHiddenSegments: [],
+      colors: structuredClone(DEFAULT_COLOR_SETTINGS),
     });
     vi.mocked(mkdtempSync).mockClear();
     expect(saveConfig(config)).toEqual({ path });
@@ -1039,6 +1042,7 @@ describe("config — completion notifications", () => {
     expect(written).toEqual({ ...config, completionNotifications: true });
     expect(Object.keys(written).sort()).toEqual(
       [
+        "colors",
         "completionNotifications",
         "extensionSegments",
         "extensionStatusZone",
