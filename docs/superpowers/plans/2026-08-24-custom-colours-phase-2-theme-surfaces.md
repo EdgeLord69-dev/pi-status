@@ -4,7 +4,7 @@
 
 **Goal:** Resolve Pi, fixed, Custom, and `NO_COLOR` styling consistently across the installed Footer and Sidebar.
 
-**Architecture:** Replace the existing adapter with one render-time `createStatusLineTheme` path. It delegates Pi roles to the live Pi theme, emits scoped truecolour for fixed and Custom palettes, and lets Footer and Sidebar read committed settings at each render boundary.
+**Architecture:** Add one render-time `createStatusLineTheme` path for the installed Footer and Sidebar. It delegates Pi roles to the live Pi theme, emits scoped truecolour for fixed and Custom palettes, and reads committed settings at each render boundary. Keep the existing Dashboard-only `fromPiTheme` adapter through this phase; Phase 3 replaces it when Dashboard can resolve draft colours.
 
 **Tech Stack:** TypeScript 6, Node.js `>=24.15.0`, Pi's live theme API, 24-bit ANSI colour sequences, and Vitest 4.
 
@@ -42,11 +42,12 @@ This phase is complete when hand-edited persisted presets render consistently in
 - Test: `tests/tui/theme.test.ts`
 - Test: `tests/tui/sidebar-palette.test.ts`
 - Test: `tests/tui/sidebar-render.test.ts`
+- Test: `tests/tui/sidebar.test.ts`
 - Test: `tests/index-surfaces.test.ts`
 
 ---
 
-### Task 1: Resolve one semantic palette across all surfaces
+### Task 1: Resolve one semantic palette across installed surfaces
 
 **Files:**
 
@@ -58,14 +59,16 @@ This phase is complete when hand-edited persisted presets render consistently in
 - Test: `tests/tui/theme.test.ts`
 - Test: `tests/tui/sidebar-palette.test.ts`
 - Test: `tests/tui/sidebar-render.test.ts`
+- Test: `tests/tui/sidebar.test.ts`
 - Test: `tests/index-surfaces.test.ts`
 
 **Interfaces:**
 
 - Consumes `ColorSettings`, `ColorPalette`, `PaletteRole`, `getFixedColorPalette`, and normalized runtime config.
-- Produces `createStatusLineTheme(theme: unknown, colors: ColorSettings, env?: object): StatusLineTheme` as the only production resolver.
+- Produces `createStatusLineTheme(theme: unknown, colors: ColorSettings, env?: object): StatusLineTheme` as the only installed-surface resolver.
 - Extends `StatusLineTheme.fg` to accept direct `PaletteRole` values.
 - Sidebar consumes `getColors(): ColorSettings` and resolves at render time.
+- Retains `fromPiTheme` only for the existing Dashboard call; Phase 3 removes that compatibility path.
 
 - [ ] **Step 1: Write failing theme tests for Pi, fixed, Custom, and `NO_COLOR`**
 
@@ -91,6 +94,16 @@ it("uses exact fixed-preset colours", () => {
     {},
   );
   expect(theme.fg("accent", "x")).toBe("\x1b[38;2;203;166;247mx\x1b[39m");
+});
+
+it("renders fixed colours without a usable Pi theme", () => {
+  const theme = createStatusLineTheme(
+    null,
+    { ...DEFAULT_COLOR_SETTINGS, preset: "atelier" },
+    {},
+  );
+  expect(theme.fg("accent", "x")).toBe("\x1b[38;2;177;140;255mx\x1b[39m");
+  expect(theme.bold("x")).toBe("x");
 });
 
 it("delegates Pi roles and observes the live theme", () => {
@@ -274,13 +287,14 @@ Resolution rules:
 - For `pi`, resolve foreground roles through `PI_ROLES` on every call; delegate `selectedBg`, bold, dim, and inverse to Pi with try/catch plain-text fallback.
 - For a fixed preset, use `getFixedColorPalette(colors.preset)`.
 - For Custom, use `colors.custom`.
+- Fixed and Custom foreground, background, dim, inverse, and rainbow must work when the Pi theme is missing or malformed; only bold attempts safe Pi delegation.
 - Fixed/Custom `dim` paints role `dim`; inverse nests primary foreground inside accent background.
 - Rainbow skips spaces and colons and advances through `RAINBOW_ROLES` for all other characters.
-- Remove `fromPiTheme` after all production callers migrate; retain no duplicate colour path.
+- Keep `fromPiTheme` unchanged for Dashboard compatibility in Phase 2. Phase 3 replaces the Dashboard call with draft-aware `createStatusLineTheme` resolution and removes the adapter.
 
 - [ ] **Step 4: Make Sidebar paint direct roles**
 
-In `src/tui/sidebar-palette.ts`, replace role remapping with:
+In `src/tui/sidebar-palette.ts`, delete the local `PaletteRole` union and import the Phase 1 type from `../shared/types.ts`. In `src/tui/sidebar-render.ts`, import `PaletteRole` from the same shared module instead of from `sidebar-palette.ts`. Replace role remapping with:
 
 ```ts
 export interface PaletteTheme {
@@ -297,7 +311,7 @@ export function createPalette(
 }
 ```
 
-Update `tests/tui/sidebar-palette.test.ts` so every `PALETTE_ROLES` value reaches `theme.fg` unchanged and `colorEnabled: false` returns plain text. Keep `colorEnabled` only as the direct renderer test seam.
+Update `tests/tui/sidebar-palette.test.ts` to import `PALETTE_ROLES` and `PaletteRole` from `src/shared/types.ts`, assert that every role reaches `theme.fg` unchanged, and assert that `colorEnabled: false` returns plain text without calling `theme.fg`. Keep `colorEnabled` only as the direct renderer test seam.
 
 - [ ] **Step 5: Resolve Sidebar and Footer from committed settings**
 
@@ -307,13 +321,33 @@ In `src/tui/sidebar.ts`, replace production `colorEnabled?: boolean` with:
 getColors(): ColorSettings;
 ```
 
-Inside the overlay render closure:
+Resolve inside `renderSidebar`, not in the one-time `ctx.ui.custom` factory. This placement is required so committed colour changes and `NO_COLOR` changes are observed without remounting the controller:
 
 ```ts
-const statusTheme = createStatusLineTheme(theme, options.getColors());
+const renderSidebar = (width: number, height: number): string[] => {
+  try {
+    const view = options.getView();
+    const statusTheme = createStatusLineTheme(theme, options.getColors());
+    return renderSidebarLines(
+      view.snapshot,
+      view.catalog,
+      view.layout,
+      statusTheme,
+      width,
+      height,
+      { resizing: split.isResizing() },
+    );
+  } catch (error) {
+    safely(() => options.onError?.(error));
+    return Array.from(
+      { length: Math.max(0, Math.trunc(height)) },
+      () => "Sidebar unavailable",
+    );
+  }
+};
 ```
 
-Pass that theme to `renderSidebarLines`.
+Remove `colorEnabled` from `SidebarControllerOptions`; direct `renderSidebarLines` tests retain their local seam. Add `getColors` to every existing controller fixture in `tests/tui/sidebar.test.ts`, using `() => structuredClone(DEFAULT_COLOR_SETTINGS)` except where a test deliberately mutates committed settings.
 
 In `src/index.ts`, wire Sidebar with:
 
@@ -327,33 +361,204 @@ Resolve Footer on every render:
 const statusTheme = createStatusLineTheme(theme, snap.config.colors);
 ```
 
-Remove production static `colorEnabled`, `fromPiTheme`, and `noColorRequested` wiring. Keep existing surface render requests after committed config changes.
+Remove production static `colorEnabled`, `fromPiTheme`, and `noColorRequested` wiring from `src/index.ts`. Do not remove the `fromPiTheme` export or its Dashboard call in this phase. Keep existing surface render requests after committed config changes.
 
 - [ ] **Step 6: Add committed-surface and live-Pi tests**
 
-In `tests/index-surfaces.test.ts`, retain the Footer and Sidebar render functions captured by the existing host harness, then assert:
+In `tests/tui/sidebar.test.ts`, add one controller test that changes the value returned by `getColors`, changes the live Pi theme result, and enables `NO_COLOR` without remounting:
 
 ```ts
-expect(renderFooter()).toContain("first:thinkingLow");
-expect(renderSidebar()).toContain("first:thinkingLow");
-liveThemePrefix = "second";
-expect(renderFooter()).toContain("second:thinkingLow");
-expect(renderSidebar()).toContain("second:thinkingLow");
+it("resolves the live Pi theme, committed colours, and NO_COLOR on every host render", async () => {
+  const { host, tui } = makeFakeHost();
+  let prefix = "first";
+  let colors = structuredClone(DEFAULT_COLOR_SETTINGS);
+  const piTheme = {
+    ...noTheme,
+    fg: (color: string, text: string) => `${prefix}:${color}:${text}`,
+  };
+  const controller = createSidebarController({
+    ctx: makeCtx(host, tui, piTheme),
+    getView: () => sidebarView(),
+    getColors: () => colors,
+  });
 
-writeConfig({
-  ...baseConfig,
-  colors: {
-    ...DEFAULT_COLOR_SETTINGS,
-    preset: "catppuccin-mocha",
-  },
+  controller.show();
+  await Promise.resolve();
+  controller.setShown(true);
+  expect(renderHost(tui, 120)).toContain("first:text:gpt-5.6");
+
+  prefix = "second";
+  expect(renderHost(tui, 120)).toContain("second:text:gpt-5.6");
+
+  colors = { ...colors, preset: "atelier" };
+  expect(renderHost(tui, 120)).toContain(
+    "\x1b[38;2;212;212;212mgpt-5.6\x1b[39m",
+  );
+
+  vi.stubEnv("NO_COLOR", "");
+  expect(renderHost(tui, 120)).not.toContain("\x1b[");
+  expect(host.customInvocations).toBe(1);
 });
-expect(renderFooter()).toContain("38;2;203;166;247m");
-expect(renderSidebar()).toContain("38;2;203;166;247m");
-
-vi.stubEnv("NO_COLOR", "");
-expect(renderFooter()).not.toContain("\x1b[");
-expect(renderSidebar()).not.toContain("\x1b[");
 ```
+
+In `tests/index-surfaces.test.ts`, import the required host and colour types, then replace the assumed pre-existing render harness with a small host that captures the installed Footer component and the Sidebar's regular TUI render path:
+
+```ts
+import type { Component, OverlayHandle, TUI } from "@earendil-works/pi-tui";
+import {
+  PALETTE_ROLES,
+  type ColorPalette,
+  type ColorSettings,
+} from "../src/shared/types.ts";
+```
+
+```ts
+function surfaceHost(theme: unknown) {
+  const tui = {
+    terminal: { columns: 120, rows: 30 },
+    requestRender: vi.fn(),
+    render: vi.fn((width: number) => [`main:${width}`]),
+  } as unknown as TUI;
+  let footer: Component | undefined;
+  const handle = {
+    hide: vi.fn(),
+    setHidden: vi.fn(),
+    isHidden: vi.fn(() => false),
+    focus: vi.fn(),
+    unfocus: vi.fn(),
+    isFocused: vi.fn(() => false),
+  } as unknown as OverlayHandle;
+  const footerData = {
+    getGitBranch: () => null,
+    getExtensionStatuses: () => new Map<string, string>(),
+  };
+  const setFooter = vi.fn((factory: unknown) => {
+    footer =
+      typeof factory === "function"
+        ? factory(tui, theme, footerData)
+        : undefined;
+  });
+  const custom = vi.fn(
+    async (
+      factory: (...args: unknown[]) => Component,
+      options?: { onHandle?: (value: OverlayHandle) => void },
+    ) => {
+      factory(tui, theme, {}, () => undefined);
+      options?.onHandle?.(handle);
+      return null;
+    },
+  );
+
+  return {
+    ui: { ...createContext().ui, setFooter, custom },
+    renderFooter: () => footer?.render(120).join("\n") ?? "",
+    renderSidebar: () => tui.render(120).join("\n"),
+  };
+}
+```
+
+Extend `writeConfig` with optional `colors: ColorSettings`:
+
+```ts
+function writeConfig(values: {
+  statusbarEnabled: boolean;
+  sidebarEnabled: boolean;
+  zones: Record<string, string[]>;
+  colors?: ColorSettings;
+}): void {
+  mkdirSync(join(agentDir, "extensions"), { recursive: true });
+  writeFileSync(
+    join(agentDir, "extensions", "statusline.json"),
+    JSON.stringify({ ...values, extensionSegments: { hidden: [] } }),
+    "utf8",
+  );
+}
+```
+
+Add a startup test using a Custom palette whose 14 roles are all `#010203`; both installed surfaces must contain the exact truecolour sequence:
+
+```ts
+it("renders persisted Custom colours on both installed surfaces", async () => {
+  const colors: ColorSettings = {
+    preset: "custom",
+    custom: Object.fromEntries(
+      PALETTE_ROLES.map((role) => [role, "#010203"]),
+    ) as ColorPalette,
+    customInitialized: true,
+  };
+  writeConfig({
+    statusbarEnabled: true,
+    sidebarEnabled: true,
+    zones: {
+      topLeft: ["model"],
+      topRight: [],
+      bottomLeft: [],
+      bottomRight: [],
+    },
+    colors,
+  });
+
+  const { default: createExtension } = await import("../src/index.ts");
+  const { pi, handlers } = buildPiWithHandlers();
+  const host = surfaceHost({
+    fg: (_color: string, text: string) => text,
+    bg: (_color: string, text: string) => text,
+    bold: (text: string) => text,
+    inverse: (text: string) => text,
+  });
+  createExtension(pi);
+  const ctx = createContext({ ui: host.ui as never });
+
+  for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
+  expect(host.renderFooter()).toContain("\x1b[38;2;1;2;3m");
+  expect(host.renderSidebar()).toContain("\x1b[38;2;1;2;3m");
+});
+```
+
+Add a separate Pi test using the same host:
+
+```ts
+it("observes live Pi and NO_COLOR changes without reinstalling surfaces", async () => {
+  writeConfig({
+    statusbarEnabled: true,
+    sidebarEnabled: true,
+    zones: {
+      topLeft: ["model"],
+      topRight: [],
+      bottomLeft: [],
+      bottomRight: [],
+    },
+  });
+  const { default: createExtension } = await import("../src/index.ts");
+  const { pi, handlers } = buildPiWithHandlers();
+  let prefix = "first";
+  const liveTheme = {
+    fg: (color: string, text: string) =>
+      `${prefix}:${color}:\x1b[31m${text}\x1b[39m`,
+    bg: (color: string, text: string) =>
+      `${prefix}:bg:${color}:\x1b[41m${text}\x1b[49m`,
+    bold: (text: string) => `${prefix}:bold:${text}`,
+    inverse: (text: string) => `${prefix}:inverse:${text}`,
+  };
+  const host = surfaceHost(liveTheme);
+  createExtension(pi);
+  const ctx = createContext({ ui: host.ui as never });
+
+  for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
+  expect(host.renderFooter()).toContain("first:");
+  expect(host.renderSidebar()).toContain("first:");
+
+  prefix = "second";
+  expect(host.renderFooter()).toContain("second:");
+  expect(host.renderSidebar()).toContain("second:");
+
+  vi.stubEnv("NO_COLOR", "");
+  expect(host.renderFooter()).not.toContain("\x1b[");
+  expect(host.renderSidebar()).not.toContain("\x1b[");
+});
+```
+
+Do not write `statusline.json` after `session_start` and expect runtime state to reload; no file watcher exists. Phase 4 owns end-to-end Save/update coverage. This phase proves startup persistence plus per-render controller semantics.
 
 - [ ] **Step 7: Run focused verification and reach GREEN**
 
@@ -362,15 +567,17 @@ pnpm exec vitest run \
   tests/tui/theme.test.ts \
   tests/tui/sidebar-palette.test.ts \
   tests/tui/sidebar-render.test.ts \
+  tests/tui/sidebar.test.ts \
   tests/index-surfaces.test.ts
+pnpm typecheck
 ```
 
-Expected: PASS with live Pi delegation and exact fixed/Custom role separation.
+Expected: PASS with live Pi delegation, exact fixed/Custom role separation, per-render `NO_COLOR`, and no Sidebar remount. TypeScript must accept the required `getColors` controller contract.
 
 - [ ] **Step 8: Commit the renderer checkpoint when authorized**
 
 ```bash
-git add src/tui/theme.ts src/tui/sidebar-palette.ts src/tui/sidebar-render.ts src/tui/sidebar.ts src/index.ts tests/tui/theme.test.ts tests/tui/sidebar-palette.test.ts tests/tui/sidebar-render.test.ts tests/index-surfaces.test.ts
+git add src/tui/theme.ts src/tui/sidebar-palette.ts src/tui/sidebar-render.ts src/tui/sidebar.ts src/index.ts tests/tui/theme.test.ts tests/tui/sidebar-palette.test.ts tests/tui/sidebar-render.test.ts tests/tui/sidebar.test.ts tests/index-surfaces.test.ts
 git commit -m "feat: resolve colour presets across surfaces"
 ```
 
