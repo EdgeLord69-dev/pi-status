@@ -25,6 +25,7 @@ import {
   type StatusLineSegmentId,
   type StatusLineZones,
 } from "../shared/types.ts";
+import { DEFAULT_COLOR_SETTINGS, normalizeColorSettings } from "./colors.ts";
 import {
   isPersistedSidebarSegmentId,
   SIDEBAR_LAYOUT_MAX_ASSIGNMENTS,
@@ -47,6 +48,7 @@ export const DEFAULT_CONFIG: PiStatusConfig = {
   completionNotifications: false,
   sidebarPanelLayout: cloneSidebarPanelLayout(DEFAULT_SIDEBAR_PANEL_LAYOUT),
   sidebarHiddenSegments: [],
+  colors: structuredClone(DEFAULT_COLOR_SETTINGS),
 };
 
 function cloneDefaultConfig(): PiStatusConfig {
@@ -59,6 +61,7 @@ function cloneDefaultConfig(): PiStatusConfig {
     completionNotifications: DEFAULT_CONFIG.completionNotifications,
     sidebarPanelLayout: cloneSidebarPanelLayout(DEFAULT_CONFIG.sidebarPanelLayout),
     sidebarHiddenSegments: [...DEFAULT_CONFIG.sidebarHiddenSegments],
+    colors: structuredClone(DEFAULT_CONFIG.colors),
   };
 }
 
@@ -265,6 +268,7 @@ function normalizeConfig(input: Record<string, unknown>): PiStatusConfig {
     completionNotifications: input.completionNotifications === true,
     sidebarPanelLayout: layout.sidebarPanelLayout,
     sidebarHiddenSegments: layout.sidebarHiddenSegments,
+    colors: normalizeColorSettings(input.colors),
   };
 }
 
@@ -354,6 +358,7 @@ export function saveConfig(
     completionNotifications: config.completionNotifications,
     sidebarPanelLayout: sidebar.sidebarPanelLayout,
     sidebarHiddenSegments: sidebar.sidebarHiddenSegments.filter(isPersistedSidebarSegmentId),
+    colors: normalizeColorSettings(config.colors),
   };
   store.write(path, `${JSON.stringify(next, null, 2)}\n`);
   return { path };

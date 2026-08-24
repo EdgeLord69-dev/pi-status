@@ -19,7 +19,7 @@
 - Modify only `/Users/lanh/Developer/pi-vault/pi-status`; Pi and Atelier repositories are read-only references.
 - Add no dependency, runtime palette fetch, graphical picker, CSS parser, import/export, or Pi global-theme mutation.
 - Use `Pi` (`pi`) as the default preset. `NO_COLOR` is an environment override, never a preset.
-- Persist only uppercase `#RRGGBB` Custom values and retain exactly 14 editable semantic roles.
+- Accept case-insensitive hex input, persist only lowercase `#rrggbb` values, and retain exactly 14 editable semantic roles.
 - Fixed and Custom presets emit truecolour; do not add a 256-colour conversion path.
 - Dashboard uses draft colours; installed surfaces change only after persistence succeeds.
 - Preserve malformed-file overwrite refusal and renderer plain-text fallbacks.

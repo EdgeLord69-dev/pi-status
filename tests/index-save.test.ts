@@ -6,6 +6,7 @@ import {
   SIDEBAR_BUILTIN_ASSIGNMENTS,
   type PiStatusConfig,
 } from "../src/shared/types.ts";
+import { DEFAULT_COLOR_SETTINGS } from "../src/core/colors.ts";
 import type { StatusLineDashboardComponent } from "../src/tui/dashboard.ts";
 import { noTheme } from "../src/tui/theme.ts";
 import { isDashboardDirty, selectableRows } from "../src/tui/dashboard-state.ts";
@@ -61,6 +62,7 @@ function config(): PiStatusConfig {
       segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]],
     })),
     sidebarHiddenSegments: [],
+    colors: structuredClone(DEFAULT_COLOR_SETTINGS),
   };
 }
 

@@ -86,20 +86,20 @@ The default persisted shape is:
   "colors": {
     "preset": "pi",
     "custom": {
-      "accent": "#B18CFF",
-      "primary": "#D4D4D4",
+      "accent": "#b18cff",
+      "primary": "#d4d4d4",
       "muted": "#808080",
       "dim": "#666666",
-      "ready": "#6EA8FE",
-      "working": "#FF9F43",
-      "input": "#6EA8FE",
-      "output": "#B18CFF",
-      "cache": "#7DD3FC",
-      "cost": "#FF9F43",
-      "context": "#6EA8FE",
-      "menu": "#B18CFF",
-      "warning": "#FF9F43",
-      "error": "#FF5D73"
+      "ready": "#6ea8fe",
+      "working": "#ff9f43",
+      "input": "#6ea8fe",
+      "output": "#b18cff",
+      "cache": "#7dd3fc",
+      "cost": "#ff9f43",
+      "context": "#6ea8fe",
+      "menu": "#b18cff",
+      "warning": "#ff9f43",
+      "error": "#ff5d73"
     },
     "customInitialized": false
   }
@@ -111,7 +111,7 @@ The default persisted shape is:
 - Missing or non-object `colors` becomes `{ preset: "pi", custom: ATELIER_COLORS, customInitialized: false }`.
 - Only the nine declared IDs are valid. Unknown values, including the obsolete design-only value `none`, normalize to `pi`.
 - A Custom colour is valid only when it matches `/^#[0-9a-f]{6}$/i`.
-- Valid values save in uppercase `#RRGGBB` form.
+- Valid values are accepted case-insensitively and save in lowercase `#rrggbb` form.
 - A missing or invalid role falls back independently to the corresponding Atelier value.
 - Unknown Custom keys are ignored.
 - `customInitialized` is true only for persisted `true`, or when a manually supplied valid preset is `custom`; other values normalize to false.
@@ -121,7 +121,7 @@ The default persisted shape is:
 ### Custom initialization
 
 - The first Dashboard transition into Custom while `customInitialized` is false copies the currently selected fixed palette.
-- Entering Custom from Pi copies Atelier because Pi exposes live styling operations, not a stable `#RRGGBB` palette.
+- Entering Custom from Pi copies Atelier because Pi exposes live styling operations, not a stable `#rrggbb` palette.
 - The transition sets `customInitialized` to true in the draft. It is therefore a persisted draft change even if the user cycles back to another preset before Save.
 - Once initialized, Custom values survive preset changes, Save, and restart.
 
@@ -241,8 +241,8 @@ The Colours row displays the current label. Left/Right cycles through the catalo
 
 Each Custom row displays the role name, canonical hex value, and a sample painted with that exact role. Enter or Space opens the existing Pi TUI `Input`, seeded with the current value. Escape cancels. Submit validates the complete input:
 
-- Valid input is uppercased, stored in `draft.colors.custom[role]`, and closes the dialog.
-- Invalid input keeps the dialog open and reports `Colour must use #RRGGBB` once per submit attempt.
+- Valid input is lowercased, stored in `draft.colors.custom[role]`, and closes the dialog.
+- Invalid input keeps the dialog open and reports `Colour must use # followed by 6 hex digits` once per submit attempt.
 
 The Settings viewport scrolls to keep the selected role visible.
 
@@ -272,7 +272,7 @@ Dashboard resolves its theme from `state.draft.colors` on every render, so prese
 
 - Legacy/missing configs default to Pi and an independent uninitialized Custom palette.
 - Every preset round-trips; unknown and `none` normalize to Pi.
-- Lowercase hex saves uppercase; invalid/missing roles fall back independently.
+- Uppercase, lowercase, and mixed-case hex save lowercase; invalid/missing roles fall back independently.
 - Unknown keys are omitted and palette objects are defensively copied.
 - All seven fixed palettes match their pinned source-token values.
 

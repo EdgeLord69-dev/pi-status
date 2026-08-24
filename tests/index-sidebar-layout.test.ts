@@ -7,6 +7,7 @@ import {
   type PiStatusConfig,
   type SidebarPanelId,
 } from "../src/shared/types.ts";
+import { DEFAULT_COLOR_SETTINGS } from "../src/core/colors.ts";
 import {
   SIDEBAR_PANEL_CHANNEL,
   SIDEBAR_PANEL_PROTOCOL_VERSION,
@@ -43,6 +44,7 @@ function configWithModelIn(panelId: SidebarPanelId): PiStatusConfig {
       segments: id === panelId ? ["builtin:model"] : [],
     })),
     sidebarHiddenSegments: [],
+    colors: structuredClone(DEFAULT_COLOR_SETTINGS),
   };
 }
 
@@ -60,6 +62,7 @@ function configWithPanelsVisible(panels: SidebarPanelId[]): PiStatusConfig {
       segments: id === "agent" ? ["builtin:model"] : [],
     })),
     sidebarHiddenSegments: [],
+    colors: structuredClone(DEFAULT_COLOR_SETTINGS),
   };
 }
 

@@ -6,6 +6,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import createExtension from "../src/index.ts";
 import { BUILTIN_SIDEBAR_PANEL_IDS, SIDEBAR_BUILTIN_ASSIGNMENTS } from "../src/shared/types.ts";
 import type { SidebarCatalogEntry, SidebarEffectiveLayout } from "../src/shared/types.ts";
+import { DEFAULT_COLOR_SETTINGS } from "../src/core/colors.ts";
 import type { StatusLineDashboardComponent } from "../src/tui/dashboard.ts";
 
 let agentDir: string;
@@ -663,6 +664,7 @@ describe("extension wiring", () => {
         segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]],
       })),
       sidebarHiddenSegments: ["tool:read"],
+      colors: structuredClone(DEFAULT_COLOR_SETTINGS),
     });
   });
 

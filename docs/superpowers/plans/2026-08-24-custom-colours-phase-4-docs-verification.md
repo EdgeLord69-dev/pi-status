@@ -19,7 +19,7 @@
 - Modify only `/Users/lanh/Developer/pi-vault/pi-status`; Pi and Atelier repositories are read-only references.
 - Add no dependency, runtime palette fetch, graphical picker, CSS parser, import/export, or Pi global-theme mutation.
 - Use `Pi` (`pi`) as the default preset. `NO_COLOR` is an environment override, never a preset.
-- Persist only uppercase `#RRGGBB` Custom values and retain exactly 14 editable semantic roles.
+- Accept case-insensitive hex input, persist only lowercase `#rrggbb` values, and retain exactly 14 editable semantic roles.
 - Fixed and Custom presets emit truecolour; do not add a 256-colour conversion path.
 - Dashboard uses draft colours; installed surfaces change only after persistence succeeds.
 - Preserve malformed-file overwrite refusal and renderer plain-text fallbacks.
@@ -114,7 +114,7 @@ In `README.md`:
 - List all nine labels in Dashboard order.
 - Group Catppuccin Mocha/Latte, Dracula/Alucard, and Tokyo Night Moon/Day as explicit dark/light choices.
 - Link the three official palette sources used by the local constants.
-- Document first-use Custom seeding, 14 `#RRGGBB` roles, uppercase persistence, and truecolour requirements.
+- Document first-use Custom seeding, 14 `#rrggbb` roles, case-insensitive input, lowercase persistence, and truecolour requirements.
 - State that `NO_COLOR` disables styling across Dashboard, Statusbar, and Sidebar without changing the saved selection.
 
 In `CHANGELOG.md`, add above released entries:
@@ -162,7 +162,7 @@ Launch the local extension in Pi and open `/statusline` at approximately `120x30
 3. All nine labels cycle in the documented order with wraparound.
 4. Each fixed dark/light preset previews and saves consistently across all surfaces.
 5. First Custom entry clones the selected fixed palette, or Atelier from Pi; later switches preserve it.
-6. Custom exposes 14 scrollable roles; lowercase input saves uppercase, invalid input remains open with one warning per submit, and Escape cancels.
+6. Custom exposes 14 scrollable roles; uppercase, lowercase, and mixed-case input saves lowercase, invalid input remains open with one warning per submit, and Escape cancels.
 7. Draft changes recolour Dashboard immediately while installed surfaces wait for confirmed Save.
 8. Failed Save leaves installed colours unchanged and Dashboard dirty.
 9. `NO_COLOR` removes ANSI styling without changing the saved preset.

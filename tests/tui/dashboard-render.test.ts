@@ -8,6 +8,7 @@ import {
   type PiStatusConfig,
   type StatusLineZones,
 } from "../../src/shared/types.ts";
+import { DEFAULT_COLOR_SETTINGS } from "../../src/core/colors.ts";
 import type { DashboardTool } from "../../src/tui/tool-controls.ts";
 import type { SessionDetails } from "../../src/tui/session-actions.ts";
 import {
@@ -42,6 +43,7 @@ function config(overrides: Partial<PiStatusConfig> = {}): PiStatusConfig {
       segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]],
     })),
     sidebarHiddenSegments: [],
+    colors: structuredClone(DEFAULT_COLOR_SETTINGS),
     ...overrides,
   };
 }
