@@ -12,6 +12,7 @@ let start: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   agentDir = mkdtempSync(join(tmpdir(), "pi-status-surfaces-"));
   vi.stubEnv("PI_CODING_AGENT_DIR", agentDir);
+  vi.stubEnv("NO_COLOR", undefined);
   start = vi.fn();
 
   const runtime = {
@@ -67,13 +68,7 @@ function writeConfig(values: {
   );
 }
 
-interface SurfaceHost {
-  ui: ReturnType<typeof createContext>["ui"];
-  renderFooter(): string;
-  renderSidebar(): string;
-}
-
-function surfaceHost(theme: unknown): SurfaceHost {
+function surfaceHost(theme: unknown) {
   const tui = {
     terminal: { columns: 120, rows: 30 },
     requestRender: vi.fn(),
@@ -213,12 +208,7 @@ describe("installed colour surfaces", () => {
 
     const { default: createExtension } = await import("../src/index.ts");
     const { pi, handlers } = buildPiWithHandlers();
-    const host = surfaceHost({
-      fg: (_color: string, text: string) => text,
-      bg: (_color: string, text: string) => text,
-      bold: (text: string) => text,
-      inverse: (text: string) => text,
-    });
+    const host = surfaceHost(null);
     createExtension(pi);
     const ctx = createContext({ ui: host.ui as never });
 
@@ -243,9 +233,6 @@ describe("installed colour surfaces", () => {
     let prefix = "first";
     const liveTheme = {
       fg: (color: string, text: string) => `${prefix}:${color}:\x1b[31m${text}\x1b[39m`,
-      bg: (color: string, text: string) => `${prefix}:bg:${color}:${text}`,
-      bold: (text: string) => `${prefix}:bold:${text}`,
-      inverse: (text: string) => `${prefix}:inverse:${text}`,
     };
     const host = surfaceHost(liveTheme);
     createExtension(pi);
@@ -260,9 +247,9 @@ describe("installed colour surfaces", () => {
     expect(host.renderSidebar()).toContain("second:");
 
     vi.stubEnv("NO_COLOR", "");
-    expect(host.renderFooter()).not.toContain("\x1b[38;");
-    expect(host.renderFooter()).not.toContain("\x1b[48;");
-    expect(host.renderSidebar()).not.toContain("\x1b[38;");
-    expect(host.renderSidebar()).not.toContain("\x1b[48;");
+    expect(host.renderFooter()).not.toContain("second:");
+    expect(host.renderFooter()).not.toContain("\x1b[31m");
+    expect(host.renderSidebar()).not.toContain("second:");
+    expect(host.renderSidebar()).not.toContain("\x1b[31m");
   });
 });

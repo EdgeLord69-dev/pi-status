@@ -168,6 +168,48 @@ describe("createStatusLineTheme — presets", () => {
     expect(theme.bold("x")).toBe("x");
     expect(theme.inverse("x")).toBe("x");
   });
+
+  it("keeps working Pi methods when a sibling method is missing", () => {
+    const theme = createStatusLineTheme(
+      {
+        fg: (color: string, text: string) => `[${color}:${text}]`,
+      },
+      DEFAULT_COLOR_SETTINGS,
+      {},
+    );
+
+    expect(theme.fg("ready", "x")).toBe("[thinkingLow:x]");
+    expect(theme.bold("x")).toBe("x");
+  });
+
+  it("falls back only the broken Pi operation to plain text", () => {
+    const theme = createStatusLineTheme(
+      {
+        fg: (color: string, text: string) => {
+          if (color === "thinkingLow") throw new Error("broken role");
+          return `[${color}:${text}]`;
+        },
+        bold: (text: string) => `[bold:${text}]`,
+      },
+      DEFAULT_COLOR_SETTINGS,
+      {},
+    );
+
+    expect(theme.fg("ready", "x")).toBe("x");
+    expect(theme.fg("accent", "x")).toBe("[accent:x]");
+    expect(theme.bold("x")).toBe("[bold:x]");
+  });
+
+  it("delegates fixed-preset bold without requiring Pi foreground support", () => {
+    const theme = createStatusLineTheme(
+      { bold: (text: string) => `[bold:${text}]` },
+      { ...DEFAULT_COLOR_SETTINGS, preset: "atelier" },
+      {},
+    );
+
+    expect(theme.fg("accent", "x")).toBe("\x1b[38;2;177;140;255mx\x1b[39m");
+    expect(theme.bold("x")).toBe("[bold:x]");
+  });
 });
 
 describe("fromPiTheme", () => {

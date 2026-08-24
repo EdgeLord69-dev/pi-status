@@ -1,6 +1,6 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Component, OverlayHandle, OverlayOptions, TUI } from "@earendil-works/pi-tui";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PiStatusConfig } from "../../src/shared/types.ts";
 import { DEFAULT_SIDEBAR_PANEL_LAYOUT, DEFAULT_ZONES } from "../../src/shared/types.ts";
 import { createSidebarController } from "../../src/tui/sidebar.ts";
@@ -154,8 +154,13 @@ function renderHost(tui: TUI, width = 120): string {
   return lines.join("\n");
 }
 
+beforeEach(() => {
+  vi.stubEnv("NO_COLOR", undefined);
+});
+
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllEnvs();
 });
 
 describe("sidebar controller", () => {
@@ -431,9 +436,6 @@ describe("sidebar controller", () => {
       ...noTheme,
       fg: (color: string, text: string) => `${prefix}:${color}:${text}`,
     };
-    // ponytail: shorten the model label so the rendered agent row fits within
-    // the 44-column sidebar width and the per-render assertion can match the
-    // exact prefix the theme emits.
     const view = sidebarView({ ...FIXED_SNAPSHOT, modelLabel: "gpt-5" });
     const controller = createSidebarController({
       ctx: makeCtx(host, tui, piTheme),

@@ -1,7 +1,6 @@
 import { getFixedColorPalette } from "../core/colors.ts";
 import {
   PALETTE_ROLES,
-  type ColorPalette,
   type ColorSettings,
   type HexColor,
   type PaletteRole,
@@ -88,6 +87,15 @@ function safeFg(theme: PiThemeLike, color: string, text: string): string {
   }
 }
 
+function safeThemeCall(call: () => unknown, fallback: string): string {
+  try {
+    const result = call();
+    return typeof result === "string" ? result : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 export const noTheme: StatusLineTheme = {
   name: undefined,
   fg: (_color, text) => text,
@@ -127,8 +135,6 @@ export function fromPiTheme(theme: unknown): StatusLineTheme {
   };
 }
 
-// --- Phase 2: single resolver for Pi, fixed, Custom, and NO_COLOR. -------
-
 const TOKEN_ROLES = {
   accent: "accent",
   dim: "dim",
@@ -148,8 +154,6 @@ const TOKEN_ROLES = {
   mdHeading: "working",
   syntaxType: "cache",
 } as const satisfies Partial<Record<StatusLineMenuColor, PaletteRole>>;
-
-const PALETTE_ROLE_SET = new Set<string>(PALETTE_ROLES);
 
 const PI_ROLES: Record<PaletteRole, string> = {
   accent: "accent",
@@ -180,7 +184,7 @@ const RAINBOW_ROLES: readonly PaletteRole[] = [
 ];
 
 function tokenRole(token: StatusLineMenuColor): PaletteRole {
-  if (PALETTE_ROLE_SET.has(token)) return token as PaletteRole;
+  if (PALETTE_ROLES.includes(token as PaletteRole)) return token as PaletteRole;
   return TOKEN_ROLES[token as keyof typeof TOKEN_ROLES];
 }
 
@@ -200,58 +204,29 @@ export function createStatusLineTheme(
 ): StatusLineTheme {
   if (noColorRequested(env)) return noTheme;
 
-  const palette: Readonly<ColorPalette> | undefined =
-    colors.preset === "custom" ? colors.custom : getFixedColorPalette(colors.preset);
-  const piTheme = isPiThemeLike(theme) ? theme : undefined;
-  const usePi = piTheme !== undefined && colors.preset === "pi";
+  const piTheme = theme && typeof theme === "object" ? (theme as Partial<PiThemeLike>) : undefined;
+  const palette = colors.preset === "custom" ? colors.custom : getFixedColorPalette(colors.preset);
+  const usePi = colors.preset === "pi";
 
-  const fg = (token: StatusLineMenuColor, text: string): string => {
-    if (usePi) return safeFg(piTheme, PI_ROLES[tokenRole(token)], text);
-    if (palette) return foreground(palette[tokenRole(token)], text);
+  const paintRole = (role: PaletteRole, text: string): string => {
+    if (usePi) return safeThemeCall(() => piTheme?.fg?.(PI_ROLES[role], text), text);
+    if (palette) return foreground(palette[role], text);
     return text;
   };
 
+  const fg = (token: StatusLineMenuColor, text: string): string =>
+    paintRole(tokenRole(token), text);
+
   const bg = (token: StatusLineMenuColor, text: string): string => {
-    if (usePi) {
-      try {
-        return piTheme.bg?.(token as string, text) ?? text;
-      } catch {
-        return text;
-      }
-    }
+    if (usePi) return safeThemeCall(() => piTheme?.bg?.(token, text), text);
     if (palette) return background(palette[tokenRole(token)], text);
     return text;
   };
 
-  const bold = (text: string): string => {
-    if (!piTheme) return text;
-    try {
-      return piTheme.bold(text);
-    } catch {
-      return text;
-    }
-  };
-
-  const dim = (text: string): string => {
-    if (usePi) {
-      try {
-        return piTheme.fg("dim", text);
-      } catch {
-        return text;
-      }
-    }
-    if (palette) return foreground(palette.dim, text);
-    return text;
-  };
+  const bold = (text: string): string => safeThemeCall(() => piTheme?.bold?.(text), text);
 
   const inverse = (text: string): string => {
-    if (usePi) {
-      try {
-        return piTheme.inverse?.(text) ?? text;
-      } catch {
-        return text;
-      }
-    }
+    if (usePi) return safeThemeCall(() => piTheme?.inverse?.(text), text);
     if (palette) return background(palette.accent, foreground(palette.primary, text));
     return text;
   };
@@ -266,20 +241,7 @@ export function createStatusLineTheme(
       }
       const role = RAINBOW_ROLES[roleIndex % RAINBOW_ROLES.length];
       roleIndex += 1;
-      if (usePi) {
-        try {
-          result += piTheme.fg(PI_ROLES[role], char);
-          continue;
-        } catch {
-          result += char;
-          continue;
-        }
-      }
-      if (palette) {
-        result += foreground(palette[role], char);
-        continue;
-      }
-      result += char;
+      result += paintRole(role, char);
     }
     return result;
   };
@@ -288,7 +250,7 @@ export function createStatusLineTheme(
     fg,
     bg,
     bold,
-    dim,
+    dim: (text) => paintRole("dim", text),
     inverse,
     rainbow: rainbowRender,
   };
