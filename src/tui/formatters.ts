@@ -37,13 +37,32 @@ function contextRemainingColor(remainingPercent: number): "success" | "warning" 
 export function getRateWindow(
   input: Omit<FooterRenderInput, "zones" | "extensionSegments">,
   key: "fiveHour" | "weekly",
-): { usedPercent: number } | null {
+): { usedPercent: number; resetAt?: number; windowDurationMins?: number } | null {
   const snapshot = input.usageState?.compatibility?.currentLiveProviderSnapshot;
   const window = snapshot?.windows.find((item) => item.key === key);
   if (!window || typeof window.usedPercent !== "number" || window.unavailableReason) {
     return null;
   }
-  return { usedPercent: window.usedPercent };
+  if (key === "fiveHour") {
+    if (window.windowDurationMins !== undefined && window.windowDurationMins !== 5 * 60) return null;
+    if (window.resetAt !== undefined && window.resetAt - Date.now() > 5 * 60 * 60 * 1000) return null;
+  }
+  return {
+    usedPercent: window.usedPercent,
+    resetAt: window.resetAt,
+    windowDurationMins: window.windowDurationMins,
+  };
+}
+
+function resetLabel(resetAt: number | undefined): string {
+  if (!resetAt) return "";
+  const remaining = Math.max(0, resetAt - Date.now());
+  const days = Math.floor(remaining / 86_400_000);
+  const hours = Math.floor((remaining % 86_400_000) / 3_600_000);
+  const minutes = Math.floor((remaining % 3_600_000) / 60_000);
+  if (days > 0) return `${days}d${hours}hr`;
+  if (hours > 0) return `${hours}hr`;
+  return `${minutes}m`;
 }
 
 function rateColor(usedPercent: number): "success" | "warning" | "error" {
@@ -181,7 +200,7 @@ export function formatFiveHourLimit(
   const remaining = Math.min(100, Math.max(0, 100 - Math.round(window.usedPercent)));
   const dim = (s: string) => theme.fg("dim", s);
   return [
-    `${dim("5h ")}${theme.fg(rateColor(window.usedPercent), `${remaining}%`)}${dim(" left")}`,
+    `${dim("5h ")}${theme.fg(rateColor(window.usedPercent), `${remaining}%`)}${dim(resetLabel(window.resetAt) ? ` ${resetLabel(window.resetAt)} left` : " left")}`,
     null,
   ];
 }
@@ -195,7 +214,7 @@ export function formatWeeklyLimit(
   const remaining = Math.min(100, Math.max(0, 100 - Math.round(window.usedPercent)));
   const dim = (s: string) => theme.fg("dim", s);
   return [
-    `${dim("wk ")}${theme.fg(rateColor(window.usedPercent), `${remaining}%`)}${dim(" left")}`,
+    `${dim("wk ")}${theme.fg(rateColor(window.usedPercent), `${remaining}%`)}${dim(resetLabel(window.resetAt) ? ` ${resetLabel(window.resetAt)} left` : " left")}`,
     null,
   ];
 }

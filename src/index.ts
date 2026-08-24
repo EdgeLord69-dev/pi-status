@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { estimateTokens } from "@earendil-works/pi-coding-agent";
 import { loadConfig, normalizeSidebarPanelLayout, saveConfig } from "./core/config.ts";
@@ -131,6 +132,36 @@ function isActiveTuiSession(
   manager: ExtensionContext["sessionManager"] | undefined,
 ): boolean {
   return ctx.mode === "tui" && manager !== undefined && ctx.sessionManager === manager;
+}
+
+async function redeemCodexReset(pi: ExtensionAPI, ctx: ExtensionContext): Promise<string> {
+  const idempotencyKey = randomUUID();
+  const messages = [
+    JSON.stringify({
+      method: "initialize",
+      id: 1,
+      params: {
+        clientInfo: { name: "pi-status", title: "pi-status", version: "0.4.0" },
+      },
+    }),
+    JSON.stringify({ method: "initialized" }),
+    JSON.stringify({
+      method: "account/rateLimitResetCredit/consume",
+      id: 2,
+      params: { idempotencyKey },
+    }),
+  ].join("\n");
+  const result = await pi.exec("sh", ["-c", "printf '%s\\n' \"$1\" | codex app-server --stdio", "codex-reset", messages], {
+    cwd: ctx.cwd,
+    timeout: 30_000,
+  });
+  if (result.code !== 0) throw new Error(result.stderr.trim() || "Codex app-server failed");
+  const response = result.stdout.split("\n").map((line) => {
+    try { return JSON.parse(line) as { id?: number; result?: { outcome?: string }; error?: { message?: string } }; }
+    catch { return undefined; }
+  }).find((value) => value?.id === 2);
+  if (response?.error) throw new Error(response.error.message ?? "Codex rejected the reset");
+  return response?.result?.outcome ?? "unknown";
 }
 
 export default function createExtension(pi: ExtensionAPI): void {
@@ -280,6 +311,19 @@ export default function createExtension(pi: ExtensionAPI): void {
   }
 
   const usageRuntime = createUsageRuntime(pi);
+  pi.registerCommand("codex-reset", {
+    description: "Redeem an available Codex banked usage reset",
+    handler: async (args, ctx) => {
+      if (args.trim() || ctx.mode !== "tui") return;
+      try {
+        const outcome = await redeemCodexReset(pi, ctx);
+        ctx.ui.notify(`Codex reset: ${outcome}`, outcome === "reset" ? "info" : "warning");
+        usageRuntime.requestCurrent();
+      } catch (error) {
+        ctx.ui.notify(`Could not redeem Codex reset: ${error instanceof Error ? error.message : String(error)}`, "error");
+      }
+    },
+  });
   const activityRuntime = createActivityRuntime();
   let workspacePulseRuntime: WorkspacePulseRuntime | undefined;
   const footerProviderState = {

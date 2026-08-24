@@ -80,8 +80,11 @@ export type FooterRenderInput = {
           key?: string;
           label?: string;
           usedPercent?: number;
+          resetAt?: number;
+          windowDurationMins?: number;
           unavailableReason?: string | null;
         }>;
+        resetCredits?: Array<{ id?: string; title?: string; expiresAt?: number }>;
       } | null;
     };
   };

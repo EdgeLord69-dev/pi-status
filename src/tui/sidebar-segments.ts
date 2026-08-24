@@ -109,6 +109,17 @@ function remainingPercent(usedPercent: number): number {
   return Math.min(100, Math.max(0, 100 - Math.round(usedPercent)));
 }
 
+function resetText(resetAt: number | undefined): string {
+  if (!resetAt) return "";
+  const remaining = Math.max(0, resetAt - Date.now());
+  const days = Math.floor(remaining / 86_400_000);
+  const hours = Math.floor((remaining % 86_400_000) / 3_600_000);
+  const minutes = Math.floor((remaining % 3_600_000) / 60_000);
+  if (days > 0) return ` ${days}d${hours}hr`;
+  if (hours > 0) return ` ${hours}hr`;
+  return ` ${minutes}m`;
+}
+
 function agentSegments(snapshot: SidebarSnapshot): SegmentDefinition[] {
   return [
     {
@@ -503,7 +514,10 @@ function usageSegments(snapshot: SidebarSnapshot): SegmentDefinition[] {
           : metric(
               spans(
                 ["5h ", "muted"],
-                [`${remainingPercent(snapshot.fiveHourPercent)}%`, "cost"],
+                [
+                  `${remainingPercent(snapshot.fiveHourPercent)}%${resetText(snapshot.fiveHourResetAt)}`,
+                  "cost",
+                ],
                 [" left", "muted"],
               ),
               "usage-limits",
@@ -522,11 +536,30 @@ function usageSegments(snapshot: SidebarSnapshot): SegmentDefinition[] {
           : metric(
               spans(
                 ["wk ", "muted"],
-                [`${remainingPercent(snapshot.weeklyPercent)}%`, "cost"],
+                [
+                  `${remainingPercent(snapshot.weeklyPercent)}%${resetText(snapshot.weeklyResetAt)}`,
+                  "cost",
+                ],
                 [" left", "muted"],
               ),
               "usage-limits",
             ),
+    },
+    {
+      id: "builtin:usage-reset",
+      label: "Resets available",
+      description: "Available banked usage resets (run /codex-reset to redeem one).",
+      defaultPanelId: "usage",
+      priority: "important",
+      dropOrder: 76,
+      resolve: () => {
+        const count = snapshot.resetCreditsAvailable ?? 0;
+        if (count <= 0) return null;
+        return metric(
+          spans([`${count} reset${count === 1 ? "" : "s"} available`, "warning"]),
+          "usage-reset",
+        );
+      },
     },
     {
       id: "builtin:total-tokens",

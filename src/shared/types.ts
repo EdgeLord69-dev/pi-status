@@ -159,6 +159,7 @@ export const SIDEBAR_BUILTIN_ASSIGNMENTS = {
   usage: [
     "builtin:usage-5h",
     "builtin:usage-weekly",
+    "builtin:usage-reset",
     "builtin:total-tokens",
     "builtin:cost",
     "builtin:input",

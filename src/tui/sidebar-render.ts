@@ -44,7 +44,10 @@ export interface SidebarSnapshot {
   contextPercent?: number;
   sessionMetrics?: SessionMetrics;
   fiveHourPercent?: number;
+  fiveHourResetAt?: number;
   weeklyPercent?: number;
+  weeklyResetAt?: number;
+  resetCreditsAvailable?: number;
   accessType?: AccessType;
   pulse?: WorkspacePulseAggregates;
   branchEntryCount: number;
@@ -138,7 +141,10 @@ export function buildSidebarSnapshot(input: SidebarSnapshotInput): SidebarSnapsh
     contextPercent: footer.contextUsage?.percent ?? undefined,
     sessionMetrics: footer.sessionMetrics,
     fiveHourPercent: fiveHour?.usedPercent,
+    fiveHourResetAt: fiveHour?.resetAt,
     weeklyPercent: weekly?.usedPercent,
+    weeklyResetAt: weekly?.resetAt,
+    resetCreditsAvailable: footer.usageState?.compatibility?.currentLiveProviderSnapshot?.resetCredits?.length ?? 0,
     accessType: footer.accessType,
     pulse,
     branchEntryCount: input.branchEntryCount,

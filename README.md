@@ -19,10 +19,11 @@ pi install npm:@pi-vault/pi-status
 ```
 
 Optional: install `pi-usage` if you want the `five-hour-limit` and `weekly-limit` footer segments:
-
-```bash
+```text
 pi install npm:@pi-vault/pi-usage
 ```
+
+After an available banked Codex reset is shown in the sidebar, run `/codex-reset` to redeem it.
 
 Reload Pi after installing or upgrading:
 
