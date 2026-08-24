@@ -2,8 +2,12 @@ import type { OverlayHandle, TUI } from "@earendil-works/pi-tui";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createSplitPaneController, type SplitPaneController } from "./split-pane.ts";
 import { renderSidebarLines, type SidebarSnapshot } from "./sidebar-render.ts";
-import type { StatusLineTheme } from "./theme.ts";
-import type { SidebarCatalogEntry, SidebarEffectiveLayout } from "../shared/types.ts";
+import { createStatusLineTheme } from "./theme.ts";
+import type {
+  ColorSettings,
+  SidebarCatalogEntry,
+  SidebarEffectiveLayout,
+} from "../shared/types.ts";
 
 export interface SidebarView {
   snapshot: SidebarSnapshot;
@@ -14,7 +18,7 @@ export interface SidebarView {
 export interface SidebarControllerOptions {
   ctx: ExtensionContext;
   getView(): SidebarView;
-  colorEnabled?: boolean;
+  getColors(): ColorSettings;
   shouldAnimate?(): boolean;
   animationIntervalMs?: number;
   onWarning?(message: string): void;
@@ -94,11 +98,11 @@ export function createSidebarController(options: SidebarControllerOptions): Side
         (tui, theme) => {
           capturedTui = tui;
           requestOverlayRender = () => tui.requestRender?.();
-          const statusTheme = theme as unknown as StatusLineTheme;
 
           const renderSidebar = (width: number, height: number): string[] => {
             try {
               const view = options.getView();
+              const statusTheme = createStatusLineTheme(theme, options.getColors());
               return renderSidebarLines(
                 view.snapshot,
                 view.catalog,
@@ -106,12 +110,7 @@ export function createSidebarController(options: SidebarControllerOptions): Side
                 statusTheme,
                 width,
                 height,
-                {
-                  ...(options.colorEnabled === undefined
-                    ? {}
-                    : { colorEnabled: options.colorEnabled }),
-                  resizing: split.isResizing(),
-                },
+                { resizing: split.isResizing() },
               );
             } catch (error) {
               safely(() => options.onError?.(error));
