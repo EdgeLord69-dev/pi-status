@@ -709,7 +709,7 @@ describe("renderSidebarLines failure path", () => {
         throw new Error("boom");
       },
     };
-    const lines = render(makeInput(), 44, 12, { colorEnabled: false }, throwing as never);
+    const lines = render(makeInput(), 44, 12, {}, throwing as never);
     expect(lines).toHaveLength(12);
     expect(lines.some((line) => line.includes("Sidebar unavailable"))).toBe(true);
   });
@@ -717,9 +717,9 @@ describe("renderSidebarLines failure path", () => {
 
 describe("renderSidebarLines semantic roles", () => {
   it.each([
-    ["idle", "Ready", "thinkingLow"],
+    ["idle", "Ready", "ready"],
     ["queued", "Queued", "warning"],
-    ["busy", "Working", "mdHeading"],
+    ["busy", "Working", "working"],
   ] as const)("renders footer state %s as Activity %s", (runState, label, token) => {
     const base = makeInput();
     const input = { ...base, footer: { ...base.footer, runState } };
@@ -751,7 +751,7 @@ describe("renderSidebarLines semantic roles", () => {
     const layout = onlyPanel("activity")(seedSidebarEffectiveLayout(input.config, catalog));
     renderSidebarLines(snapshot, catalog, layout, { ...noTheme, fg }, 44, 12);
     expect(fg).toHaveBeenCalledWith("error", "ACTIVITY");
-    expect(fg).toHaveBeenCalledWith("mdHeading", "Working");
+    expect(fg).toHaveBeenCalledWith("working", "Working");
   });
 
   it("keeps the Agent crown on the static accent role", () => {

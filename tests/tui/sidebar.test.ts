@@ -64,6 +64,8 @@ function sidebarView(snapshot = FIXED_SNAPSHOT) {
   };
 }
 
+const defaultColors = () => structuredClone(DEFAULT_COLOR_SETTINGS);
+
 class FakeOverlayHandle implements OverlayHandle {
   hidden = false;
   focused = false;
@@ -162,6 +164,7 @@ describe("sidebar controller", () => {
     const controller = createSidebarController({
       ctx: makeCtx(host, tui),
       getView: () => sidebarView(),
+      getColors: defaultColors,
     });
     controller.show();
     await Promise.resolve();
@@ -176,6 +179,7 @@ describe("sidebar controller", () => {
     const controller = createSidebarController({
       ctx: makeCtx(host, tui),
       getView: () => sidebarView(),
+      getColors: defaultColors,
     });
     controller.show();
     await Promise.resolve();
@@ -193,6 +197,7 @@ describe("sidebar controller", () => {
     const controller = createSidebarController({
       ctx: makeCtx(host, tui),
       getView: () => sidebarView(),
+      getColors: defaultColors,
     });
     controller.show();
     await Promise.resolve();
@@ -208,6 +213,7 @@ describe("sidebar controller", () => {
     const controller = createSidebarController({
       ctx: makeCtx(host, tui),
       getView: () => sidebarView(),
+      getColors: defaultColors,
     });
     controller.show();
     await Promise.resolve();
@@ -225,6 +231,7 @@ describe("sidebar controller", () => {
     const controller = createSidebarController({
       ctx,
       getView: () => sidebarView(),
+      getColors: defaultColors,
     });
     controller.show();
     await Promise.resolve();
@@ -244,6 +251,7 @@ describe("sidebar controller", () => {
     const controller = createSidebarController({
       ctx: makeCtx(host, tui),
       getView: () => sidebarView(),
+      getColors: defaultColors,
       animationIntervalMs: 100,
       shouldAnimate: () => animate,
     });
@@ -266,6 +274,7 @@ describe("sidebar controller", () => {
     const controller = createSidebarController({
       ctx: makeCtx(host, tui),
       getView: () => sidebarView(),
+      getColors: defaultColors,
     });
     controller.show();
     await Promise.resolve();
@@ -277,6 +286,7 @@ describe("sidebar controller", () => {
     const controller = createSidebarController({
       ctx: makeCtx(host, tui),
       getView: () => sidebarView(),
+      getColors: defaultColors,
     });
     controller.show();
     await Promise.resolve();
@@ -292,6 +302,7 @@ describe("sidebar controller", () => {
     const controller = createSidebarController({
       ctx: makeCtx(host, tui),
       getView: () => sidebarView(),
+      getColors: defaultColors,
     });
     controller.show();
     await Promise.resolve();
@@ -324,6 +335,7 @@ describe("sidebar controller", () => {
     const controller = createSidebarController({
       ctx: makeCtx(host, tui, liveTheme),
       getView: () => sidebarView(),
+      getColors: defaultColors,
     });
 
     controller.show();
@@ -346,6 +358,7 @@ describe("sidebar controller", () => {
     const controller = createSidebarController({
       ctx: makeCtx(host, tui),
       getView: () => sidebarView(),
+      getColors: defaultColors,
     });
     controller.show();
     await Promise.resolve();
@@ -363,6 +376,7 @@ describe("sidebar controller", () => {
     const controller = createSidebarController({
       ctx: makeCtx(host, tui),
       getView: () => sidebarView(),
+      getColors: defaultColors,
     });
     controller.show();
     await Promise.resolve();
@@ -379,6 +393,7 @@ describe("sidebar controller", () => {
     const controller = createSidebarController({
       ctx,
       getView: () => sidebarView(),
+      getColors: defaultColors,
     });
     controller.show();
     await Promise.resolve();
@@ -396,6 +411,7 @@ describe("sidebar controller", () => {
     const controller = createSidebarController({
       ctx: makeCtx(host, tui),
       getView,
+      getColors: defaultColors,
       onError,
     });
     controller.show();
@@ -406,6 +422,41 @@ describe("sidebar controller", () => {
     expect(output).toContain("Sidebar unavailable");
     expect(onError).toHaveBeenCalled();
   });
+
+  it("resolves the live Pi theme, committed colours, and NO_COLOR on every host render", async () => {
+    const { host, tui } = makeFakeHost();
+    let prefix = "first";
+    let colors = structuredClone(DEFAULT_COLOR_SETTINGS);
+    const piTheme = {
+      ...noTheme,
+      fg: (color: string, text: string) => `${prefix}:${color}:${text}`,
+    };
+    // ponytail: shorten the model label so the rendered agent row fits within
+    // the 44-column sidebar width and the per-render assertion can match the
+    // exact prefix the theme emits.
+    const view = sidebarView({ ...FIXED_SNAPSHOT, modelLabel: "gpt-5" });
+    const controller = createSidebarController({
+      ctx: makeCtx(host, tui, piTheme),
+      getView: () => view,
+      getColors: () => colors,
+    });
+
+    controller.show();
+    await Promise.resolve();
+    controller.setShown(true);
+    expect(renderHost(tui, 120)).toContain("first:text:gpt-5");
+
+    prefix = "second";
+    expect(renderHost(tui, 120)).toContain("second:text:gpt-5");
+
+    colors = { ...colors, preset: "atelier" };
+    expect(renderHost(tui, 120)).toContain("\x1b[38;2;212;212;212mgpt-5\x1b[39m");
+
+    vi.stubEnv("NO_COLOR", "");
+    expect(renderHost(tui, 120)).not.toContain("\x1b[38;");
+    expect(renderHost(tui, 120)).not.toContain("\x1b[48;");
+    expect(host.customInvocations).toBe(1);
+  });
 });
 
 describe("sidebar controller effective width forwarding", () => {
@@ -414,6 +465,7 @@ describe("sidebar controller effective width forwarding", () => {
     const controller = createSidebarController({
       ctx: makeCtx(host, tui),
       getView: () => sidebarView(),
+      getColors: defaultColors,
     });
     expect(controller.getEffectiveWidth()).toBe(0);
   });
@@ -423,6 +475,7 @@ describe("sidebar controller effective width forwarding", () => {
     const controller = createSidebarController({
       ctx: makeCtx(host, tui),
       getView: () => sidebarView(),
+      getColors: defaultColors,
     });
     controller.show();
     await Promise.resolve();
@@ -435,6 +488,7 @@ describe("sidebar controller effective width forwarding", () => {
     const controller = createSidebarController({
       ctx: makeCtx(host, tui),
       getView: () => sidebarView(),
+      getColors: defaultColors,
     });
     controller.show();
     await Promise.resolve();
@@ -448,6 +502,7 @@ describe("sidebar controller effective width forwarding", () => {
     const controller = createSidebarController({
       ctx: makeCtx(host, tui),
       getView: () => sidebarView(),
+      getColors: defaultColors,
     });
     controller.show();
     await Promise.resolve();
@@ -468,6 +523,7 @@ describe("sidebar controller view boundary", () => {
     const controller = createSidebarController({
       ctx: makeCtx(host, tui),
       getView,
+      getColors: defaultColors,
     });
     controller.show();
     await Promise.resolve();
@@ -485,6 +541,7 @@ describe("sidebar controller view boundary", () => {
     const controller = createSidebarController({
       ctx: makeCtx(host, tui),
       getView: () => sidebarView(snapshot),
+      getColors: defaultColors,
     });
     controller.show();
     await Promise.resolve();

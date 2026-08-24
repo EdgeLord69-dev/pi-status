@@ -4,6 +4,7 @@ import type {
   AccessType,
   LiveActivitySnapshot,
   NormalizedTodo,
+  PaletteRole,
   SessionMetrics,
   SidebarCatalogEntry,
   SidebarEffectiveLayout,
@@ -14,12 +15,7 @@ import { sanitizeSidebarPanelText, type SidebarPanelData } from "./sidebar-panel
 import type { FooterRenderInput } from "./render.ts";
 import { removeLeadingStatusKey } from "./render.ts";
 import { getRateWindow } from "./formatters.ts";
-import {
-  createPalette,
-  type Palette,
-  type PaletteRole,
-  type PaletteTheme,
-} from "./sidebar-palette.ts";
+import { createPalette, type Palette, type PaletteTheme } from "./sidebar-palette.ts";
 import type { StatusLineTheme } from "./theme.ts";
 
 export interface WorkspacePulseAggregates {

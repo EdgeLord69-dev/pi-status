@@ -27,7 +27,7 @@ import {
   type StatusLineZones,
 } from "./shared/types.ts";
 import { buildFooterRowsFromResolved } from "./tui/render.ts";
-import { fromPiTheme, noColorRequested, noTheme } from "./tui/theme.ts";
+import { createStatusLineTheme } from "./tui/theme.ts";
 import { openStatusLineDashboard, type StatusLineDashboardComponent } from "./tui/dashboard.ts";
 import {
   createSidebarController,
@@ -396,7 +396,7 @@ export default function createExtension(pi: ExtensionAPI): void {
           refreshFooterProviderState(footerData);
 
           const snap = runtimeState.snapshot();
-          const statusTheme = noColorRequested() ? noTheme : fromPiTheme(theme);
+          const statusTheme = createStatusLineTheme(theme, snap.config.colors);
           const snapshot = currentFooterInput(ctx);
           return buildFooterRowsFromResolved(
             resolveFooter(snapshot, snap.config, statusTheme),
@@ -505,6 +505,7 @@ export default function createExtension(pi: ExtensionAPI): void {
         activeSidebarController = createSidebarController({
           ctx,
           getView: () => captureSidebarView(ctx),
+          getColors: () => runtimeState.snapshot().config.colors,
           onWarning: (message) => ctx.ui.notify(message, "warning"),
           onError: (error) =>
             ctx.ui.notify(error instanceof Error ? error.message : String(error), "warning"),

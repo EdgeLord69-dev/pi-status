@@ -1,77 +1,38 @@
 import { describe, expect, it, vi } from "vitest";
-import { createPalette, type PaletteRole } from "../../src/tui/sidebar-palette.ts";
-
-const SEMANTIC_TOKENS = {
-  accent: "accent",
-  primary: "text",
-  muted: "muted",
-  dim: "dim",
-  ready: "thinkingLow",
-  working: "mdHeading",
-  input: "thinkingLow",
-  output: "thinkingHigh",
-  cache: "syntaxType",
-  cost: "mdHeading",
-  context: "thinkingLow",
-  menu: "thinkingHigh",
-  warning: "warning",
-  error: "error",
-} as const satisfies Readonly<Record<PaletteRole, string>>;
-
-const NO_COLOR_TOKENS = {
-  accent: "accent",
-  primary: "text",
-  muted: "muted",
-  dim: "dim",
-  ready: "text",
-  working: "text",
-  input: "text",
-  output: "text",
-  cache: "text",
-  cost: "text",
-  context: "text",
-  menu: "text",
-  warning: "warning",
-  error: "error",
-} as const satisfies Readonly<Record<PaletteRole, string>>;
-
-function assertRoleMap(name: string | undefined, expected: Readonly<Record<PaletteRole, string>>) {
-  const fg = vi.fn((color: string, text: string) => `[${color}:${text}]`);
-  const palette = createPalette({ ...(name === undefined ? {} : { name }), fg }, true);
-
-  for (const role of Object.keys(expected) as PaletteRole[]) {
-    expect(palette.paint(role, role)).toBe(`[${expected[role]}:${role}]`);
-  }
-  expect(fg).toHaveBeenCalledTimes(Object.keys(expected).length);
-}
+import { createPalette } from "../../src/tui/sidebar-palette.ts";
+import { PALETTE_ROLES, type PaletteRole } from "../../src/shared/types.ts";
 
 describe("createPalette", () => {
-  it("routes every named-theme role through Pi semantic tokens", () => {
-    assertRoleMap("dark", SEMANTIC_TOKENS);
-  });
-
-  it("routes every unnamed-theme role through the same Pi semantic tokens", () => {
-    assertRoleMap(undefined, SEMANTIC_TOKENS);
-  });
-
-  it("keeps the established no-color role mapping for named themes", () => {
+  it("forwards every PALETTE_ROLES value to theme.fg unchanged", () => {
     const fg = vi.fn((color: string, text: string) => `[${color}:${text}]`);
-    const palette = createPalette({ name: "dark", fg }, false);
+    const palette = createPalette({ fg });
 
-    for (const role of Object.keys(NO_COLOR_TOKENS) as PaletteRole[]) {
-      expect(palette.paint(role, role)).toBe(`[${NO_COLOR_TOKENS[role]}:${role}]`);
+    for (const role of PALETTE_ROLES) {
+      expect(palette.paint(role, role)).toBe(`[${role}:${role}]`);
     }
+    expect(fg).toHaveBeenCalledTimes(PALETTE_ROLES.length);
+    const calledRoles = fg.mock.calls.map(([role]) => role as PaletteRole);
+    expect(calledRoles).toEqual([...PALETTE_ROLES]);
   });
 
-  it("resolves the live theme method on every paint", () => {
+  it("returns plain text when colorEnabled is false without calling theme.fg", () => {
+    const fg = vi.fn((color: string, text: string) => `[${color}:${text}]`);
+    const palette = createPalette({ fg }, false);
+
+    for (const role of PALETTE_ROLES) {
+      expect(palette.paint(role, role)).toBe(role);
+    }
+    expect(fg).not.toHaveBeenCalled();
+  });
+
+  it("captures the theme reference so live updates are observed", () => {
     let revision = 1;
-    const theme = {
+    const painters = {
       get fg() {
-        const current = revision;
-        return (color: string, text: string) => `[${current}:${color}:${text}]`;
+        return (color: string, text: string) => `[${revision}:${color}:${text}]`;
       },
     };
-    const palette = createPalette(theme, true);
+    const palette = createPalette(painters);
 
     expect(palette.paint("accent", "x")).toBe("[1:accent:x]");
     revision = 2;

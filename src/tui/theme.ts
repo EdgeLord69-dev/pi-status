@@ -1,3 +1,11 @@
+import { getFixedColorPalette } from "../core/colors.ts";
+import {
+  PALETTE_ROLES,
+  type ColorPalette,
+  type ColorSettings,
+  type HexColor,
+  type PaletteRole,
+} from "../shared/types.ts";
 import type { FooterRenderColor } from "./render.ts";
 
 export type StatusLineMenuColor =
@@ -8,7 +16,8 @@ export type StatusLineMenuColor =
   | "text"
   | "muted"
   | "mdHeading"
-  | "syntaxType";
+  | "syntaxType"
+  | PaletteRole;
 
 export type StatusLineTheme = {
   name?: string;
@@ -115,5 +124,172 @@ export function fromPiTheme(theme: unknown): StatusLineTheme {
       }
     },
     rainbow: (text) => rainbow(text),
+  };
+}
+
+// --- Phase 2: single resolver for Pi, fixed, Custom, and NO_COLOR. -------
+
+const TOKEN_ROLES = {
+  accent: "accent",
+  dim: "dim",
+  success: "ready",
+  warning: "warning",
+  error: "error",
+  thinkingOff: "dim",
+  thinkingMinimal: "muted",
+  thinkingLow: "ready",
+  thinkingMedium: "cache",
+  thinkingHigh: "working",
+  borderAccent: "accent",
+  borderMuted: "dim",
+  selectedBg: "dim",
+  text: "primary",
+  muted: "muted",
+  mdHeading: "working",
+  syntaxType: "cache",
+} as const satisfies Partial<Record<StatusLineMenuColor, PaletteRole>>;
+
+const PALETTE_ROLE_SET = new Set<string>(PALETTE_ROLES);
+
+const PI_ROLES: Record<PaletteRole, string> = {
+  accent: "accent",
+  primary: "text",
+  muted: "muted",
+  dim: "dim",
+  ready: "thinkingLow",
+  working: "mdHeading",
+  input: "thinkingLow",
+  output: "thinkingHigh",
+  cache: "syntaxType",
+  cost: "mdHeading",
+  context: "thinkingLow",
+  menu: "thinkingHigh",
+  warning: "warning",
+  error: "error",
+};
+
+const RAINBOW_ROLES: readonly PaletteRole[] = [
+  "accent",
+  "error",
+  "working",
+  "warning",
+  "ready",
+  "context",
+  "cache",
+  "output",
+];
+
+function tokenRole(token: StatusLineMenuColor): PaletteRole {
+  if (PALETTE_ROLE_SET.has(token)) return token as PaletteRole;
+  return TOKEN_ROLES[token as keyof typeof TOKEN_ROLES];
+}
+
+function channels(hex: HexColor): string {
+  return [hex.slice(1, 3), hex.slice(3, 5), hex.slice(5, 7)]
+    .map((channel) => Number.parseInt(channel, 16))
+    .join(";");
+}
+
+const foreground = (hex: HexColor, text: string) => `\x1b[38;2;${channels(hex)}m${text}\x1b[39m`;
+const background = (hex: HexColor, text: string) => `\x1b[48;2;${channels(hex)}m${text}\x1b[49m`;
+
+export function createStatusLineTheme(
+  theme: unknown,
+  colors: ColorSettings,
+  env: object = process.env,
+): StatusLineTheme {
+  if (noColorRequested(env)) return noTheme;
+
+  const palette: Readonly<ColorPalette> | undefined =
+    colors.preset === "custom" ? colors.custom : getFixedColorPalette(colors.preset);
+  const piTheme = isPiThemeLike(theme) ? theme : undefined;
+  const usePi = piTheme !== undefined && colors.preset === "pi";
+
+  const fg = (token: StatusLineMenuColor, text: string): string => {
+    if (usePi) return safeFg(piTheme, PI_ROLES[tokenRole(token)], text);
+    if (palette) return foreground(palette[tokenRole(token)], text);
+    return text;
+  };
+
+  const bg = (token: StatusLineMenuColor, text: string): string => {
+    if (usePi) {
+      try {
+        return piTheme.bg?.(token as string, text) ?? text;
+      } catch {
+        return text;
+      }
+    }
+    if (palette) return background(palette[tokenRole(token)], text);
+    return text;
+  };
+
+  const bold = (text: string): string => {
+    if (!piTheme) return text;
+    try {
+      return piTheme.bold(text);
+    } catch {
+      return text;
+    }
+  };
+
+  const dim = (text: string): string => {
+    if (usePi) {
+      try {
+        return piTheme.fg("dim", text);
+      } catch {
+        return text;
+      }
+    }
+    if (palette) return foreground(palette.dim, text);
+    return text;
+  };
+
+  const inverse = (text: string): string => {
+    if (usePi) {
+      try {
+        return piTheme.inverse?.(text) ?? text;
+      } catch {
+        return text;
+      }
+    }
+    if (palette) return background(palette.accent, foreground(palette.primary, text));
+    return text;
+  };
+
+  const rainbowRender = (text: string): string => {
+    let result = "";
+    let roleIndex = 0;
+    for (const char of text) {
+      if (char === " " || char === ":") {
+        result += char;
+        continue;
+      }
+      const role = RAINBOW_ROLES[roleIndex % RAINBOW_ROLES.length];
+      roleIndex += 1;
+      if (usePi) {
+        try {
+          result += piTheme.fg(PI_ROLES[role], char);
+          continue;
+        } catch {
+          result += char;
+          continue;
+        }
+      }
+      if (palette) {
+        result += foreground(palette[role], char);
+        continue;
+      }
+      result += char;
+    }
+    return result;
+  };
+
+  return {
+    fg,
+    bg,
+    bold,
+    dim,
+    inverse,
+    rainbow: rainbowRender,
   };
 }
