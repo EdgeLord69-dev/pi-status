@@ -4,7 +4,7 @@
 
 **Goal:** Add Pi-synchronized, sourced fixed, and fully editable 14-role Custom colour presets to `/statusline`, with Pi as the default across Dashboard, Statusbar, and Sidebar.
 
-**Architecture:** Persist one normalized `ColorSettings` object in `PiStatusConfig`. A local immutable catalogue supplies seven fixed palettes, while one render-time `createStatusLineTheme` adapter either delegates to Pi's live theme, emits fixed/Custom truecolour ANSI, or returns identity under `NO_COLOR`. Dashboard resolves draft settings; installed Footer and Sidebar resolve committed runtime settings.
+**Architecture:** Persist one normalized `ColorSettings` object in `PiStatusConfig`. A local immutable catalogue supplies seven fixed palettes, reuses the shared semantic-role contract, and relies on native `structuredClone`; one render-time `createStatusLineTheme` adapter either delegates to Pi's live theme, emits fixed/Custom truecolour ANSI, or returns identity under `NO_COLOR`. Dashboard resolves draft settings; installed Footer and Sidebar resolve committed runtime settings.
 
 **Tech Stack:** TypeScript 6, Node.js `>=24.15.0`, Pi TUI `Input`, 24-bit ANSI colour sequences, Vitest 4, Biome, and the existing extension-owned `ConfigStore`.
 
@@ -15,7 +15,7 @@
 - Modify only `/Users/lanh/Developer/pi-vault/pi-status`; Pi and Atelier repositories are read-only references.
 - Add no dependency, runtime palette fetch, graphical picker, CSS parser, import/export, or Pi global-theme mutation.
 - Use `Pi` (`pi`) as the default preset. `NO_COLOR` is an environment override, never a preset.
-- Persist only uppercase `#RRGGBB` Custom values and retain exactly 14 editable semantic roles.
+- Accept case-insensitive hex input, persist only lowercase `#rrggbb` values, and retain exactly 14 editable semantic roles.
 - Fixed and Custom presets emit truecolour; do not add a 256-colour conversion path.
 - Dashboard uses draft colours; installed surfaces change only after persistence succeeds.
 - Preserve malformed-file overwrite refusal and renderer plain-text fallbacks.
@@ -26,7 +26,7 @@
 
 ## File map
 
-- Create `src/core/colors.ts`: preset IDs, sourced fixed constants, validation, normalization, cloning, and fixed-palette lookup.
+- Create `src/core/colors.ts`: preset IDs, sourced fixed constants, validation, normalization, and fixed-palette lookup; use native `structuredClone` where an exact copy is needed.
 - Modify `src/shared/types.ts` and `src/core/config.ts`: shared contracts and canonical persistence.
 - Modify `src/tui/theme.ts`: the only production resolver for Pi, fixed, Custom, and `NO_COLOR` styling.
 - Modify Sidebar rendering/controller files: direct semantic-role painting and committed render-time resolution.
@@ -39,6 +39,8 @@
 
 ### Task 1: Add the preset catalogue and canonical persistence
 
+**Executable source of truth:** `docs/superpowers/plans/2026-08-24-custom-colours-phase-1-catalog-config.md`. Its complete palette-value fixture, canonical-save regression, typed-fixture file map, and verification commands supersede the abbreviated examples below.
+
 **Files:**
 
 - Create: `src/core/colors.ts`
@@ -49,7 +51,7 @@
 **Interfaces:**
 
 - Produces shared `PALETTE_ROLES`, `PaletteRole`, `ColorPreset`, `FixedColorPreset`, `HexColor`, `ColorPalette`, and `ColorSettings`.
-- Produces `COLOR_PRESET_IDS`, `ATELIER_COLORS`, `FIXED_COLOR_PALETTES`, `DEFAULT_COLOR_SETTINGS`, `isHexColor`, `normalizeHexColor`, `getFixedColorPalette`, `cloneColorSettings`, and `normalizeColorSettings` from `src/core/colors.ts`.
+- Produces `COLOR_PRESET_IDS`, `ATELIER_COLORS`, `FIXED_COLOR_PALETTES`, `DEFAULT_COLOR_SETTINGS`, `isHexColor`, `normalizeHexColor`, `getFixedColorPalette`, and `normalizeColorSettings` from `src/core/colors.ts`.
 - Produces required `PiStatusConfig.colors: ColorSettings` for later tasks.
 
 - [ ] **Step 1: Write failing configuration tests**
@@ -90,12 +92,12 @@ describe("config — colours", () => {
     expect(
       normalizeColorSettings({
         preset: "custom",
-        custom: { accent: "#abcdef", error: "broken", unknown: "#000000" },
+        custom: { accent: "#AbCdEf", error: "broken", unknown: "#000000" },
       }),
     ).toMatchObject({
       preset: "custom",
       customInitialized: true,
-      custom: { accent: "#ABCDEF", error: ATELIER_COLORS.error },
+      custom: { accent: "#abcdef", error: ATELIER_COLORS.error },
     });
     expect(normalizeColorSettings({ preset: "none" }).preset).toBe("pi");
     expect(normalizeColorSettings({ preset: "unknown" }).preset).toBe("pi");
@@ -126,22 +128,22 @@ describe("config — colours", () => {
       expect(Object.keys(palette)).toEqual(PALETTE_ROLES);
       expect(Object.values(palette)).toHaveLength(14);
       expect(
-        Object.values(palette).every((value) => /^#[0-9A-F]{6}$/.test(value)),
+        Object.values(palette).every((value) => /^#[0-9a-f]{6}$/.test(value)),
       ).toBe(true);
     }
   });
 });
 ```
 
-Add exact assertions for one distinctive role from every sourced preset:
+The executable Phase 1 plan replaces these smoke assertions with one complete role-ordered expected-value table for all seven fixed palettes:
 
 ```ts
-expect(FIXED_COLOR_PALETTES["catppuccin-mocha"].accent).toBe("#CBA6F7");
-expect(FIXED_COLOR_PALETTES["catppuccin-latte"].primary).toBe("#4C4F69");
-expect(FIXED_COLOR_PALETTES.dracula.error).toBe("#FF5555");
-expect(FIXED_COLOR_PALETTES["dracula-alucard"].primary).toBe("#1F1F1F");
-expect(FIXED_COLOR_PALETTES["tokyonight-moon"].cache).toBe("#86E1FC");
-expect(FIXED_COLOR_PALETTES["tokyonight-day"].primary).toBe("#3760BF");
+expect(FIXED_COLOR_PALETTES["catppuccin-mocha"].accent).toBe("#cba6f7");
+expect(FIXED_COLOR_PALETTES["catppuccin-latte"].primary).toBe("#4c4f69");
+expect(FIXED_COLOR_PALETTES.dracula.error).toBe("#ff5555");
+expect(FIXED_COLOR_PALETTES["dracula-alucard"].primary).toBe("#1f1f1f");
+expect(FIXED_COLOR_PALETTES["tokyonight-moon"].cache).toBe("#86e1fc");
+expect(FIXED_COLOR_PALETTES["tokyonight-day"].primary).toBe("#3760bf");
 ```
 
 - [ ] **Step 2: Run the configuration test and verify RED**
@@ -195,9 +197,11 @@ export type ColorSettings = {
   custom: ColorPalette;
   customInitialized: boolean;
 };
+
+export type SidebarSegmentRole = PaletteRole;
 ```
 
-Add `colors: ColorSettings` to `PiStatusConfig`.
+Replace the existing `SidebarSegmentRole` union with the alias above, then add `colors: ColorSettings` to `PiStatusConfig`. Do not retain a second copy of the same 14 roles.
 
 - [ ] **Step 4: Create the immutable preset catalogue**
 
@@ -217,20 +221,20 @@ export const COLOR_PRESET_IDS = [
 ] as const satisfies readonly ColorPreset[];
 
 export const ATELIER_COLORS: Readonly<ColorPalette> = Object.freeze({
-  accent: "#B18CFF",
-  primary: "#D4D4D4",
+  accent: "#b18cff",
+  primary: "#d4d4d4",
   muted: "#808080",
   dim: "#666666",
-  ready: "#6EA8FE",
-  working: "#FF9F43",
-  input: "#6EA8FE",
-  output: "#B18CFF",
-  cache: "#7DD3FC",
-  cost: "#FF9F43",
-  context: "#6EA8FE",
-  menu: "#B18CFF",
-  warning: "#FF9F43",
-  error: "#FF5D73",
+  ready: "#6ea8fe",
+  working: "#ff9f43",
+  input: "#6ea8fe",
+  output: "#b18cff",
+  cache: "#7dd3fc",
+  cost: "#ff9f43",
+  context: "#6ea8fe",
+  menu: "#b18cff",
+  warning: "#ff9f43",
+  error: "#ff5d73",
 });
 
 export const FIXED_COLOR_PALETTES: Readonly<
@@ -239,102 +243,102 @@ export const FIXED_COLOR_PALETTES: Readonly<
   atelier: ATELIER_COLORS,
   // Catppuccin palette 1.8.0: https://github.com/catppuccin/palette/blob/main/palette.json
   "catppuccin-mocha": Object.freeze({
-    accent: "#CBA6F7",
-    primary: "#CDD6F4",
-    muted: "#A6ADC8",
-    dim: "#6C7086",
-    ready: "#A6E3A1",
-    working: "#FAB387",
-    input: "#89B4FA",
-    output: "#CBA6F7",
-    cache: "#89DCEB",
-    cost: "#FAB387",
-    context: "#89B4FA",
-    menu: "#F5C2E7",
-    warning: "#F9E2AF",
-    error: "#F38BA8",
+    accent: "#cba6f7",
+    primary: "#cdd6f4",
+    muted: "#a6adc8",
+    dim: "#6c7086",
+    ready: "#a6e3a1",
+    working: "#fab387",
+    input: "#89b4fa",
+    output: "#cba6f7",
+    cache: "#89dceb",
+    cost: "#fab387",
+    context: "#89b4fa",
+    menu: "#f5c2e7",
+    warning: "#f9e2af",
+    error: "#f38ba8",
   }),
   "catppuccin-latte": Object.freeze({
-    accent: "#8839EF",
-    primary: "#4C4F69",
-    muted: "#6C6F85",
-    dim: "#9CA0B0",
-    ready: "#40A02B",
-    working: "#FE640B",
-    input: "#1E66F5",
-    output: "#8839EF",
-    cache: "#04A5E5",
-    cost: "#FE640B",
-    context: "#1E66F5",
-    menu: "#EA76CB",
-    warning: "#DF8E1D",
-    error: "#D20F39",
+    accent: "#8839ef",
+    primary: "#4c4f69",
+    muted: "#6c6f85",
+    dim: "#9ca0b0",
+    ready: "#40a02b",
+    working: "#fe640b",
+    input: "#1e66f5",
+    output: "#8839ef",
+    cache: "#04a5e5",
+    cost: "#fe640b",
+    context: "#1e66f5",
+    menu: "#ea76cb",
+    warning: "#df8e1d",
+    error: "#d20f39",
   }),
   // Dracula Classic/Alucard: https://github.com/dracula/dracula-theme#color-palette
   dracula: Object.freeze({
-    accent: "#BD93F9",
-    primary: "#F8F8F2",
-    muted: "#6272A4",
-    dim: "#44475A",
-    ready: "#50FA7B",
-    working: "#FFB86C",
-    input: "#8BE9FD",
-    output: "#BD93F9",
-    cache: "#8BE9FD",
-    cost: "#FFB86C",
-    context: "#8BE9FD",
-    menu: "#FF79C6",
-    warning: "#F1FA8C",
-    error: "#FF5555",
+    accent: "#bd93f9",
+    primary: "#f8f8f2",
+    muted: "#6272a4",
+    dim: "#44475a",
+    ready: "#50fa7b",
+    working: "#ffb86c",
+    input: "#8be9fd",
+    output: "#bd93f9",
+    cache: "#8be9fd",
+    cost: "#ffb86c",
+    context: "#8be9fd",
+    menu: "#ff79c6",
+    warning: "#f1fa8c",
+    error: "#ff5555",
   }),
   "dracula-alucard": Object.freeze({
-    accent: "#644AC9",
-    primary: "#1F1F1F",
-    muted: "#6C664B",
-    dim: "#6C664B",
-    ready: "#14710A",
-    working: "#A34D14",
-    input: "#036A96",
-    output: "#644AC9",
-    cache: "#036A96",
-    cost: "#A34D14",
-    context: "#036A96",
-    menu: "#A3144D",
-    warning: "#846E15",
-    error: "#CB3A2A",
+    accent: "#644ac9",
+    primary: "#1f1f1f",
+    muted: "#6c664b",
+    dim: "#6c664b",
+    ready: "#14710a",
+    working: "#a34d14",
+    input: "#036a96",
+    output: "#644ac9",
+    cache: "#036a96",
+    cost: "#a34d14",
+    context: "#036a96",
+    menu: "#a3144d",
+    warning: "#846e15",
+    error: "#cb3a2a",
   }),
   // TokyoNight: https://github.com/folke/tokyonight.nvim/tree/main/lua/tokyonight/colors
   "tokyonight-moon": Object.freeze({
-    accent: "#C099FF",
-    primary: "#C8D3F5",
-    muted: "#636DA6",
-    dim: "#545C7E",
-    ready: "#C3E88D",
-    working: "#FF966C",
-    input: "#82AAFF",
-    output: "#C099FF",
-    cache: "#86E1FC",
-    cost: "#FF966C",
-    context: "#82AAFF",
-    menu: "#FCA7EA",
-    warning: "#FFC777",
-    error: "#FF757F",
+    accent: "#c099ff",
+    primary: "#c8d3f5",
+    muted: "#636da6",
+    dim: "#545c7e",
+    ready: "#c3e88d",
+    working: "#ff966c",
+    input: "#82aaff",
+    output: "#c099ff",
+    cache: "#86e1fc",
+    cost: "#ff966c",
+    context: "#82aaff",
+    menu: "#fca7ea",
+    warning: "#ffc777",
+    error: "#ff757f",
   }),
   "tokyonight-day": Object.freeze({
-    accent: "#9854F1",
-    primary: "#3760BF",
-    muted: "#848CB5",
-    dim: "#8990B3",
+    accent: "#9854f1",
+    primary: "#3760bf",
+    muted: "#848cb5",
+    dim: "#8990b3",
     ready: "#587539",
-    working: "#B15C00",
-    input: "#2E7DE9",
-    output: "#9854F1",
+    working: "#b15c00",
+    input: "#2e7de9",
+    output: "#9854f1",
     cache: "#007197",
-    cost: "#B15C00",
-    context: "#2E7DE9",
-    menu: "#7847BD",
-    warning: "#8C6C3E",
-    error: "#F52A65",
+    cost: "#b15c00",
+    context: "#2e7de9",
+    menu: "#7847bd",
+    warning: "#8c6c3e",
+    error: "#f52a65",
   }),
 });
 ```
@@ -362,13 +366,13 @@ export function normalizeHexColor(
   value: unknown,
   fallback: HexColor,
 ): HexColor {
-  return isHexColor(value) ? (value.toUpperCase() as HexColor) : fallback;
+  return isHexColor(value) ? (value.toLowerCase() as HexColor) : fallback;
 }
 
 export function getFixedColorPalette(
   preset: ColorPreset,
 ): Readonly<ColorPalette> | undefined {
-  return preset in FIXED_COLOR_PALETTES
+  return Object.hasOwn(FIXED_COLOR_PALETTES, preset)
     ? FIXED_COLOR_PALETTES[preset as FixedColorPreset]
     : undefined;
 }
@@ -403,24 +407,16 @@ export function normalizeColorSettings(input: unknown): ColorSettings {
     customInitialized: value.customInitialized === true || preset === "custom",
   };
 }
-
-export function cloneColorSettings(value: ColorSettings): ColorSettings {
-  return {
-    preset: value.preset,
-    custom: { ...value.custom },
-    customInitialized: value.customInitialized,
-  };
-}
 ```
 
 - [ ] **Step 6: Wire colours through config load, clone, and save**
 
-In `src/core/config.ts`, import the colour helpers. Add an independent clone of `DEFAULT_COLOR_SETTINGS` to `DEFAULT_CONFIG` and `cloneDefaultConfig`; add `colors: normalizeColorSettings(input.colors)` to `normalizeConfig`; write `colors: cloneColorSettings(config.colors)` in `saveConfig`.
+In `src/core/config.ts`, import `DEFAULT_COLOR_SETTINGS` and `normalizeColorSettings`. Add `colors: structuredClone(DEFAULT_COLOR_SETTINGS)` to `DEFAULT_CONFIG`, `colors: structuredClone(DEFAULT_CONFIG.colors)` to `cloneDefaultConfig`, `colors: normalizeColorSettings(input.colors)` to `normalizeConfig`, and `colors: normalizeColorSettings(config.colors)` to `saveConfig`. Saving must normalize rather than merely copy so JavaScript callers and cast values cannot persist uppercase, mixed-case, partial, or unknown colour data.
 
 Update every typed `PiStatusConfig` fixture reported by TypeScript with:
 
 ```ts
-colors: cloneColorSettings(DEFAULT_COLOR_SETTINGS),
+colors: structuredClone(DEFAULT_COLOR_SETTINGS),
 ```
 
 Do not make `colors` optional or add casts to hide missing fixtures.
@@ -431,15 +427,16 @@ Run:
 
 ```bash
 pnpm exec vitest run tests/core/config.test.ts
-pnpm exec tsc --noEmit
+pnpm check
+git diff --check
 ```
 
-Expected: PASS with no missing `colors` fixtures.
+Expected: the focused test passes, then formatting, lint, typecheck, and the full test suite pass, and `git diff --check` reports no whitespace errors.
 
 - [ ] **Step 8: Commit the catalogue checkpoint when authorized**
 
 ```bash
-git add src/core/colors.ts src/shared/types.ts src/core/config.ts tests/core/config.test.ts
+git add src/core/colors.ts src/shared/types.ts src/core/config.ts tests/core/config.test.ts tests/index.test.ts tests/index-save.test.ts tests/index-sidebar-layout.test.ts tests/core/resolve-footer.test.ts tests/core/runtime-state.test.ts tests/core/sidebar-layout.test.ts tests/tui/dashboard-render.test.ts tests/tui/dashboard-state.test.ts tests/tui/dashboard.test.ts tests/tui/sidebar-render.test.ts tests/tui/sidebar.test.ts
 git commit -m "feat: add colour preset catalogue"
 ```
 
@@ -968,12 +965,12 @@ In `tests/tui/dashboard.test.ts`, activate Accent and verify:
 
 ```ts
 expect(renderText()).toContain("Edit accent colour");
-component.handleInput("#010203");
+component.handleInput("#AbCdEf");
 component.handleInput("\r");
-expect(component.getState().draft.colors.custom.accent).toBe("#010203");
+expect(component.getState().draft.colors.custom.accent).toBe("#abcdef");
 ```
 
-Add invalid-submit and Escape tests. Invalid submit must leave the dialog open and draft unchanged, and notify `Colour must use #RRGGBB` with `warning` once per submit.
+Add invalid-submit and Escape tests. Invalid submit must leave the dialog open and draft unchanged, and notify `Colour must use # followed by 6 hex digits` with `warning` once per submit.
 
 - [ ] **Step 5: Run Dashboard render/component tests and verify RED**
 
@@ -985,7 +982,7 @@ Expected: FAIL because preset rendering and the colour dialog do not exist.
 
 - [ ] **Step 6: Implement labels, draft preview, and Input dialog**
 
-In `src/tui/dashboard-render.ts`, add the exact labels above and render Colours as an adjustable `↔` row. Render each Custom row with its role, uppercase value, and a sample through `theme.fg(role, "●")`.
+In `src/tui/dashboard-render.ts`, add the exact labels above and render Colours as an adjustable `↔` row. Render each Custom row with its role, lowercase value, and a sample through `theme.fg(role, "●")`.
 
 Extend `DashboardDialog`:
 
@@ -1008,7 +1005,7 @@ Handle `edit_color` by seeding `Input` with the current value. On submit:
 
 ```ts
 if (!isHexColor(value)) {
-  this.warn("Colour must use #RRGGBB");
+  this.warn("Colour must use # followed by 6 hex digits");
   return;
 }
 this.dispatch({
@@ -1119,7 +1116,7 @@ In `README.md`:
 - List all nine labels in Dashboard order.
 - Group Catppuccin Mocha/Latte, Dracula/Alucard, and Tokyo Night Moon/Day as explicit dark/light choices.
 - Link the three official palette sources used by the local constants.
-- Document first-use Custom seeding, 14 `#RRGGBB` roles, uppercase persistence, and truecolour requirements.
+- Document first-use Custom seeding, 14 `#rrggbb` roles, case-insensitive input, lowercase persistence, and truecolour requirements.
 - State that `NO_COLOR` disables styling across Dashboard, Statusbar, and Sidebar without changing the saved selection.
 
 In `CHANGELOG.md`, add above released entries:
@@ -1167,7 +1164,7 @@ Launch the local extension in Pi and open `/statusline` at approximately `120x30
 3. All nine labels cycle in the documented order with wraparound.
 4. Each fixed dark/light preset previews and saves consistently across all surfaces.
 5. First Custom entry clones the selected fixed palette, or Atelier from Pi; later switches preserve it.
-6. Custom exposes 14 scrollable roles; lowercase input saves uppercase, invalid input remains open with one warning per submit, and Escape cancels.
+6. Custom exposes 14 scrollable roles; uppercase, lowercase, and mixed-case input saves lowercase, invalid input remains open with one warning per submit, and Escape cancels.
 7. Draft changes recolour Dashboard immediately while installed surfaces wait for confirmed Save.
 8. Failed Save leaves installed colours unchanged and Dashboard dirty.
 9. `NO_COLOR` removes ANSI styling without changing the saved preset.

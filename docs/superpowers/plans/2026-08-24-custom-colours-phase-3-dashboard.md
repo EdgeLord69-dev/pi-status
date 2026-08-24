@@ -19,7 +19,7 @@
 - Modify only `/Users/lanh/Developer/pi-vault/pi-status`; Pi and Atelier repositories are read-only references.
 - Add no dependency, runtime palette fetch, graphical picker, CSS parser, import/export, or Pi global-theme mutation.
 - Use `Pi` (`pi`) as the default preset. `NO_COLOR` is an environment override, never a preset.
-- Persist only uppercase `#RRGGBB` Custom values and retain exactly 14 editable semantic roles.
+- Accept case-insensitive hex input, persist only lowercase `#rrggbb` values, and retain exactly 14 editable semantic roles.
 - Fixed and Custom presets emit truecolour; do not add a 256-colour conversion path.
 - Dashboard uses draft colours; installed surfaces change only after persistence succeeds.
 - Preserve malformed-file overwrite refusal and renderer plain-text fallbacks.
@@ -233,12 +233,12 @@ In `tests/tui/dashboard.test.ts`, activate Accent and verify:
 
 ```ts
 expect(renderText()).toContain("Edit accent colour");
-component.handleInput("#010203");
+component.handleInput("#AbCdEf");
 component.handleInput("\r");
-expect(component.getState().draft.colors.custom.accent).toBe("#010203");
+expect(component.getState().draft.colors.custom.accent).toBe("#abcdef");
 ```
 
-Add invalid-submit and Escape tests. Invalid submit must leave the dialog open and draft unchanged, and notify `Colour must use #RRGGBB` with `warning` once per submit.
+Add invalid-submit and Escape tests. Invalid submit must leave the dialog open and draft unchanged, and notify `Colour must use # followed by 6 hex digits` with `warning` once per submit.
 
 - [ ] **Step 5: Run Dashboard render/component tests and verify RED**
 
@@ -250,7 +250,7 @@ Expected: FAIL because preset rendering and the colour dialog do not exist.
 
 - [ ] **Step 6: Implement labels, draft preview, and Input dialog**
 
-In `src/tui/dashboard-render.ts`, add the exact labels above and render Colours as an adjustable `↔` row. Render each Custom row with its role, uppercase value, and a sample through `theme.fg(role, "●")`.
+In `src/tui/dashboard-render.ts`, add the exact labels above and render Colours as an adjustable `↔` row. Render each Custom row with its role, lowercase value, and a sample through `theme.fg(role, "●")`.
 
 Extend `DashboardDialog`:
 
@@ -273,7 +273,7 @@ Handle `edit_color` by seeding `Input` with the current value. On submit:
 
 ```ts
 if (!isHexColor(value)) {
-  this.warn("Colour must use #RRGGBB");
+  this.warn("Colour must use # followed by 6 hex digits");
   return;
 }
 this.dispatch({
