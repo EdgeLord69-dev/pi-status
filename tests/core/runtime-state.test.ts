@@ -6,6 +6,7 @@ import {
   SIDEBAR_BUILTIN_ASSIGNMENTS,
   type PiStatusConfig,
 } from "../../src/shared/types.ts";
+import { DEFAULT_COLOR_SETTINGS } from "../../src/core/colors.ts";
 
 const defaultConfig: PiStatusConfig = {
   statusbarEnabled: true,
@@ -25,6 +26,7 @@ const defaultConfig: PiStatusConfig = {
     segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]],
   })),
   sidebarHiddenSegments: [],
+  colors: structuredClone(DEFAULT_COLOR_SETTINGS),
 };
 
 function stubCtx(cwd = "/test"): ExtensionContext {
@@ -97,6 +99,7 @@ describe("RuntimeStateMachine", () => {
         segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]],
       })),
       sidebarHiddenSegments: [],
+      colors: structuredClone(DEFAULT_COLOR_SETTINGS),
     };
     sm.update({ type: "config_reload", config: newConfig });
     expect(sm.snapshot().config).toEqual(newConfig);

@@ -5,6 +5,7 @@ import type { PiStatusConfig } from "../../src/shared/types.ts";
 import { DEFAULT_SIDEBAR_PANEL_LAYOUT, DEFAULT_ZONES } from "../../src/shared/types.ts";
 import { createSidebarController } from "../../src/tui/sidebar.ts";
 import { seedSidebarEffectiveLayout } from "../../src/core/sidebar-layout.ts";
+import { DEFAULT_COLOR_SETTINGS } from "../../src/core/colors.ts";
 import { buildSidebarSegmentCatalog } from "../../src/tui/sidebar-segments.ts";
 import { buildSidebarSnapshot, type SidebarSnapshot } from "../../src/tui/sidebar-render.ts";
 import {
@@ -51,6 +52,7 @@ const FIXED_CONFIG: PiStatusConfig = {
   completionNotifications: false,
   sidebarPanelLayout: [...DEFAULT_SIDEBAR_PANEL_LAYOUT],
   sidebarHiddenSegments: [],
+  colors: structuredClone(DEFAULT_COLOR_SETTINGS),
 };
 
 function sidebarView(snapshot = FIXED_SNAPSHOT) {

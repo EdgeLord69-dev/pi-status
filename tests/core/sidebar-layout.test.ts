@@ -22,6 +22,7 @@ import {
   type PiStatusConfig,
   type SidebarCatalogEntry,
 } from "../../src/shared/types.ts";
+import { DEFAULT_COLOR_SETTINGS } from "../../src/core/colors.ts";
 
 function config(overrides: Partial<PiStatusConfig> = {}): PiStatusConfig {
   return {
@@ -36,6 +37,7 @@ function config(overrides: Partial<PiStatusConfig> = {}): PiStatusConfig {
       segments: [...entry.segments],
     })),
     sidebarHiddenSegments: [],
+    colors: structuredClone(DEFAULT_COLOR_SETTINGS),
     ...overrides,
   };
 }
