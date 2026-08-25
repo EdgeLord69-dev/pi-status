@@ -45,7 +45,7 @@ Once installed, the footer updates automatically. Run `/statusline` inside Pi to
 
 `/statusline` stays available even when both the Statusbar and Sidebar are disabled — you can re-enable either surface from the Settings tab at any time.
 
-Pi 0.84.1 or newer is required.
+Pi 0.84.3 or newer is required.
 
 ## Available Segments
 
@@ -189,7 +189,7 @@ Pi is the default colour preset. It resolves Pi's active theme on every Dashboar
 
 The Dashboard order is Pi, Atelier, Catppuccin Mocha, Catppuccin Latte, Dracula, Dracula Alucard, Tokyo Night Moon, Tokyo Night Day, and Custom. Catppuccin Mocha/Latte, Dracula/Alucard, and Tokyo Night Moon/Day are explicit dark/light choices; fixed presets do not switch automatically. Their local constants are attributed to the official [Catppuccin palette](https://github.com/catppuccin/palette/blob/main/palette.json), [Dracula palettes](https://github.com/dracula/dracula-theme#color-palette), and [TokyoNight sources](https://github.com/folke/tokyonight.nvim/tree/main/lua/tokyonight/colors).
 
-The first switch to Custom copies the selected fixed palette; switching from Pi copies Atelier because Pi exposes live theme operations rather than stable hex values. Later preset switches preserve all 14 Custom roles. Custom accepts case-insensitive `#rrggbb`, persists lowercase values, and requires truecolour terminal support.
+The first switch to Custom copies the selected fixed palette; switching from Pi copies Atelier because Pi exposes live theme operations rather than stable hex values. Later preset switches preserve all 14 Custom roles. Custom is editable from the Settings tab: the row opens per-role hex inputs that validate case-insensitive `#rrggbb`, persist lowercase values, and require truecolour terminal support. `NO_COLOR` continues to disable styling across Dashboard, Statusbar, and Sidebar without changing the saved preset.
 
 `NO_COLOR` disables styling across Dashboard, Statusbar, and Sidebar without changing the saved preset.
 
@@ -251,7 +251,7 @@ If you are upgrading from `0.3.x`, note these compatibility changes:
 - Configuration lives in the global extension-owned `<Pi agent directory>/extensions/statusline.json`. Pi `settings.json` values are ignored and not migrated automatically.
 - Per-tool sidebar rows replace the old global tool-name switch and default to disabled.
 - Several new opt-in segments are available: `workspace-pulse`, `turn-progress`, `response-performance`, `cache-read-tokens`, `cache-write-tokens`, `cache-hit`, `session-cost`, `access-type`.
-- The tested Pi host baseline is now `@earendil-works/pi-coding-agent@0.84.1` and `@earendil-works/pi-tui@0.84.1`.
+- The tested Pi host baseline is now `@earendil-works/pi-coding-agent@0.84.3` and `@earendil-works/pi-tui@0.84.3`.
 - The extension requires Node.js `>=24.15.0`.
 
 ## Development & Verification
@@ -265,7 +265,7 @@ pnpm run release:check
 
 ## Acknowledgements
 
-The sidebar is a port of [`pi-atelier`](https://github.com/michaelmjhhhh/pi-atelier)'s sidebar (`d78f1d1`), including the split-pane controller, palette, and overall layout model. Built on the public Pi APIs exported from `@earendil-works/pi-coding-agent` and `@earendil-works/pi-tui`.
+The sidebar was inspired by and builds on ideas from the [pi-atelier](https://github.com/michaelmjhhhh/pi-atelier)
 
 ## Changelog
 
