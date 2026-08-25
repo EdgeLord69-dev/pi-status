@@ -90,7 +90,7 @@ export function renderTabBar(
   const cells = tabs.slice(start, end).map((tab) => {
     const label = ` ${tab.label} `;
     return tab.id === activeId
-      ? theme.fg("accent", theme.inverse(theme.bold(label)))
+      ? theme.inverse(theme.bold(label))
       : theme.bg("selectedBg", theme.fg("accent", label));
   });
   let remaining = safeWidth - visibleWidth(cells.join(" "));
