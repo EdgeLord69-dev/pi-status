@@ -32,7 +32,7 @@ import {
   startSessionCompaction,
   type SessionDetails,
 } from "./session-actions.ts";
-import { createStatusLineTheme, noColorRequested } from "./theme.ts";
+import { createStatusLineTheme } from "./theme.ts";
 import { isHexColor, normalizeHexColor } from "../core/colors.ts";
 import { readToolSnapshot, toggleLiveTool, type DashboardTool } from "./tool-controls.ts";
 
@@ -120,11 +120,7 @@ export class StatusLineDashboardComponent implements Component, Focusable {
   }
 
   render(width: number): string[] {
-    const theme = createStatusLineTheme(
-      this.options.piTheme,
-      this.state.draft.colors,
-      noColorRequested() ? ({} as object) : process.env,
-    );
+    const theme = createStatusLineTheme(this.options.piTheme, this.state.draft.colors);
     const result = renderDashboard(
       this.state,
       this.options.getPreviewInput(),

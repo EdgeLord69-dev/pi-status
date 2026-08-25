@@ -90,10 +90,9 @@ export function selectColorPreset(colors: ColorSettings, preset: ColorPreset): C
   if (preset !== "custom" || colors.customInitialized) {
     return { ...colors, preset };
   }
-  const seed = getFixedColorPalette(colors.preset) ?? ATELIER_COLORS;
   return {
     preset,
-    custom: { ...seed },
+    custom: { ...(getFixedColorPalette(colors.preset) ?? ATELIER_COLORS) },
     customInitialized: true,
   };
 }
@@ -237,9 +236,7 @@ export function configsEqual(left: PiStatusConfig, right: PiStatusConfig): boole
     left.completionNotifications === right.completionNotifications &&
     left.colors.preset === right.colors.preset &&
     left.colors.customInitialized === right.colors.customInitialized &&
-    (Object.keys(left.colors.custom) as PaletteRole[]).every(
-      (role) => left.colors.custom[role] === right.colors.custom[role],
-    )
+    PALETTE_ROLES_CONST.every((role) => left.colors.custom[role] === right.colors.custom[role])
   );
 }
 
@@ -674,12 +671,13 @@ export function reduceDashboardState(
     return { state: clampSelection(state) };
   }
 
-  const row = currentRow(state);
-  if (!row) return { state };
   if (action.type === "set_color") {
     state.draft.colors.custom[action.role] = action.value;
     return { state: clampSelection(state) };
   }
+
+  const row = currentRow(state);
+  if (!row) return { state };
   if (action.type === "adjust") {
     if (row.type === "sidebar_active_panel") {
       const panels = state.draftSidebarLayout.panels;

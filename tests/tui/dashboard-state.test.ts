@@ -374,7 +374,7 @@ describe("dashboard Statusbar tab initialization", () => {
       role: "accent",
     });
 
-    state.activeTab = "statusbar"; // set_color must not depend on the selected row.
+    state.activeTab = "session"; // No rows: set_color must not depend on selected-row lookup.
     const edited = reduceDashboardState(state, {
       type: "set_color",
       role: "accent",

@@ -318,9 +318,8 @@ function logicalBody(
       } else if (row.type === "color_preset") {
         pushSelectable("↔", "Colours", COLOR_LABELS[state.draft.colors.preset]);
       } else if (row.type === "color_role") {
-        const role: PaletteRole = row.role;
-        const value = state.draft.colors.custom[role];
-        pushSelectable(" ", role, `${value} ${theme.fg(role, "●")}`);
+        const value = state.draft.colors.custom[row.role];
+        pushSelectable(" ", row.role, `${value} ${theme.fg(row.role, "●")}`);
       } else if (row.type === "notifications") {
         pushSelectable(
           state.draft.completionNotifications ? "[•]" : "[ ]",

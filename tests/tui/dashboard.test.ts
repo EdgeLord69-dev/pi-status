@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { CURSOR_MARKER, Input, type TUI } from "@earendil-works/pi-tui";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildSnapshot } from "../../src/core/resolve-footer.ts";
 import {
   BUILTIN_SIDEBAR_PANEL_IDS,
@@ -56,6 +56,14 @@ interface DashboardOverrides {
   activeTools?: string[];
   piTheme?: unknown;
 }
+
+beforeEach(() => {
+  vi.stubEnv("NO_COLOR", undefined);
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 function makeDashboard(overrides: DashboardOverrides = {}) {
   const order: string[] = [];
@@ -659,6 +667,15 @@ describe("StatusLineDashboardComponent colour editor", () => {
     expect(component.render(100).join("\n")).toContain("first:");
     prefix = "second";
     expect(component.render(100).join("\n")).toContain("second:");
+  });
+
+  it("lets NO_COLOR override a Custom draft preview", () => {
+    const { component } = makeDashboard();
+    openAccentEditor(component);
+    component.handleInput("\x1b");
+
+    vi.stubEnv("NO_COLOR", "");
+    expect(component.render(100).join("\n")).not.toContain("\x1b[");
   });
 
   it("propagates focus and invalidation to an open colour input", () => {
