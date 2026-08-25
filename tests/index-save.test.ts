@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { Component, OverlayHandle, TUI } from "@earendil-works/pi-tui";
 import {
@@ -15,12 +15,18 @@ import {
   buildSetFooterSpy,
   createContext,
   getRegisteredCommand,
+  mountWithFactory,
   renderWithFactory,
 } from "./helpers.ts";
+
+beforeEach(() => {
+  vi.stubEnv("NO_COLOR", undefined);
+});
 
 afterEach(() => {
   vi.doUnmock("../src/core/config.ts");
   vi.resetModules();
+  vi.unstubAllEnvs();
 });
 
 function moveToSettingsRow(
@@ -493,15 +499,20 @@ describe("/statusline persistence", () => {
 
     const component = host.component();
     if (!component) throw new Error("expected dashboard component");
+    const footer = mountWithFactory(footerSpy.calls.at(-1));
+    if (!footer) throw new Error("expected footer component");
+    const renderFooter = () => footer.render(200).join("\n");
+    const footerInstalls = footerSpy.calls.length;
     editAtelierAccentDraft(component);
 
     expect(component.render(120).join("\n")).toContain("38;2;1;2;3m");
-    expect(renderWithFactory(footerSpy.calls.at(-1))).not.toContain("38;2;1;2;3m");
+    expect(renderFooter()).not.toContain("38;2;1;2;3m");
     expect(host.renderHostText()).not.toContain("38;2;1;2;3m");
 
     saveSettings(component);
 
-    expect(renderWithFactory(footerSpy.calls.at(-1))).toContain("38;2;1;2;3m");
+    expect(footerSpy.calls).toHaveLength(footerInstalls);
+    expect(renderFooter()).toContain("38;2;1;2;3m");
     expect(host.renderHostText()).toContain("38;2;1;2;3m");
     expect(isDashboardDirty(component.getState())).toBe(false);
 
@@ -540,13 +551,16 @@ describe("/statusline persistence", () => {
 
     const component = host.component();
     if (!component) throw new Error("expected dashboard component");
+    const footer = mountWithFactory(footerSpy.calls.at(-1));
+    if (!footer) throw new Error("expected footer component");
+    const renderFooter = () => footer.render(200).join("\n");
     editAtelierAccentDraft(component);
     saveSettings(component);
 
     expect(ctx.ui.notify).toHaveBeenCalledWith("Failed to save statusline config", "warning");
     expect(isDashboardDirty(component.getState())).toBe(true);
-    expect(renderWithFactory(footerSpy.calls.at(-1))).toContain("38;2;177;140;255m");
-    expect(renderWithFactory(footerSpy.calls.at(-1))).not.toContain("38;2;1;2;3m");
+    expect(renderFooter()).toContain("38;2;177;140;255m");
+    expect(renderFooter()).not.toContain("38;2;1;2;3m");
     expect(host.renderHostText()).toContain("38;2;177;140;255m");
     expect(host.renderHostText()).not.toContain("38;2;1;2;3m");
 
@@ -589,8 +603,10 @@ describe("/statusline persistence", () => {
 
     const component = host.component();
     if (!component) throw new Error("expected dashboard component");
+    const footer = mountWithFactory(footerSpy.calls.at(-1), { theme: liveTheme });
+    if (!footer) throw new Error("expected footer component");
     const renderDashboard = () => component.render(120).join("\n");
-    const renderFooter = () => renderWithFactory(footerSpy.calls.at(-1), { theme: liveTheme });
+    const renderFooter = () => footer.render(200).join("\n");
     const renderSidebar = () => host.renderHostText();
 
     expect(renderDashboard()).toContain("pi:first");

@@ -181,12 +181,12 @@ export class MemoryConfigStore implements ConfigStore {
   }
 }
 
-export function renderWithFactory(
+export function mountWithFactory(
   factory: unknown,
-  options: { gitBranch?: string | null; width?: number; theme?: unknown } = {},
-): string {
-  if (typeof factory !== "function") return "";
-  const component = (
+  options: { gitBranch?: string | null; theme?: unknown } = {},
+): { render: (width: number) => string[] } | undefined {
+  if (typeof factory !== "function") return undefined;
+  return (
     factory as (
       tui: unknown,
       theme: unknown,
@@ -200,5 +200,15 @@ export function renderWithFactory(
       getExtensionStatuses: () => new Map(),
     },
   );
-  return component.render(options.width ?? 200).join("\n");
+}
+
+export function renderWithFactory(
+  factory: unknown,
+  options: { gitBranch?: string | null; width?: number; theme?: unknown } = {},
+): string {
+  return (
+    mountWithFactory(factory, options)
+      ?.render(options.width ?? 200)
+      .join("\n") ?? ""
+  );
 }

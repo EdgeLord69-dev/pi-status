@@ -161,7 +161,8 @@ export default function createExtension(pi: ExtensionAPI): void {
     sidebarLayout: SidebarEffectiveLayout,
     catalog: readonly SidebarCatalogEntry[],
   ): void {
-    const ctx = runtimeState.snapshot().ctx;
+    const current = runtimeState.snapshot();
+    const ctx = current.ctx;
     if (ctx?.mode === "tui") {
       persistSidebarLayout({
         config: next,
@@ -171,7 +172,11 @@ export default function createExtension(pi: ExtensionAPI): void {
         commit: (committed, committedLayout) => {
           sidebarLayoutRuntime?.replace(committedLayout, catalog);
           runtimeState.update({ type: "config_reload", config: committed });
-          applySurfaceVisibility(ctx, committed);
+          applySurfaceVisibility(
+            ctx,
+            committed,
+            current.config.statusbarEnabled !== committed.statusbarEnabled,
+          );
         },
       });
       return;
@@ -328,11 +333,15 @@ export default function createExtension(pi: ExtensionAPI): void {
     workspacePulseRuntime?.setOnChange(requestRender);
   }
 
-  function applySurfaceVisibility(ctx: ExtensionContext, config: PiStatusConfig): void {
+  function applySurfaceVisibility(
+    ctx: ExtensionContext,
+    config: PiStatusConfig,
+    updateFooter = true,
+  ): void {
     if (ctx.mode !== "tui") return;
 
     activeSidebarController?.setShown(config.sidebarEnabled);
-    installFooter(ctx, config);
+    if (updateFooter) installFooter(ctx, config);
     if (!config.statusbarEnabled) setSidebarRenderSubscriptions();
     syncWorkspacePulse(config);
     activeSidebarController?.requestRender();
