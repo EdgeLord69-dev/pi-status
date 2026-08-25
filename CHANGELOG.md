@@ -2,11 +2,26 @@
 
 All notable changes to `@pi-vault/pi-status` are documented in this file.
 
-## Unreleased
+## 0.5.0 - 2026-08-24
 
 ### Added
 
 - Added Pi-synchronized, Atelier, Catppuccin, Dracula, Tokyo Night, and editable Custom colour presets to `/statusline`, shared by Dashboard, Statusbar, and Sidebar.
+- Added dashboard colour state, dashboard colour settings rendering, and inline editing of the Custom preset from the Settings tab.
+- Added per-surface theme resolution: Dashboard, Statusbar, and Sidebar re-read Pi's live theme on every render so changing Pi's theme updates all three surfaces without touching pi-status configuration.
+- Added `safeThemeCall` to handle partial or failing Pi theme implementations without surfacing a broken preset.
+
+### Changed
+
+- Consolidated palette role handling across the dashboard renderer and state.
+- Retained the Footer component instance across `/statusline` saves so visibility updates no longer rebuild the custom footer from scratch.
+- Honoured `NO_COLOR` presence across TUI rendering in addition to the previously documented footer and dashboard paths.
+
+### Compatibility
+
+- Updated the tested host baseline to `@earendil-works/pi-coding-agent@0.84.3` and `@earendil-works/pi-tui@0.84.3`. Node.js 24.15.0+ still required.
+- Updated `@pi-vault/pi-usage` to `^0.7.0` (already current; pin unchanged).
+- Refreshed development dependencies: `@biomejs/biome@^2.5.10`, `@types/node@^26.3.0`, `typescript@^7.0.2`, `vitest@^4.1.11`. Pi 0.84.3 or newer is required.
 
 ## 0.4.0 - 2026-08-11
 
