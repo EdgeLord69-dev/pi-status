@@ -1,4 +1,7 @@
 import type {
+  ColorPreset,
+  ColorSettings,
+  PaletteRole,
   PiStatusConfig,
   SidebarCatalogEntry,
   SidebarEffectiveLayout,
@@ -7,7 +10,12 @@ import type {
   StatusLineZone,
   StatusLineZones,
 } from "../shared/types.ts";
-import { isUsageSegment, STATUS_LINE_ZONE_ORDER } from "../shared/types.ts";
+import {
+  isUsageSegment,
+  PALETTE_ROLES as PALETTE_ROLES_CONST,
+  STATUS_LINE_ZONE_ORDER,
+} from "../shared/types.ts";
+import { ATELIER_COLORS, COLOR_PRESET_IDS, getFixedColorPalette } from "../core/colors.ts";
 import {
   cloneSidebarEffectiveLayout,
   flattenSidebarEffectiveLayout,
@@ -73,8 +81,22 @@ export type DashboardSelectableRow =
   | { type: "sidebar_default" }
   | { type: "statusbar_enabled" }
   | { type: "sidebar_enabled" }
+  | { type: "color_preset" }
+  | { type: "color_role"; role: PaletteRole }
   | { type: "notifications" }
   | { type: "save" };
+
+export function selectColorPreset(colors: ColorSettings, preset: ColorPreset): ColorSettings {
+  if (preset !== "custom" || colors.customInitialized) {
+    return { ...colors, preset };
+  }
+  const seed = getFixedColorPalette(colors.preset) ?? ATELIER_COLORS;
+  return {
+    preset,
+    custom: { ...seed },
+    customInitialized: true,
+  };
+}
 
 export type SegmentMetadata = {
   id: StatusLineSegmentId;
@@ -212,7 +234,12 @@ export function configsEqual(left: PiStatusConfig, right: PiStatusConfig): boole
     left.statusbarEnabled === right.statusbarEnabled &&
     left.sidebarEnabled === right.sidebarEnabled &&
     sameSidebarPanelLayout(left, right) &&
-    left.completionNotifications === right.completionNotifications
+    left.completionNotifications === right.completionNotifications &&
+    left.colors.preset === right.colors.preset &&
+    left.colors.customInitialized === right.colors.customInitialized &&
+    (Object.keys(left.colors.custom) as PaletteRole[]).every(
+      (role) => left.colors.custom[role] === right.colors.custom[role],
+    )
   );
 }
 
@@ -396,6 +423,10 @@ export function selectableRows(
     return [
       { type: "statusbar_enabled" },
       { type: "sidebar_enabled" },
+      { type: "color_preset" },
+      ...(state.draft.colors.preset === "custom"
+        ? PALETTE_ROLES_CONST.map((role) => ({ type: "color_role" as const, role }))
+        : []),
       { type: "notifications" },
       { type: "save" },
     ];
@@ -415,6 +446,7 @@ export type DashboardAction =
   | { type: "set_offset"; tab: DashboardTabId; offset: number }
   | { type: "replace_tools"; tools: DashboardTool[] }
   | { type: "replace_session"; session: SessionDetails }
+  | { type: "set_color"; role: PaletteRole; value: import("../shared/types.ts").HexColor }
   | { type: "saved"; config: PiStatusConfig; sidebarLayout: SidebarEffectiveLayout };
 
 export type DashboardEffect =
@@ -422,6 +454,7 @@ export type DashboardEffect =
   | { type: "toggle_tool"; name: string; enabled: boolean }
   | { type: "rename_session" }
   | { type: "compact_session" }
+  | { type: "edit_color"; role: PaletteRole }
   | { type: "notify"; message: string; kind: "info" | "warning" };
 export type DashboardTransition = { state: DashboardState; effect?: DashboardEffect };
 
@@ -643,6 +676,10 @@ export function reduceDashboardState(
 
   const row = currentRow(state);
   if (!row) return { state };
+  if (action.type === "set_color") {
+    state.draft.colors.custom[action.role] = action.value;
+    return { state: clampSelection(state) };
+  }
   if (action.type === "adjust") {
     if (row.type === "sidebar_active_panel") {
       const panels = state.draftSidebarLayout.panels;
@@ -713,6 +750,14 @@ export function reduceDashboardState(
         ];
       state.draft.zones = visiblePreset(name, state.visibleSegmentIds);
       state.preset = name;
+    } else if (row.type === "color_preset") {
+      const index = COLOR_PRESET_IDS.indexOf(state.draft.colors.preset);
+      const preset =
+        COLOR_PRESET_IDS[
+          (index + action.delta + COLOR_PRESET_IDS.length) % COLOR_PRESET_IDS.length
+        ];
+      state.draft.colors = selectColorPreset(state.draft.colors, preset);
+      return { state: clampSelection(state) };
     } else if (row.type === "zone") {
       const index = STATUS_LINE_ZONE_ORDER.indexOf(state.activeZone);
       state.activeZone =
@@ -769,6 +814,8 @@ export function reduceDashboardState(
   }
   if (row.type === "statusbar_enabled") {
     state.draft.statusbarEnabled = !state.draft.statusbarEnabled;
+  } else if (row.type === "color_role") {
+    return { state, effect: { type: "edit_color", role: row.role } };
   } else if (row.type === "sidebar_enabled") {
     state.draft.sidebarEnabled = !state.draft.sidebarEnabled;
   } else if (row.type === "notifications") {
