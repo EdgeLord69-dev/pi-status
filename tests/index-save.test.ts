@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { Component, OverlayHandle, TUI } from "@earendil-works/pi-tui";
 import {
@@ -15,17 +15,23 @@ import {
   buildSetFooterSpy,
   createContext,
   getRegisteredCommand,
+  mountWithFactory,
   renderWithFactory,
 } from "./helpers.ts";
+
+beforeEach(() => {
+  vi.stubEnv("NO_COLOR", undefined);
+});
 
 afterEach(() => {
   vi.doUnmock("../src/core/config.ts");
   vi.resetModules();
+  vi.unstubAllEnvs();
 });
 
 function moveToSettingsRow(
   component: StatusLineDashboardComponent,
-  rowType: "statusbar_enabled" | "sidebar_enabled" | "save",
+  rowType: "statusbar_enabled" | "sidebar_enabled" | "color_preset" | "save",
 ): void {
   const state = component.getState();
   const rows = selectableRows(state, "settings");
@@ -34,6 +40,18 @@ function moveToSettingsRow(
   const delta = target - state.navigation.settings.selectedIndex;
   const key = delta >= 0 ? "\x1b[B" : "\x1b[A";
   for (let index = 0; index < Math.abs(delta); index += 1) component.handleInput(key);
+}
+
+function editAtelierAccentDraft(component: StatusLineDashboardComponent, value = "#010203"): void {
+  for (let index = 0; index < 5; index += 1) component.handleInput("\t");
+  moveToSettingsRow(component, "color_preset");
+  component.handleInput("\x1b[D"); // Atelier -> Pi
+  component.handleInput("\x1b[D"); // Pi -> Custom, seeded from Atelier
+  component.handleInput("\x1b[B"); // Accent
+  component.handleInput("\r");
+  for (let index = 0; index < 7; index += 1) component.handleInput("\x7f");
+  component.handleInput(value);
+  component.handleInput("\r");
 }
 
 function saveSettings(component: StatusLineDashboardComponent): void {
@@ -68,7 +86,7 @@ function config(): PiStatusConfig {
 
 /** After Phase 3 the Sidebar lives on the regular TUI render buffer; the
  *  helper exposes a base `tui.render` implementation plus a text helper. */
-function deferredCustomHost() {
+function deferredCustomHost(theme: unknown = noTheme) {
   let resolveCustom!: (value: unknown) => void;
   const components: Component[] = [];
   const requestRender = vi.fn();
@@ -93,7 +111,7 @@ function deferredCustomHost() {
     isFocused: vi.fn(() => false),
   } as unknown as OverlayHandle;
   const custom = vi.fn((factory, options) => {
-    const component = factory(tui, options?.onHandle ? noTheme : null, {}, done) as Component;
+    const component = factory(tui, theme, {}, done) as Component;
     components.push(component);
     options?.onHandle?.(handle);
     return customPromise;
@@ -447,6 +465,163 @@ describe("/statusline persistence", () => {
     expect(typeof footerSpy.calls.at(-1)).toBe("function");
     expect(host.handle.setHidden).toHaveBeenLastCalledWith(false);
     expect(host.custom).toHaveBeenCalledTimes(2); // Sidebar mount + dashboard; no replacement Sidebar.
+
+    host.resolveCustom(undefined);
+    await commandPromise;
+  });
+
+  it("keeps Custom draft colours local until Save succeeds", async () => {
+    const initial = config();
+    initial.colors.preset = "atelier";
+    const loadConfig = vi.fn(() => initial);
+    const saveConfig = vi.fn();
+    vi.doMock("../src/core/config.ts", () => ({ loadConfig, saveConfig }));
+
+    const { default: createExtension } = await import("../src/index.ts");
+    const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
+    const footerSpy = buildSetFooterSpy();
+    createExtension(pi);
+
+    const host = deferredCustomHost();
+    const ctx = createContext({
+      ui: {
+        ...createContext().ui,
+        setFooter: footerSpy.setFooter,
+        custom: host.custom as unknown as ExtensionCommandContext["ui"]["custom"],
+      },
+    });
+    for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
+    const commandPromise = getRegisteredCommand(registerCommandCalls, "statusline").handler(
+      "",
+      ctx,
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const component = host.component();
+    if (!component) throw new Error("expected dashboard component");
+    const footer = mountWithFactory(footerSpy.calls.at(-1));
+    if (!footer) throw new Error("expected footer component");
+    const renderFooter = () => footer.render(200).join("\n");
+    const footerInstalls = footerSpy.calls.length;
+    editAtelierAccentDraft(component);
+
+    expect(component.render(120).join("\n")).toContain("38;2;1;2;3m");
+    expect(renderFooter()).not.toContain("38;2;1;2;3m");
+    expect(host.renderHostText()).not.toContain("38;2;1;2;3m");
+
+    saveSettings(component);
+
+    expect(footerSpy.calls).toHaveLength(footerInstalls);
+    expect(renderFooter()).toContain("38;2;1;2;3m");
+    expect(host.renderHostText()).toContain("38;2;1;2;3m");
+    expect(isDashboardDirty(component.getState())).toBe(false);
+
+    host.resolveCustom(undefined);
+    await commandPromise;
+  });
+
+  it("keeps installed colours unchanged when a Custom colour Save fails", async () => {
+    const initial = config();
+    initial.colors.preset = "atelier";
+    const loadConfig = vi.fn(() => initial);
+    const saveConfig = vi.fn(() => {
+      throw new Error("disk full");
+    });
+    vi.doMock("../src/core/config.ts", () => ({ loadConfig, saveConfig }));
+
+    const { default: createExtension } = await import("../src/index.ts");
+    const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
+    const footerSpy = buildSetFooterSpy();
+    createExtension(pi);
+
+    const host = deferredCustomHost();
+    const ctx = createContext({
+      ui: {
+        ...createContext().ui,
+        setFooter: footerSpy.setFooter,
+        custom: host.custom as unknown as ExtensionCommandContext["ui"]["custom"],
+      },
+    });
+    for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
+    const commandPromise = getRegisteredCommand(registerCommandCalls, "statusline").handler(
+      "",
+      ctx,
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const component = host.component();
+    if (!component) throw new Error("expected dashboard component");
+    const footer = mountWithFactory(footerSpy.calls.at(-1));
+    if (!footer) throw new Error("expected footer component");
+    const renderFooter = () => footer.render(200).join("\n");
+    editAtelierAccentDraft(component);
+    saveSettings(component);
+
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Failed to save statusline config", "warning");
+    expect(isDashboardDirty(component.getState())).toBe(true);
+    expect(renderFooter()).toContain("38;2;177;140;255m");
+    expect(renderFooter()).not.toContain("38;2;1;2;3m");
+    expect(host.renderHostText()).toContain("38;2;177;140;255m");
+    expect(host.renderHostText()).not.toContain("38;2;1;2;3m");
+
+    host.resolveCustom(undefined);
+    await commandPromise;
+  });
+
+  it("keeps all three Pi-preset surfaces synchronized with the live Pi theme", async () => {
+    const initial = config();
+    const loadConfig = vi.fn(() => initial);
+    const saveConfig = vi.fn();
+    vi.doMock("../src/core/config.ts", () => ({ loadConfig, saveConfig }));
+
+    let prefix = "pi:first";
+    const liveTheme = {
+      fg: (color: string, text: string) => `${prefix}:fg:${color}:${text}`,
+      bg: (color: string, text: string) => `${prefix}:bg:${color}:${text}`,
+      bold: (text: string) => `${prefix}:bold:${text}`,
+      inverse: (text: string) => `${prefix}:inverse:${text}`,
+    };
+    const { default: createExtension } = await import("../src/index.ts");
+    const { pi, handlers, registerCommandCalls } = buildPiWithHandlers();
+    const footerSpy = buildSetFooterSpy();
+    createExtension(pi);
+
+    const host = deferredCustomHost(liveTheme);
+    const ctx = createContext({
+      ui: {
+        ...createContext().ui,
+        setFooter: footerSpy.setFooter,
+        custom: host.custom as unknown as ExtensionCommandContext["ui"]["custom"],
+      },
+    });
+    for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
+    const commandPromise = getRegisteredCommand(registerCommandCalls, "statusline").handler(
+      "",
+      ctx,
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const component = host.component();
+    if (!component) throw new Error("expected dashboard component");
+    const footer = mountWithFactory(footerSpy.calls.at(-1), { theme: liveTheme });
+    if (!footer) throw new Error("expected footer component");
+    const renderDashboard = () => component.render(120).join("\n");
+    const renderFooter = () => footer.render(200).join("\n");
+    const renderSidebar = () => host.renderHostText();
+
+    expect(renderDashboard()).toContain("pi:first");
+    expect(renderFooter()).toContain("pi:first");
+    expect(renderSidebar()).toContain("pi:first");
+    const footerInstalls = footerSpy.calls.length;
+    const customMounts = host.custom.mock.calls.length;
+
+    prefix = "pi:second";
+
+    expect(renderDashboard()).toContain("pi:second");
+    expect(renderFooter()).toContain("pi:second");
+    expect(renderSidebar()).toContain("pi:second");
+    expect(footerSpy.calls).toHaveLength(footerInstalls);
+    expect(host.custom).toHaveBeenCalledTimes(customMounts);
 
     host.resolveCustom(undefined);
     await commandPromise;

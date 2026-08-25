@@ -39,7 +39,7 @@ Once installed, the footer updates automatically. Run `/statusline` inside Pi to
 - **Statuses** — per-key visibility for extension-reported status text.
 - **Session** — current session details, with Rename and Compact inside the same overlay.
 - **Tools** — per-tool enable/disable; applies immediately.
-- **Settings** — independently toggle the Statusbar and Sidebar visibility and opt in to completion notifications.
+- **Settings** — independently toggle Statusbar and Sidebar visibility, select their shared colour preset, and opt in to completion notifications.
 
 `Tab` / `Shift+Tab` moves between tabs, arrow keys navigate, `Space` toggles, type to search. The saved footer remains visible behind the dashboard overlay.
 
@@ -153,7 +153,27 @@ If another extension reports status text, it appears in the bottom-right zone.
     "bottomRight": []
   },
   "extensionSegments": { "hidden": [] },
-  "completionNotifications": false
+  "completionNotifications": false,
+  "colors": {
+    "preset": "pi",
+    "custom": {
+      "accent": "#b18cff",
+      "primary": "#d4d4d4",
+      "muted": "#808080",
+      "dim": "#666666",
+      "ready": "#6ea8fe",
+      "working": "#ff9f43",
+      "input": "#6ea8fe",
+      "output": "#b18cff",
+      "cache": "#7dd3fc",
+      "cost": "#ff9f43",
+      "context": "#6ea8fe",
+      "menu": "#b18cff",
+      "warning": "#ff9f43",
+      "error": "#ff5d73"
+    },
+    "customInitialized": false
+  }
 }
 ```
 
@@ -163,7 +183,15 @@ When the Statusbar is disabled, pi-status restores Pi's built-in footer through 
 
 Missing, malformed, or empty layouts fall back to the default layout. A legacy direct config with a `"segments"` array still loads by placing those segments in TL; the first save from `/statusline` rewrites it to the `zones` shape. There are no project-specific overrides — pi-status no longer reads or writes Pi's global or project `settings.json`.
 
-Set `NO_COLOR` (even to an empty string) to disable color in both the footer and `/statusline`; its presence, not its value, is what matters.
+### Colours
+
+Pi is the default colour preset. It resolves Pi's active theme on every Dashboard, Statusbar, and Sidebar render, so changing Pi's theme updates all three surfaces without changing pi-status configuration.
+
+The Dashboard order is Pi, Atelier, Catppuccin Mocha, Catppuccin Latte, Dracula, Dracula Alucard, Tokyo Night Moon, Tokyo Night Day, and Custom. Catppuccin Mocha/Latte, Dracula/Alucard, and Tokyo Night Moon/Day are explicit dark/light choices; fixed presets do not switch automatically. Their local constants are attributed to the official [Catppuccin palette](https://github.com/catppuccin/palette/blob/main/palette.json), [Dracula palettes](https://github.com/dracula/dracula-theme#color-palette), and [TokyoNight sources](https://github.com/folke/tokyonight.nvim/tree/main/lua/tokyonight/colors).
+
+The first switch to Custom copies the selected fixed palette; switching from Pi copies Atelier because Pi exposes live theme operations rather than stable hex values. Later preset switches preserve all 14 Custom roles. Custom accepts case-insensitive `#rrggbb`, persists lowercase values, and requires truecolour terminal support.
+
+`NO_COLOR` disables styling across Dashboard, Statusbar, and Sidebar without changing the saved preset.
 
 ## Surface Visibility Outcomes
 
