@@ -1,7 +1,7 @@
 import { truncateToWidth, type Input, visibleWidth } from "@earendil-works/pi-tui";
 import { resolveFooter } from "../core/resolve-footer.ts";
 import { sidebarStatusSegmentId } from "../core/sidebar-layout.ts";
-import type { StatusLineZone, SidebarPanelId } from "../shared/types.ts";
+import type { ColorPreset, PaletteRole, StatusLineZone, SidebarPanelId } from "../shared/types.ts";
 import {
   bodyRowBudget,
   fitViewport,
@@ -42,6 +42,7 @@ type SaveEffect = Extract<DashboardEffect, { type: "save" }>;
 
 export type DashboardDialog =
   | { type: "rename"; input: Input }
+  | { type: "color"; role: PaletteRole; input: Input }
   | {
       type: "confirm";
       kind: "discard" | "compact";
@@ -73,6 +74,18 @@ const PRESET_LABELS = {
   telemetry: "Telemetry",
 } as const;
 
+const COLOR_LABELS: Record<ColorPreset, string> = {
+  pi: "Pi",
+  atelier: "Atelier",
+  "catppuccin-mocha": "Catppuccin Mocha",
+  "catppuccin-latte": "Catppuccin Latte",
+  dracula: "Dracula",
+  "dracula-alucard": "Dracula Alucard",
+  "tokyonight-moon": "Tokyo Night Moon",
+  "tokyonight-day": "Tokyo Night Day",
+  custom: "Custom",
+};
+
 const FOOTERS: Record<DashboardTabId, string> = {
   statusbar: "↑/↓ Select  •  ←/→ Adjust  •  Space/Enter Apply  •  Tab Switch  •  q/Esc Close",
   statuses: "Type Search  •  ↑/↓ Select  •  Space/Enter Toggle  •  Esc Clear/Close",
@@ -80,7 +93,8 @@ const FOOTERS: Record<DashboardTabId, string> = {
   tools: "Type Search  •  ↑/↓ Select  •  Space/Enter Toggle  •  Esc Clear/Close",
   sidebar:
     "Type Search  •  ↑/↓ Select  •  ←/→ Adjust/Reorder  •  Space/Enter Apply  •  Esc Clear/Close",
-  settings: "↑/↓ Select  •  Space/Enter Toggle/Save  •  Tab Switch  •  q/Esc Close",
+  settings:
+    "↑/↓ Select  •  ←/→ Adjust  •  Space/Enter Edit/Toggle/Save  •  Tab Switch  •  q/Esc Close",
 };
 
 function selectableLine(
@@ -301,6 +315,11 @@ function logicalBody(
           "Sidebar",
           "Show the pi-status Sidebar",
         );
+      } else if (row.type === "color_preset") {
+        pushSelectable("↔", "Colours", COLOR_LABELS[state.draft.colors.preset]);
+      } else if (row.type === "color_role") {
+        const value = state.draft.colors.custom[row.role];
+        pushSelectable(" ", row.role, `${value} ${theme.fg(row.role, "●")}`);
       } else if (row.type === "notifications") {
         pushSelectable(
           state.draft.completionNotifications ? "[•]" : "[ ]",
@@ -319,9 +338,12 @@ function logicalBody(
 }
 
 function dialogBody(dialog: DashboardDialog, width: number, theme: StatusLineTheme): LogicalBody {
-  if (dialog.type === "rename") {
+  if (dialog.type === "rename" || dialog.type === "color") {
     return {
-      lines: ["Rename session", dialog.input.render(width)[0] ?? ""],
+      lines: [
+        dialog.type === "rename" ? "Rename session" : `Edit ${dialog.role} colour`,
+        dialog.input.render(width)[0] ?? "",
+      ],
       selectedLine: 1,
     };
   }
@@ -351,7 +373,7 @@ function dialogBody(dialog: DashboardDialog, width: number, theme: StatusLineThe
 }
 
 function dialogFooter(dialog: DashboardDialog): string {
-  return dialog.type === "rename"
+  return dialog.type === "rename" || dialog.type === "color"
     ? "Enter Submit  •  Esc Cancel"
     : "↑/↓ Select  •  Space/Enter Choose  •  q/Esc Cancel";
 }

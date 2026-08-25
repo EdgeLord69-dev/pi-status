@@ -626,11 +626,12 @@ describe("extension wiring", () => {
       component.handleInput("\t");
       component.handleInput("\t");
       component.handleInput("\t");
-      // Settings rows are Statusbar (0), Sidebar (1), Completion notifications (2), Save (3).
+      // Settings rows: Statusbar (0), Sidebar (1), Colours (2), Notifications (3), Save (4).
       component.handleInput("\x1b[B"); // → Sidebar (row 1)
-      component.handleInput("\x1b[B"); // → Completion notifications (row 2)
+      component.handleInput("\x1b[B"); // → Colours (row 2)
+      component.handleInput("\x1b[B"); // → Notifications (row 3)
       component.handleInput("\r"); // toggle notifications
-      component.handleInput("\x1b[B"); // → Save (row 3)
+      component.handleInput("\x1b[B"); // → Save (row 4)
       component.handleInput("\r"); // open dialog
       component.handleInput("\x1b[B"); // → Save
       component.handleInput("\r"); // confirm Save
@@ -735,13 +736,14 @@ describe("extension wiring", () => {
         factory as (...args: unknown[]) => { handleInput: (data: string) => void }
       )({ terminal: { columns: 80, rows: 30 }, requestRender: () => {} }, null, {}, () => {});
       // Navigate to the Settings tab (5 forward tabs from statusbar). Settings
-      // rows are Statusbar (0), Sidebar (1), Completion notifications (2), Save (3),
-      // so three Down inputs land on Save.
+      // rows are Statusbar (0), Sidebar (1), Colours (2), Notifications (3),
+      // Save (4), so four Down inputs land on Save.
       component.handleInput("\t");
       component.handleInput("\t");
       component.handleInput("\t");
       component.handleInput("\t");
       component.handleInput("\t");
+      component.handleInput("\x1b[B");
       component.handleInput("\x1b[B");
       component.handleInput("\x1b[B");
       component.handleInput("\x1b[B");
@@ -927,7 +929,7 @@ describe("/statusline theme adaptation", () => {
     await commandPromise;
 
     expect(fgCalls.length).toBeGreaterThan(0);
-    expect(fgCalls.some(([color]) => color === "borderAccent")).toBe(true);
+    expect(fgCalls.some(([color]) => color === "accent")).toBe(true);
   });
 
   it.each([
