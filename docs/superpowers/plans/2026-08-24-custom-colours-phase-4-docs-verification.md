@@ -4,7 +4,7 @@
 
 **Goal:** Prove that the Pi preset follows Pi's active theme across Dashboard, Statusbar, and Sidebar, prove transactional Custom-colour saves, document every preset and override, and complete release-level verification.
 
-**Architecture:** Keep the completed production colour path unchanged. Extend the existing integration-test hosts so the same fake live Pi theme reaches Dashboard, Statusbar, and Sidebar, then test that render-time theme changes reach all three without controller reconstruction. Update only README and changelog after the integration contract is green.
+**Architecture:** Keep theme resolution unchanged and retain installed surfaces when Save does not change visibility. Extend the existing integration-test hosts so the same fake live Pi theme reaches Dashboard, Statusbar, and Sidebar, then test that render-time theme changes reach all three without controller reconstruction. Update README and changelog after the integration contract is green.
 
 **Tech Stack:** Markdown, pnpm, Biome, TypeScript 6, Vitest 4, Pi's live `Theme` proxy, and the package dry-run script.
 
@@ -32,7 +32,7 @@
 - Fixed and Custom presets emit truecolour; do not add a 256-colour conversion path.
 - Dashboard uses draft colours; installed surfaces change only after persistence succeeds.
 - Preserve malformed-file overwrite refusal and renderer plain-text fallbacks.
-- Follow RED/GREEN/REFACTOR with focused tests before documentation changes.
+- Follow RED/GREEN/REFACTOR with focused tests before production or documentation changes.
 - Run release checks with Node.js `>=24.15.0`; an engine warning on an older Node version is not release-level proof.
 - Do not create commits unless the user authorizes them; when authorized, use the commit checkpoints in this plan.
 
@@ -44,7 +44,8 @@ This phase is complete when wiring-level tests prove successful and failed Custo
 
 ## File map
 
-- Modify: `tests/helpers.ts` - allow the existing footer renderer helper to receive a fake live Pi theme.
+- Modify: `src/index.ts` - retain the installed Footer when Save does not change Statusbar visibility.
+- Modify: `tests/helpers.ts` - mount a Footer once so tests can render the same component repeatedly.
 - Modify: `tests/index-save.test.ts` - exercise Dashboard, Statusbar, and Sidebar through the existing extension wiring.
 - Modify: `README.md` - document the persisted colour contract and runtime behavior.
 - Modify: `CHANGELOG.md` - add the unreleased feature entry.
@@ -55,15 +56,62 @@ This phase is complete when wiring-level tests prove successful and failed Custo
 
 **Files:**
 
+- Modify: `src/index.ts`
 - Modify: `tests/helpers.ts`
 - Modify: `tests/index-save.test.ts`
 
 **Interfaces:**
 
-- Consumes `renderWithFactory(factory, options)`, `deferredCustomHost()`, `StatusLineDashboardComponent.render()`, the existing `saveConfig` module seam, and the real extension wiring in `src/index.ts`.
-- Produces `renderWithFactory(factory, { theme })` and wiring-level proof that the three surfaces use draft, committed, or live Pi colours at the correct boundary.
+- Consumes `mountWithFactory(factory, options)`, `deferredCustomHost()`, `StatusLineDashboardComponent.render()`, the existing `saveConfig` module seam, and the real extension wiring in `src/index.ts`.
+- Produces a retained Footer component and wiring-level proof that the three surfaces use draft, committed, or live Pi colours at the correct boundary without reconstruction.
 
 - [ ] **Step 1: Write the failing wiring tests**
+
+In `tests/index-save.test.ts`, isolate the intentional environment override before adding colour assertions:
+
+```ts
+beforeEach(() => {
+  vi.stubEnv("NO_COLOR", undefined);
+});
+
+afterEach(() => {
+  vi.doUnmock("../src/core/config.ts");
+  vi.resetModules();
+  vi.unstubAllEnvs();
+});
+```
+
+In `tests/helpers.ts`, split mounting from one-shot rendering so the new tests can retain a Footer instance:
+
+```ts
+export function mountWithFactory(
+  factory: unknown,
+  options: { gitBranch?: string | null; theme?: unknown } = {},
+): { render: (width: number) => string[] } | undefined {
+  if (typeof factory !== "function") return undefined;
+  return (
+    factory as (
+      tui: unknown,
+      theme: unknown,
+      footerData: unknown,
+    ) => { render: (width: number) => string[] }
+  )(
+    { requestRender: () => {} },
+    options.theme ?? { fg: (_c: string, t: string) => t, rainbow: (t: string) => t },
+    {
+      getGitBranch: () => options.gitBranch ?? null,
+      getExtensionStatuses: () => new Map(),
+    },
+  );
+}
+
+export function renderWithFactory(
+  factory: unknown,
+  options: { gitBranch?: string | null; width?: number; theme?: unknown } = {},
+): string {
+  return mountWithFactory(factory, options)?.render(options.width ?? 200).join("\n") ?? "";
+}
+```
 
 In `tests/index-save.test.ts`, extend `moveToSettingsRow`'s `rowType` union with `"color_preset"`, then add this local helper:
 
@@ -116,15 +164,20 @@ it("keeps Custom draft colours local until Save succeeds", async () => {
 
   const component = host.component();
   if (!component) throw new Error("expected dashboard component");
+  const footer = mountWithFactory(footerSpy.calls.at(-1));
+  if (!footer) throw new Error("expected footer component");
+  const renderFooter = () => footer.render(200).join("\n");
+  const footerInstalls = footerSpy.calls.length;
   editAtelierAccentDraft(component);
 
   expect(component.render(120).join("\n")).toContain("38;2;1;2;3m");
-  expect(renderWithFactory(footerSpy.calls.at(-1))).not.toContain("38;2;1;2;3m");
+  expect(renderFooter()).not.toContain("38;2;1;2;3m");
   expect(host.renderHostText()).not.toContain("38;2;1;2;3m");
 
   saveSettings(component);
 
-  expect(renderWithFactory(footerSpy.calls.at(-1))).toContain("38;2;1;2;3m");
+  expect(footerSpy.calls).toHaveLength(footerInstalls);
+  expect(renderFooter()).toContain("38;2;1;2;3m");
   expect(host.renderHostText()).toContain("38;2;1;2;3m");
   expect(isDashboardDirty(component.getState())).toBe(false);
 
@@ -167,13 +220,16 @@ it("keeps installed colours unchanged when a Custom colour Save fails", async ()
 
   const component = host.component();
   if (!component) throw new Error("expected dashboard component");
+  const footer = mountWithFactory(footerSpy.calls.at(-1));
+  if (!footer) throw new Error("expected footer component");
+  const renderFooter = () => footer.render(200).join("\n");
   editAtelierAccentDraft(component);
   saveSettings(component);
 
   expect(ctx.ui.notify).toHaveBeenCalledWith("Failed to save statusline config", "warning");
   expect(isDashboardDirty(component.getState())).toBe(true);
-  expect(renderWithFactory(footerSpy.calls.at(-1))).toContain("38;2;177;140;255m");
-  expect(renderWithFactory(footerSpy.calls.at(-1))).not.toContain("38;2;1;2;3m");
+  expect(renderFooter()).toContain("38;2;177;140;255m");
+  expect(renderFooter()).not.toContain("38;2;1;2;3m");
   expect(host.renderHostText()).toContain("38;2;177;140;255m");
   expect(host.renderHostText()).not.toContain("38;2;1;2;3m");
 
@@ -220,9 +276,10 @@ it("keeps all three Pi-preset surfaces synchronized with the live Pi theme", asy
 
   const component = host.component();
   if (!component) throw new Error("expected dashboard component");
+  const footer = mountWithFactory(footerSpy.calls.at(-1), { theme: liveTheme });
+  if (!footer) throw new Error("expected footer component");
   const renderDashboard = () => component.render(120).join("\n");
-  const renderFooter = () =>
-    renderWithFactory(footerSpy.calls.at(-1), { theme: liveTheme });
+  const renderFooter = () => footer.render(200).join("\n");
   const renderSidebar = () => host.renderHostText();
 
   expect(renderDashboard()).toContain("pi:first");
@@ -250,35 +307,9 @@ it("keeps all three Pi-preset surfaces synchronized with the live Pi theme", asy
 pnpm exec vitest run tests/index-save.test.ts
 ```
 
-Expected: FAIL because `deferredCustomHost` does not accept a theme and `renderWithFactory` cannot pass one to the footer factory.
+Expected: FAIL because successful Save installs a second Footer factory; the retained Footer assertion expects one installation and receives two.
 
-- [ ] **Step 3: Add the minimum fake-live-theme seams**
-
-In `tests/helpers.ts`, extend the existing helper without adding a second renderer:
-
-```ts
-export function renderWithFactory(
-  factory: unknown,
-  options: { gitBranch?: string | null; width?: number; theme?: unknown } = {},
-): string {
-  if (typeof factory !== "function") return "";
-  const component = (
-    factory as (
-      tui: unknown,
-      theme: unknown,
-      footerData: unknown,
-    ) => { render: (width: number) => string[] }
-  )(
-    { requestRender: () => {} },
-    options.theme ?? { fg: (_c: string, t: string) => t, rainbow: (t: string) => t },
-    {
-      getGitBranch: () => options.gitBranch ?? null,
-      getExtensionStatuses: () => new Map(),
-    },
-  );
-  return component.render(options.width ?? 200).join("\n");
-}
-```
+- [ ] **Step 3: Retain existing surfaces when visibility is unchanged**
 
 In `tests/index-save.test.ts`, change the host signature from:
 
@@ -304,7 +335,40 @@ to:
 const component = factory(tui, theme, {}, done) as Component;
 ```
 
-Do not add a theme event bus or reinstallation callback. Pi owns invalidation; this test only proves that the existing render-time proxy reference stays live.
+In `src/index.ts`, capture the committed pre-Save state and pass whether Statusbar visibility changed into `applySurfaceVisibility`:
+
+```ts
+const current = runtimeState.snapshot();
+const ctx = current.ctx;
+
+// Inside the successful persist callback:
+runtimeState.update({ type: "config_reload", config: committed });
+applySurfaceVisibility(
+  ctx,
+  committed,
+  current.config.statusbarEnabled !== committed.statusbarEnabled,
+);
+```
+
+Then reinstall the Footer only for initial/session application or a real visibility change:
+
+```ts
+function applySurfaceVisibility(
+  ctx: ExtensionContext,
+  config: PiStatusConfig,
+  updateFooter = true,
+): void {
+  if (ctx.mode !== "tui") return;
+
+  activeSidebarController?.setShown(config.sidebarEnabled);
+  if (updateFooter) installFooter(ctx, config);
+  if (!config.statusbarEnabled) setSidebarRenderSubscriptions();
+  syncWorkspacePulse(config);
+  activeSidebarController?.requestRender();
+}
+```
+
+Do not add a theme event bus or reinstallation callback. Pi owns theme invalidation, and `runtimeState.update` invalidates the retained Footer after Save.
 
 - [ ] **Step 4: Run focused tests and verify GREEN**
 
@@ -317,7 +381,7 @@ Expected: PASS with no new skips. `tests/index-surfaces.test.ts` retains its nar
 - [ ] **Step 5: Commit the integration proof when authorized**
 
 ```bash
-git add tests/helpers.ts tests/index-save.test.ts
+git add src/index.ts tests/helpers.ts tests/index-save.test.ts
 git commit -m "test: verify synchronized colour surfaces"
 ```
 
@@ -384,7 +448,7 @@ The first switch to Custom copies the selected fixed palette; switching from Pi 
 `NO_COLOR` disables styling across Dashboard, Statusbar, and Sidebar without changing the saved preset.
 ```
 
-Replace the existing sentence that says `NO_COLOR` affects only the footer and `/statusline` with the three-surface wording above.
+Remove the earlier standalone `NO_COLOR` sentence; the Colours subsection owns the three-surface contract above.
 
 - [ ] **Step 2: Update the changelog**
 
