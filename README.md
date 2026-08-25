@@ -183,8 +183,6 @@ When the Statusbar is disabled, pi-status restores Pi's built-in footer through 
 
 Missing, malformed, or empty layouts fall back to the default layout. A legacy direct config with a `"segments"` array still loads by placing those segments in TL; the first save from `/statusline` rewrites it to the `zones` shape. There are no project-specific overrides — pi-status no longer reads or writes Pi's global or project `settings.json`.
 
-Set `NO_COLOR` (even to an empty string) to disable color in both the footer and `/statusline`; its presence, not its value, is what matters.
-
 ### Colours
 
 Pi is the default colour preset. It resolves Pi's active theme on every Dashboard, Statusbar, and Sidebar render, so changing Pi's theme updates all three surfaces without changing pi-status configuration.
