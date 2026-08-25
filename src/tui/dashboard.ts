@@ -10,6 +10,7 @@ import {
   type TUI,
 } from "@earendil-works/pi-tui";
 import type {
+  PaletteRole,
   PiStatusConfig,
   SidebarCatalogEntry,
   SidebarEffectiveLayout,
@@ -31,14 +32,15 @@ import {
   startSessionCompaction,
   type SessionDetails,
 } from "./session-actions.ts";
-import { fromPiTheme, noColorRequested, noTheme, type StatusLineTheme } from "./theme.ts";
+import { createStatusLineTheme, noColorRequested } from "./theme.ts";
+import { isHexColor, normalizeHexColor } from "../core/colors.ts";
 import { readToolSnapshot, toggleLiveTool, type DashboardTool } from "./tool-controls.ts";
 
 export interface StatusLineDashboardOptions {
   pi: ExtensionAPI;
   ctx: ExtensionCommandContext;
   tui: TUI;
-  theme: StatusLineTheme;
+  piTheme: unknown;
   config: PiStatusConfig;
   discoveredStatuses: string[];
   usageAvailable: boolean;
@@ -53,6 +55,10 @@ export interface StatusLineDashboardOptions {
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function dialogInput(dialog: DashboardDialog | undefined): Input | undefined {
+  return dialog?.type === "rename" || dialog?.type === "color" ? dialog.input : undefined;
 }
 
 function printableAscii(data: string): string | undefined {
@@ -105,7 +111,8 @@ export class StatusLineDashboardComponent implements Component, Focusable {
 
   set focused(value: boolean) {
     this._focused = value;
-    if (this.dialog?.type === "rename") this.dialog.input.focused = value;
+    const input = dialogInput(this.dialog);
+    if (input) input.focused = value;
   }
 
   getState(): Readonly<DashboardState> {
@@ -113,10 +120,15 @@ export class StatusLineDashboardComponent implements Component, Focusable {
   }
 
   render(width: number): string[] {
+    const theme = createStatusLineTheme(
+      this.options.piTheme,
+      this.state.draft.colors,
+      noColorRequested() ? ({} as object) : process.env,
+    );
     const result = renderDashboard(
       this.state,
       this.options.getPreviewInput(),
-      this.options.theme,
+      theme,
       width,
       this.options.tui.terminal.rows,
       this.dialog,
@@ -132,7 +144,7 @@ export class StatusLineDashboardComponent implements Component, Focusable {
   }
 
   invalidate(): void {
-    if (this.dialog?.type === "rename") this.dialog.input.invalidate();
+    dialogInput(this.dialog)?.invalidate();
   }
 
   handleInput(data: string): void {
@@ -201,6 +213,10 @@ export class StatusLineDashboardComponent implements Component, Focusable {
       this.openSaveDialog(effect);
       return;
     }
+    if (effect.type === "edit_color") {
+      this.openColorDialog(effect.role);
+      return;
+    }
     if (effect.type === "toggle_tool") {
       try {
         const result = toggleLiveTool(this.options.pi, effect.name, effect.enabled);
@@ -249,6 +265,36 @@ export class StatusLineDashboardComponent implements Component, Focusable {
     this.options.tui.requestRender();
   }
 
+  private openColorDialog(role: PaletteRole): void {
+    const current = this.state.draft.colors.custom[role];
+    const input = new Input();
+    input.handleInput(current);
+    input.focused = this.focused;
+    input.onSubmit = (value) => {
+      if (
+        this.closed ||
+        this.dialog?.type !== "color" ||
+        this.dialog.role !== role ||
+        this.dialog.input !== input
+      ) {
+        return;
+      }
+      if (!isHexColor(value)) {
+        this.warn("Colour must use # followed by 6 hex digits");
+        return;
+      }
+      this.dispatch({
+        type: "set_color",
+        role,
+        value: normalizeHexColor(value, current),
+      });
+      this.dismissDialog();
+    };
+    input.onEscape = () => this.dismissDialog();
+    this.dialog = { type: "color", role, input };
+    this.options.tui.requestRender();
+  }
+
   private openConfirmDialog(kind: "discard" | "compact"): void {
     this.dialog = { type: "confirm", kind, selectedIndex: 0 };
     this.options.tui.requestRender();
@@ -262,12 +308,14 @@ export class StatusLineDashboardComponent implements Component, Focusable {
   private handleDialogInput(data: string): void {
     const dialog = this.dialog;
     if (!dialog) return;
-    if (dialog.type === "rename") {
-      dialog.input.handleInput(data);
-      if (!this.closed && this.dialog?.type === "rename") this.options.tui.requestRender();
+    const input = dialogInput(dialog);
+    if (input) {
+      input.handleInput(data);
+      if (!this.closed && dialogInput(this.dialog) === input) this.options.tui.requestRender();
       return;
     }
 
+    if (dialog.type !== "confirm") return;
     if (matchesKey(data, Key.up)) {
       this.dialog = { ...dialog, selectedIndex: 0 };
       this.options.tui.requestRender();
@@ -319,7 +367,8 @@ export class StatusLineDashboardComponent implements Component, Focusable {
   }
 
   private clearDialog(): void {
-    if (this.dialog?.type === "rename") this.dialog.input.focused = false;
+    const input = dialogInput(this.dialog);
+    if (input) input.focused = false;
     this.dialog = undefined;
   }
 
@@ -331,7 +380,7 @@ export class StatusLineDashboardComponent implements Component, Focusable {
 }
 
 export async function openStatusLineDashboard(
-  options: Omit<StatusLineDashboardOptions, "tui" | "theme" | "done"> & {
+  options: Omit<StatusLineDashboardOptions, "tui" | "piTheme" | "done"> & {
     onComponent?(component: StatusLineDashboardComponent): void;
   },
 ): Promise<void> {
@@ -347,7 +396,7 @@ export async function openStatusLineDashboard(
       const component = new StatusLineDashboardComponent({
         ...options,
         tui,
-        theme: noColorRequested() ? noTheme : fromPiTheme(piTheme),
+        piTheme,
         done,
       });
       options.onComponent?.(component);

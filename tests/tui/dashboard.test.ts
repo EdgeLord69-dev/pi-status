@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { CURSOR_MARKER, type TUI } from "@earendil-works/pi-tui";
+import { CURSOR_MARKER, Input, type TUI } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import { buildSnapshot } from "../../src/core/resolve-footer.ts";
 import {
@@ -7,11 +7,10 @@ import {
   SIDEBAR_BUILTIN_ASSIGNMENTS,
   type PiStatusConfig,
 } from "../../src/shared/types.ts";
-import { DEFAULT_COLOR_SETTINGS } from "../../src/core/colors.ts";
+import { ATELIER_COLORS, DEFAULT_COLOR_SETTINGS } from "../../src/core/colors.ts";
 import { openStatusLineDashboard, StatusLineDashboardComponent } from "../../src/tui/dashboard.ts";
 import { isDashboardDirty, selectableRows } from "../../src/tui/dashboard-state.ts";
 import type { FooterRenderInput } from "../../src/tui/render.ts";
-import { noTheme } from "../../src/tui/theme.ts";
 
 function config(): PiStatusConfig {
   return {
@@ -55,6 +54,7 @@ interface DashboardOverrides {
   discoveredStatuses?: string[];
   toolCount?: number;
   activeTools?: string[];
+  piTheme?: unknown;
 }
 
 function makeDashboard(overrides: DashboardOverrides = {}) {
@@ -111,7 +111,7 @@ function makeDashboard(overrides: DashboardOverrides = {}) {
     pi,
     ctx,
     tui,
-    theme: noTheme,
+    piTheme: overrides.piTheme ?? null,
     config: config(),
     discoveredStatuses: overrides.discoveredStatuses ?? ["build", "review"],
     usageAvailable: true,
@@ -148,6 +148,36 @@ function sessionTab(component: StatusLineDashboardComponent): void {
   component.handleInput("\t");
   component.handleInput("\t");
   component.handleInput("\t");
+}
+
+function settingsTab(component: StatusLineDashboardComponent): void {
+  for (let index = 0; index < 5; index += 1) component.handleInput("\t");
+}
+
+function selectSettingsRow(
+  component: StatusLineDashboardComponent,
+  predicate: (row: ReturnType<typeof selectableRows>[number]) => boolean,
+): void {
+  const target = selectableRows(component.getState(), "settings").findIndex(predicate);
+  while (component.getState().navigation.settings.selectedIndex < target) {
+    component.handleInput("\x1b[B");
+  }
+  while (component.getState().navigation.settings.selectedIndex > target) {
+    component.handleInput("\x1b[A");
+  }
+}
+
+function openAccentEditor(component: StatusLineDashboardComponent): void {
+  settingsTab(component);
+  selectSettingsRow(component, (row) => row.type === "color_preset");
+  component.handleInput("\x1b[D"); // Pi wraps backward to Custom.
+  selectSettingsRow(component, (row) => row.type === "color_role" && row.role === "accent");
+  component.handleInput("\r");
+}
+
+function replaceSeededHex(component: StatusLineDashboardComponent, value: string): void {
+  for (let index = 0; index < 7; index += 1) component.handleInput("\x7f");
+  component.handleInput(value);
 }
 
 function dirtySettings(component: StatusLineDashboardComponent): void {
@@ -565,6 +595,97 @@ describe("StatusLineDashboardComponent", () => {
   });
 });
 
+describe("StatusLineDashboardComponent colour editor", () => {
+  it("edits a seeded colour and stores canonical lowercase", () => {
+    const { component } = makeDashboard();
+    openAccentEditor(component);
+    expect(component.render(100).join("\n")).toContain("Edit accent colour");
+    expect(component.render(100).join("\n")).toContain("#b18cff");
+
+    replaceSeededHex(component, "#AbCdEf");
+    component.handleInput("\r");
+
+    expect(component.getState().draft.colors.custom.accent).toBe("#abcdef");
+    expect(component.render(100).join("\n")).not.toContain("Edit accent colour");
+  });
+
+  it("keeps invalid colour input open and warns once per submit", () => {
+    const { component, ctx } = makeDashboard();
+    openAccentEditor(component);
+    replaceSeededHex(component, "broken");
+
+    component.handleInput("\r");
+    expect(component.render(100).join("\n")).toContain("Edit accent colour");
+    expect(component.getState().draft.colors.custom.accent).toBe(ATELIER_COLORS.accent);
+    expect(ctx.ui.notify).toHaveBeenCalledTimes(1);
+    expect(ctx.ui.notify).toHaveBeenLastCalledWith(
+      "Colour must use # followed by 6 hex digits",
+      "warning",
+    );
+
+    component.handleInput("\r");
+    expect(ctx.ui.notify).toHaveBeenCalledTimes(2);
+  });
+
+  it("cancels colour editing without changing the draft", () => {
+    const { component } = makeDashboard();
+    openAccentEditor(component);
+    replaceSeededHex(component, "#010203");
+    component.handleInput("\x1b");
+
+    expect(component.getState().draft.colors.custom.accent).toBe(ATELIER_COLORS.accent);
+    expect(component.render(100).join("\n")).not.toContain("Edit accent colour");
+  });
+
+  it("re-resolves Dashboard styling from the draft on every render", () => {
+    const { component } = makeDashboard();
+    openAccentEditor(component);
+    replaceSeededHex(component, "#010203");
+    component.handleInput("\r");
+
+    expect(component.render(100).join("\n")).toContain("38;2;1;2;3m");
+  });
+
+  it("keeps the raw Pi theme live across renders", () => {
+    let prefix = "first";
+    const piTheme = {
+      fg: (color: string, text: string) => `${prefix}:${color}:${text}`,
+      bg: (color: string, text: string) => `${prefix}:bg:${color}:${text}`,
+      bold: (text: string) => `${prefix}:bold:${text}`,
+      inverse: (text: string) => `${prefix}:inverse:${text}`,
+    };
+    const { component } = makeDashboard({ piTheme });
+
+    expect(component.render(100).join("\n")).toContain("first:");
+    prefix = "second";
+    expect(component.render(100).join("\n")).toContain("second:");
+  });
+
+  it("propagates focus and invalidation to an open colour input", () => {
+    const invalidate = vi.spyOn(Input.prototype, "invalidate");
+    const { component } = makeDashboard();
+    openAccentEditor(component);
+    expect(component.render(100).join("\n")).not.toContain(CURSOR_MARKER);
+
+    component.focused = true;
+    expect(component.render(100).join("\n")).toContain(CURSOR_MARKER);
+    component.invalidate();
+    expect(invalidate).toHaveBeenCalled();
+    invalidate.mockRestore();
+  });
+
+  it("cleans up an open colour input on close", () => {
+    const { component, done } = makeDashboard();
+    openAccentEditor(component);
+    component.focused = true;
+    component.close();
+    component.handleInput("#ffffff");
+
+    expect(done).toHaveBeenCalledOnce();
+    expect(component.getState().draft.colors.custom.accent).toBe(ATELIER_COLORS.accent);
+  });
+});
+
 describe("StatusLineDashboardComponent Sidebar search input", () => {
   it("treats printable q as Sidebar query text", () => {
     const { component, done } = makeDashboard();
@@ -649,11 +770,12 @@ describe("StatusLineDashboardComponent Sidebar tab", () => {
     component.handleInput("\t"); // statuses → session
     component.handleInput("\t"); // session → tools
     component.handleInput("\t"); // tools → settings
-    // Settings rows are Statusbar (0), Sidebar (1), Completion notifications (2), Save (3).
+    // Settings rows: Statusbar (0), Sidebar (1), Colours (2), Notifications (3), Save (4).
     component.handleInput("\x1b[B"); // → Sidebar (row 1)
-    component.handleInput("\x1b[B"); // → Completion notifications (row 2)
+    component.handleInput("\x1b[B"); // → Colours (row 2)
+    component.handleInput("\x1b[B"); // → Notifications (row 3)
     component.handleInput("\r"); // toggle notifications
-    component.handleInput("\x1b[B"); // → Save (row 3)
+    component.handleInput("\x1b[B"); // → Save (row 4)
     component.handleInput("\r"); // open dialog
     component.handleInput("\x1b[B"); // → Save
     component.handleInput("\r"); // confirm Save
@@ -689,7 +811,7 @@ describe("openStatusLineDashboard", () => {
           options = customOptions;
           component = factory(
             { terminal: { columns: 80, rows: 30 }, requestRender: vi.fn() },
-            null,
+            { fg: (color: string, text: string) => `raw:${color}:${text}` },
             {},
             () => {
               component.dispose();
@@ -727,6 +849,7 @@ describe("openStatusLineDashboard", () => {
       save: vi.fn(),
     });
     await new Promise((resolve) => setImmediate(resolve));
+    expect(component.render(80).join("\n")).toContain("raw:");
     component.close();
     await promise;
     expect(options).toEqual({
