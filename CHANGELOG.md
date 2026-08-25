@@ -2,6 +2,12 @@
 
 All notable changes to `@pi-vault/pi-status` are documented in this file.
 
+## Unreleased
+
+### Added
+
+- Added Pi-synchronized, Atelier, Catppuccin, Dracula, Tokyo Night, and editable Custom colour presets to `/statusline`, shared by Dashboard, Statusbar, and Sidebar.
+
 ## 0.4.0 - 2026-08-11
 
 ### Breaking Changes
