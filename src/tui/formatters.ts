@@ -61,7 +61,7 @@ function resetLabel(resetAt: number | undefined): string {
   const hours = Math.floor((remaining % 86_400_000) / 3_600_000);
   const minutes = Math.floor((remaining % 3_600_000) / 60_000);
   if (days > 0) return `${days}d${hours}hr`;
-  if (hours > 0) return `${hours}hr`;
+  if (hours > 0) return `${hours}hr${minutes}min`;
   return `${minutes}m`;
 }
 
