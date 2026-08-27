@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   CONTEXT_ERROR_THRESHOLD,
   CONTEXT_WARNING_THRESHOLD,
@@ -473,6 +473,34 @@ describe("formatFiveHourLimit", () => {
       identityTheme,
     );
     expect(result).toEqual(["5h 70% left", null]);
+  });
+
+  it("includes reset minutes when hours remain", () => {
+    const now = Date.parse("2026-06-14T10:00:00Z");
+    vi.useFakeTimers({ now });
+    try {
+      const result = formatFiveHourLimit(
+        input({
+          usageState: {
+            compatibility: {
+              currentLiveProviderSnapshot: {
+                windows: [
+                  {
+                    key: "fiveHour",
+                    usedPercent: 30,
+                    resetAt: now + (4 * 60 + 23) * 60_000,
+                  },
+                ],
+              },
+            },
+          },
+        }),
+        identityTheme,
+      );
+      expect(result).toEqual(["5h 70% 4hr23min left", null]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("returns null when usageState is undefined", () => {

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   KNOWN_SEGMENTS,
   SIDEBAR_BUILTIN_ASSIGNMENTS,
@@ -207,6 +207,23 @@ describe("sidebar catalog values", () => {
       "builtin:active-tool-count": "2 active · 2 available",
       "builtin:todos-progress": "1/2 todos",
     });
+  });
+
+  it("includes reset minutes when hours remain", () => {
+    const now = Date.parse("2026-06-14T10:00:00Z");
+    vi.useFakeTimers({ now });
+    try {
+      const catalog = buildSidebarSegmentCatalog(
+        snapshot({
+          fiveHourResetAt: now + (4 * 60 + 23) * 60_000,
+        }),
+      );
+      expect(textOf(byId(catalog).get("builtin:usage-5h"))).toBe(
+        "5h 65% 4hr23min left",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("marks the estimated token rate with a tilde", () => {
