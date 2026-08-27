@@ -90,6 +90,44 @@ describe("workspace pulse surface gating", () => {
     expect(start).not.toHaveBeenCalled();
   });
 
+
+  it("starts and stops usage refreshes with TUI surfaces", async () => {
+    writeConfig({
+      statusbarEnabled: true,
+      sidebarEnabled: false,
+      zones: {
+        topLeft: [],
+        topRight: [],
+        bottomLeft: [],
+        bottomRight: [],
+      },
+    });
+    const { default: createExtension } = await import("../src/index.ts");
+    const { pi, handlers } = buildPiWithHandlers();
+    const emit = vi.spyOn(pi.events, "emit");
+    vi.useFakeTimers({ now: Date.parse("2026-06-14T10:00:00Z") });
+    try {
+      createExtension(pi);
+      const ctx = createContext();
+      for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
+
+      await vi.advanceTimersByTimeAsync(60_000);
+      const refreshes = () =>
+        emit.mock.calls.filter(
+          ([event, payload]) =>
+            event === "usage-core:request" &&
+            (payload as { type?: string }).type === "refresh",
+        );
+      expect(refreshes()).toHaveLength(1);
+
+      for (const handler of handlers.get("session_shutdown") ?? []) handler({}, ctx);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(refreshes()).toHaveLength(1);
+    } finally {
+      emit.mockRestore();
+      vi.useRealTimers();
+    }
+  });
   it("starts workspace pulse for a shown, supported demanding Sidebar", async () => {
     writeConfig({
       statusbarEnabled: false,

@@ -209,6 +209,29 @@ describe("createUsageRuntime", () => {
     }
   });
 
+  it("retries when a refresh request is unanswered", async () => {
+    vi.useFakeTimers({ now: Date.parse("2026-06-14T10:00:00Z") });
+    try {
+      const { pi, bus } = buildMockPi();
+      const runtime = createUsageRuntime(pi);
+      const requests: unknown[] = [];
+      bus.on("usage-core:request", (payload) => {
+        if ((payload as { type?: string }).type === "refresh") requests.push(payload);
+      });
+      runtime.setAutoRefreshEnabled(true);
+
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(requests).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(10_000);
+      await vi.advanceTimersByTimeAsync(50_000);
+      expect(requests).toHaveLength(2);
+
+      runtime.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("stops scheduled refreshes when disposed", () => {
     vi.useFakeTimers({ now: Date.parse("2026-06-14T10:00:00Z") });
     try {
