@@ -375,6 +375,8 @@ export default function createExtension(pi: ExtensionAPI): void {
   function applySurfaceVisibility(ctx: ExtensionContext, config: PiStatusConfig): void {
     if (ctx.mode !== "tui") return;
 
+
+    usageRuntime.setAutoRefreshEnabled(config.statusbarEnabled || config.sidebarEnabled);
     activeSidebarController?.setShown(config.sidebarEnabled);
     installFooter(ctx, config);
     if (!config.statusbarEnabled) setSidebarRenderSubscriptions();
@@ -693,6 +695,7 @@ export default function createExtension(pi: ExtensionAPI): void {
     const activeCtx = runtimeState.snapshot().ctx;
     if (activeCtx && activeCtx.sessionManager !== ctx.sessionManager) return;
     closeActiveDashboard();
+    usageRuntime.setAutoRefreshEnabled(false);
     if (ctx.mode === "tui") ctx.ui.setFooter(undefined);
     clearRenderSubscriptions();
     safelyDisposeSidebarController();
