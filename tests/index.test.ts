@@ -6,6 +6,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import createExtension from "../src/index.ts";
 import { BUILTIN_SIDEBAR_PANEL_IDS, SIDEBAR_BUILTIN_ASSIGNMENTS } from "../src/shared/types.ts";
 import type { SidebarCatalogEntry, SidebarEffectiveLayout } from "../src/shared/types.ts";
+import { DEFAULT_COLOR_SETTINGS } from "../src/core/colors.ts";
 import type { StatusLineDashboardComponent } from "../src/tui/dashboard.ts";
 
 let agentDir: string;
@@ -625,11 +626,12 @@ describe("extension wiring", () => {
       component.handleInput("\t");
       component.handleInput("\t");
       component.handleInput("\t");
-      // Settings rows are Statusbar (0), Sidebar (1), Completion notifications (2), Save (3).
+      // Settings rows: Statusbar (0), Sidebar (1), Colours (2), Notifications (3), Save (4).
       component.handleInput("\x1b[B"); // → Sidebar (row 1)
-      component.handleInput("\x1b[B"); // → Completion notifications (row 2)
+      component.handleInput("\x1b[B"); // → Colours (row 2)
+      component.handleInput("\x1b[B"); // → Notifications (row 3)
       component.handleInput("\r"); // toggle notifications
-      component.handleInput("\x1b[B"); // → Save (row 3)
+      component.handleInput("\x1b[B"); // → Save (row 4)
       component.handleInput("\r"); // open dialog
       component.handleInput("\x1b[B"); // → Save
       component.handleInput("\r"); // confirm Save
@@ -663,6 +665,7 @@ describe("extension wiring", () => {
         segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]],
       })),
       sidebarHiddenSegments: ["tool:read"],
+      colors: structuredClone(DEFAULT_COLOR_SETTINGS),
     });
   });
 
@@ -733,13 +736,14 @@ describe("extension wiring", () => {
         factory as (...args: unknown[]) => { handleInput: (data: string) => void }
       )({ terminal: { columns: 80, rows: 30 }, requestRender: () => {} }, null, {}, () => {});
       // Navigate to the Settings tab (5 forward tabs from statusbar). Settings
-      // rows are Statusbar (0), Sidebar (1), Completion notifications (2), Save (3),
-      // so three Down inputs land on Save.
+      // rows are Statusbar (0), Sidebar (1), Colours (2), Notifications (3),
+      // Save (4), so four Down inputs land on Save.
       component.handleInput("\t");
       component.handleInput("\t");
       component.handleInput("\t");
       component.handleInput("\t");
       component.handleInput("\t");
+      component.handleInput("\x1b[B");
       component.handleInput("\x1b[B");
       component.handleInput("\x1b[B");
       component.handleInput("\x1b[B");
@@ -925,7 +929,7 @@ describe("/statusline theme adaptation", () => {
     await commandPromise;
 
     expect(fgCalls.length).toBeGreaterThan(0);
-    expect(fgCalls.some(([color]) => color === "borderAccent")).toBe(true);
+    expect(fgCalls.some(([color]) => color === "accent")).toBe(true);
   });
 
   it.each([

@@ -5,6 +5,7 @@ import {
   DEFAULT_ZONES,
   type PiStatusConfig,
 } from "../../src/shared/types.ts";
+import { DEFAULT_COLOR_SETTINGS } from "../../src/core/colors.ts";
 import type { ThemeLike } from "../../src/tui/render.ts";
 
 function makeInput(overrides?: Partial<SnapshotInput>): SnapshotInput {
@@ -40,6 +41,7 @@ function footerConfig(overrides: Partial<PiStatusConfig> = {}): PiStatusConfig {
       segments: [...panel.segments],
     })),
     sidebarHiddenSegments: [],
+    colors: structuredClone(DEFAULT_COLOR_SETTINGS),
     ...overrides,
   };
 }

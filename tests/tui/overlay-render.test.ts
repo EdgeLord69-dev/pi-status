@@ -75,6 +75,7 @@ describe("dashboard overlay shell", () => {
     expect(visibleWidth(bar)).toBe(20);
     expect(wideBar).toContain(`${ESC}[44m`);
     expect(visibleWidth(wideBar)).toBe(80);
+    expect(bar).not.toContain(`${ESC}[31m${ESC}[7m`);
   });
 
   it("keeps the full active pill when markers do not fit", () => {

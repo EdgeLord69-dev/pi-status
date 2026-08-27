@@ -19,12 +19,23 @@ import {
   saveConfig,
 } from "../../src/core/config.ts";
 import {
+  ATELIER_COLORS,
+  COLOR_PRESET_IDS,
+  DEFAULT_COLOR_SETTINGS,
+  FIXED_COLOR_PALETTES,
+  getFixedColorPalette,
+  normalizeColorSettings,
+  normalizeHexColor,
+} from "../../src/core/colors.ts";
+import {
   BUILTIN_SIDEBAR_PANEL_IDS,
   type ConfigStore,
   DEFAULT_SIDEBAR_PANEL_LAYOUT,
   DEFAULT_ZONES,
+  PALETTE_ROLES,
   SIDEBAR_BUILTIN_ASSIGNMENTS,
   STATUS_LINE_ZONE_ORDER,
+  type FixedColorPreset,
   type PiStatusConfig,
   type SidebarPanelLayout,
 } from "../../src/shared/types.ts";
@@ -48,7 +59,247 @@ const config: PiStatusConfig = {
   completionNotifications: false,
   sidebarPanelLayout: expectedDefault(),
   sidebarHiddenSegments: [],
+  colors: structuredClone(DEFAULT_COLOR_SETTINGS),
 };
+
+const EXPECTED_FIXED_VALUES: Record<FixedColorPreset, readonly string[]> = {
+  atelier: [
+    "#b18cff",
+    "#d4d4d4",
+    "#808080",
+    "#666666",
+    "#6ea8fe",
+    "#ff9f43",
+    "#6ea8fe",
+    "#b18cff",
+    "#7dd3fc",
+    "#ff9f43",
+    "#6ea8fe",
+    "#b18cff",
+    "#ff9f43",
+    "#ff5d73",
+  ],
+  "catppuccin-mocha": [
+    "#cba6f7",
+    "#cdd6f4",
+    "#a6adc8",
+    "#6c7086",
+    "#a6e3a1",
+    "#fab387",
+    "#89b4fa",
+    "#cba6f7",
+    "#89dceb",
+    "#fab387",
+    "#89b4fa",
+    "#f5c2e7",
+    "#f9e2af",
+    "#f38ba8",
+  ],
+  "catppuccin-latte": [
+    "#8839ef",
+    "#4c4f69",
+    "#6c6f85",
+    "#9ca0b0",
+    "#40a02b",
+    "#fe640b",
+    "#1e66f5",
+    "#8839ef",
+    "#04a5e5",
+    "#fe640b",
+    "#1e66f5",
+    "#ea76cb",
+    "#df8e1d",
+    "#d20f39",
+  ],
+  dracula: [
+    "#bd93f9",
+    "#f8f8f2",
+    "#6272a4",
+    "#44475a",
+    "#50fa7b",
+    "#ffb86c",
+    "#8be9fd",
+    "#bd93f9",
+    "#8be9fd",
+    "#ffb86c",
+    "#8be9fd",
+    "#ff79c6",
+    "#f1fa8c",
+    "#ff5555",
+  ],
+  "dracula-alucard": [
+    "#644ac9",
+    "#1f1f1f",
+    "#6c664b",
+    "#6c664b",
+    "#14710a",
+    "#a34d14",
+    "#036a96",
+    "#644ac9",
+    "#036a96",
+    "#a34d14",
+    "#036a96",
+    "#a3144d",
+    "#846e15",
+    "#cb3a2a",
+  ],
+  "tokyonight-moon": [
+    "#c099ff",
+    "#c8d3f5",
+    "#636da6",
+    "#545c7e",
+    "#c3e88d",
+    "#ff966c",
+    "#82aaff",
+    "#c099ff",
+    "#86e1fc",
+    "#ff966c",
+    "#82aaff",
+    "#fca7ea",
+    "#ffc777",
+    "#ff757f",
+  ],
+  "tokyonight-day": [
+    "#9854f1",
+    "#3760bf",
+    "#848cb5",
+    "#8990b3",
+    "#587539",
+    "#b15c00",
+    "#2e7de9",
+    "#9854f1",
+    "#007197",
+    "#b15c00",
+    "#2e7de9",
+    "#7847bd",
+    "#8c6c3e",
+    "#f52a65",
+  ],
+};
+
+describe("config — colours", () => {
+  it("pins preset and role order", () => {
+    expect(COLOR_PRESET_IDS).toEqual([
+      "pi",
+      "atelier",
+      "catppuccin-mocha",
+      "catppuccin-latte",
+      "dracula",
+      "dracula-alucard",
+      "tokyonight-moon",
+      "tokyonight-day",
+      "custom",
+    ]);
+    expect(PALETTE_ROLES).toEqual([
+      "accent",
+      "primary",
+      "muted",
+      "dim",
+      "ready",
+      "working",
+      "input",
+      "output",
+      "cache",
+      "cost",
+      "context",
+      "menu",
+      "warning",
+      "error",
+    ]);
+  });
+
+  it("defaults missing colours to the live Pi preset", () => {
+    const first = loadConfig({
+      agentDir: "/agent-a",
+      store: new MemoryConfigStore(),
+    });
+    const second = loadConfig({
+      agentDir: "/agent-b",
+      store: new MemoryConfigStore(),
+    });
+
+    expect(first.colors).toEqual(DEFAULT_COLOR_SETTINGS);
+    expect(first.colors).toEqual({
+      preset: "pi",
+      custom: ATELIER_COLORS,
+      customInitialized: false,
+    });
+    expect(first.colors.custom).not.toBe(second.colors.custom);
+  });
+
+  it("repairs malformed settings role by role", () => {
+    const input = {
+      preset: "custom",
+      custom: { accent: "#AbCdEf", error: "broken", unknown: "#000000" },
+    };
+    const normalized = normalizeColorSettings(input);
+    expect(normalized).toEqual({
+      preset: "custom",
+      customInitialized: true,
+      custom: { ...ATELIER_COLORS, accent: "#abcdef" },
+    });
+    expect(normalized.custom).not.toBe(input.custom);
+    expect(normalizeColorSettings({ preset: "none" }).preset).toBe("pi");
+    expect(normalizeColorSettings({ preset: "unknown" }).preset).toBe("pi");
+  });
+
+  it("accepts every hex letter case and canonicalizes to lowercase", () => {
+    expect(normalizeHexColor("#ABCDEF", ATELIER_COLORS.accent)).toBe("#abcdef");
+    expect(normalizeHexColor("#abcdef", ATELIER_COLORS.accent)).toBe("#abcdef");
+    expect(normalizeHexColor("#AbCdEf", ATELIER_COLORS.accent)).toBe("#abcdef");
+  });
+
+  it.each(COLOR_PRESET_IDS)("round-trips the %s preset", (preset) => {
+    const store = new MemoryConfigStore();
+    const value = {
+      ...config,
+      colors: {
+        preset,
+        custom: { ...ATELIER_COLORS },
+        customInitialized: preset === "custom",
+      },
+    };
+
+    saveConfig(value, { agentDir: "/agent", store });
+
+    const written = JSON.parse(store.read(getConfigPath("/agent")) as string);
+    expect(written.colors).toEqual(value.colors);
+    expect(loadConfig({ agentDir: "/agent", store }).colors).toEqual(value.colors);
+  });
+
+  it("pins every value and freezes the fixed catalogue", () => {
+    expect(Object.isFrozen(FIXED_COLOR_PALETTES)).toBe(true);
+    for (const [preset, values] of Object.entries(EXPECTED_FIXED_VALUES)) {
+      const palette = FIXED_COLOR_PALETTES[preset as FixedColorPreset];
+      expect(PALETTE_ROLES.map((role) => palette[role])).toEqual(values);
+      expect(Object.isFrozen(palette)).toBe(true);
+    }
+    expect(getFixedColorPalette("pi")).toBeUndefined();
+    expect(getFixedColorPalette("custom")).toBeUndefined();
+  });
+
+  it("canonicalizes colours before saving", () => {
+    const store = new MemoryConfigStore();
+    saveConfig(
+      {
+        ...config,
+        colors: {
+          preset: "custom",
+          custom: { accent: "#ABCDEF", error: "broken", unknown: "#000000" },
+          customInitialized: "yes",
+        } as unknown as PiStatusConfig["colors"],
+      },
+      { agentDir: "/agent", store },
+    );
+
+    const written = JSON.parse(store.read(getConfigPath("/agent")) as string);
+    expect(written.colors).toEqual({
+      preset: "custom",
+      custom: { ...ATELIER_COLORS, accent: "#abcdef" },
+      customInitialized: true,
+    });
+  });
+});
 
 describe("config — normalization", () => {
   it("normalizes segments: dedupes, rejects unknowns and non-strings", () => {
@@ -510,6 +761,7 @@ describe("config — direct extension file", () => {
       completionNotifications: false,
       sidebarPanelLayout: expectedDefault(),
       sidebarHiddenSegments: [],
+      colors: structuredClone(DEFAULT_COLOR_SETTINGS),
     });
     expect(store.accessPaths).toEqual([path]);
     expect(store.accessPaths.some((accessed) => accessed.includes("settings.json"))).toBe(false);
@@ -546,6 +798,7 @@ describe("config — direct extension file", () => {
         completionNotifications: false,
         sidebarPanelLayout: expectedDefault(),
         sidebarHiddenSegments: [],
+        colors: structuredClone(DEFAULT_COLOR_SETTINGS),
       });
     },
   );
@@ -688,6 +941,7 @@ describe("config — filesystem", () => {
       completionNotifications: false,
       sidebarPanelLayout: expectedDefault(),
       sidebarHiddenSegments: [],
+      colors: structuredClone(DEFAULT_COLOR_SETTINGS),
     });
     vi.mocked(mkdtempSync).mockClear();
     expect(saveConfig(config)).toEqual({ path });
@@ -788,6 +1042,7 @@ describe("config — completion notifications", () => {
     expect(written).toEqual({ ...config, completionNotifications: true });
     expect(Object.keys(written).sort()).toEqual(
       [
+        "colors",
         "completionNotifications",
         "extensionSegments",
         "extensionStatusZone",

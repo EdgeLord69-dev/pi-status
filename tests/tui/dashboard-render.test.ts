@@ -1,13 +1,16 @@
 import { Input, visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it } from "vitest";
 import { buildSnapshot } from "../../src/core/resolve-footer.ts";
-import { fromPiTheme } from "../../src/tui/theme.ts";
+import { createStatusLineTheme, type StatusLineTheme } from "../../src/tui/theme.ts";
 import {
   BUILTIN_SIDEBAR_PANEL_IDS,
+  PALETTE_ROLES,
   SIDEBAR_BUILTIN_ASSIGNMENTS,
+  type ColorPreset,
   type PiStatusConfig,
   type StatusLineZones,
 } from "../../src/shared/types.ts";
+import { ATELIER_COLORS, DEFAULT_COLOR_SETTINGS } from "../../src/core/colors.ts";
 import type { DashboardTool } from "../../src/tui/tool-controls.ts";
 import type { SessionDetails } from "../../src/tui/session-actions.ts";
 import {
@@ -42,6 +45,7 @@ function config(overrides: Partial<PiStatusConfig> = {}): PiStatusConfig {
       segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]],
     })),
     sidebarHiddenSegments: [],
+    colors: structuredClone(DEFAULT_COLOR_SETTINGS),
     ...overrides,
   };
 }
@@ -192,6 +196,8 @@ describe("dashboard render", () => {
     expect(output).toContain("Sidebar");
     expect(output).toContain("Show the pi-status Sidebar");
     expect(output).toContain("Completion notifications");
+    expect(output).toContain("←/→ Adjust");
+    expect(output).toContain("Space/Enter Edit/Toggle/Save");
     expect(output).not.toContain("Show tool names");
   });
 
@@ -208,6 +214,82 @@ describe("dashboard render", () => {
     const output = renderDashboard(state, preview, noTheme, 100, 60).lines.join("\n");
     expect(output).toContain("Extension statuses");
     expect(output).toContain("Top Left");
+  });
+
+  const COLOR_LABELS: Record<ColorPreset, string> = {
+    pi: "Pi",
+    atelier: "Atelier",
+    "catppuccin-mocha": "Catppuccin Mocha",
+    "catppuccin-latte": "Catppuccin Latte",
+    dracula: "Dracula",
+    "dracula-alucard": "Dracula Alucard",
+    "tokyonight-moon": "Tokyo Night Moon",
+    "tokyonight-day": "Tokyo Night Day",
+    custom: "Custom",
+  };
+
+  it.each(Object.entries(COLOR_LABELS) as [ColorPreset, string][])(
+    "renders the %s preset as %s",
+    (preset, label) => {
+      const state = initDashboardState(config(), []);
+      state.activeTab = "settings";
+      state.draft.colors.preset = preset;
+      expect(
+        stripAnsi(renderDashboard(state, preview, noTheme, 120, 60).lines.join("\n")),
+      ).toContain(`Colours - ${label}`);
+    },
+  );
+
+  it("renders all Custom roles with values and painted samples", () => {
+    const state = initDashboardState(config(), []);
+    state.activeTab = "settings";
+    state.draft.colors = {
+      preset: "custom",
+      custom: { ...ATELIER_COLORS },
+      customInitialized: true,
+    };
+    const taggedTheme = {
+      ...noTheme,
+      fg: (color: string, text: string) => `<${color}>${text}</${color}>`,
+    } as StatusLineTheme;
+    const output = renderDashboard(state, preview, taggedTheme, 120, 60).lines.join("\n");
+
+    for (const role of PALETTE_ROLES) {
+      expect(output).toContain(role);
+      expect(output).toContain(ATELIER_COLORS[role]);
+      expect(output).toContain(`<${role}>●</${role}>`);
+    }
+  });
+
+  it("scrolls the last Custom role into view", () => {
+    const state = initDashboardState(config(), []);
+    state.activeTab = "settings";
+    state.draft.colors = {
+      preset: "custom",
+      custom: { ...ATELIER_COLORS },
+      customInitialized: true,
+    };
+    state.navigation.settings.selectedIndex = selectableRows(state, "settings").findIndex(
+      (row) => row.type === "color_role" && row.role === "error",
+    );
+
+    const result = renderDashboard(state, preview, noTheme, 120, 18);
+    expect(result.offset).toBeGreaterThan(0);
+    expect(result.lines.find((line) => line.includes("error"))).toContain("▸");
+  });
+
+  it("renders a truecolour draft preview", () => {
+    const state = initDashboardState(config(), []);
+    state.activeTab = "settings";
+    state.draft.colors = {
+      preset: "custom",
+      custom: { ...ATELIER_COLORS, accent: "#010203" },
+      customInitialized: true,
+    };
+    const theme = createStatusLineTheme(null, state.draft.colors, {});
+    expect(renderDashboard(state, preview, theme, 120, 60).lines.join("\n")).toContain(
+      "38;2;1;2;3m",
+    );
   });
 
   it("Statuses tab renders per-status checkboxes and the surface picker", () => {
@@ -239,10 +321,16 @@ describe("dashboard render", () => {
       bold: (text: string) => `[bold:${text}]`,
       rainbow: (text: string) => `[rainbow:${text}]`,
     };
-    const result = renderDashboard(state, preview, fromPiTheme(piTheme), 100, 60);
+    const result = renderDashboard(
+      state,
+      preview,
+      createStatusLineTheme(piTheme, DEFAULT_COLOR_SETTINGS, {}),
+      100,
+      60,
+    );
     const lines = result.lines.join("\n");
     expect(lines).toContain("[accent:[•] Model (Top Left 1)]");
-    expect(lines).toContain("[success:[•] Git Branch (Top Right 1)]");
+    expect(lines).toContain("[thinkingLow:[•] Git Branch (Top Right 1)]");
     expect(lines).toContain("[warning:[•] Current Dir (Bottom Left 1)]");
     expect(lines).toContain("[dim:[•] Run State (Bottom Right 1)]");
     expect(lines).toContain("[dim:Current model name]");
@@ -428,6 +516,22 @@ describe("dashboard render", () => {
     expect(output).toContain("Enter Submit");
     expect(result.lines.at(-1)).toContain("┗");
   });
+
+  it("keeps the colour input visible in a one-row dialog viewport", () => {
+    const state = initDashboardState(config(), [], true);
+    const input = new Input();
+    input.handleInput("#b18cff");
+    const result = renderDashboard(state, preview, noTheme, 80, 18, {
+      type: "color",
+      role: "accent",
+      input,
+    });
+
+    const output = stripAnsi(result.lines.join("\n"));
+    expect(output).toContain("Edit accent colour");
+    expect(output).toContain("#b18cff");
+    expect(output).toContain("Enter Submit");
+  });
 });
 
 describe("dashboard Sidebar render", () => {
@@ -535,10 +639,16 @@ describe("dashboard Sidebar render", () => {
       bold: (text: string) => `[bold:${text}]`,
       rainbow: (text: string) => `[rainbow:${text}]`,
     };
-    const output = renderDashboard(state, preview, fromPiTheme(piTheme), 100, 60).lines.join("\n");
+    const output = renderDashboard(
+      state,
+      preview,
+      createStatusLineTheme(piTheme, DEFAULT_COLOR_SETTINGS, {}),
+      100,
+      60,
+    ).lines.join("\n");
     expect(output).toContain("[accent:[•] Model (Agent 1)]");
     expect(output).toContain("[dim:Current model name]");
-    expect(output).toContain("[success:[•] Ship Phase 4 (Activity 1)]");
+    expect(output).toContain("[thinkingLow:[•] Ship Phase 4 (Activity 1)]");
     expect(output).toContain("[dim:One TODO row for this session.]");
     expect(output).toContain("[ ] Recent tools (Disabled)  unavailable");
   });

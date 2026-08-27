@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   BUILTIN_SIDEBAR_PANEL_IDS,
+  PALETTE_ROLES,
   SIDEBAR_BUILTIN_ASSIGNMENTS,
   type PiStatusConfig,
   type SidebarCatalogEntry,
@@ -8,6 +9,11 @@ import {
   type SidebarPanelId,
   type StatusLineZones,
 } from "../../src/shared/types.ts";
+import {
+  ATELIER_COLORS,
+  DEFAULT_COLOR_SETTINGS,
+  FIXED_COLOR_PALETTES,
+} from "../../src/core/colors.ts";
 import type { DashboardTool } from "../../src/tui/tool-controls.ts";
 import type { SessionDetails } from "../../src/tui/session-actions.ts";
 import {
@@ -15,6 +21,7 @@ import {
   initDashboardState,
   isDashboardDirty,
   SEGMENT_ORDER,
+  selectColorPreset,
   selectableRows,
 } from "../../src/tui/dashboard-state.ts";
 import { sidebarStatusSegmentId } from "../../src/core/sidebar-layout.ts";
@@ -43,6 +50,7 @@ function config(overrides: Partial<PiStatusConfig> = {}): PiStatusConfig {
       segments: [...(SIDEBAR_BUILTIN_ASSIGNMENTS as Record<string, readonly string[]>)[id]],
     })),
     sidebarHiddenSegments: [],
+    colors: structuredClone(DEFAULT_COLOR_SETTINGS),
     ...overrides,
   };
 }
@@ -151,6 +159,26 @@ describe("dashboard draft initialization", () => {
         config({ zones: zones({ topLeft: ["current-dir", "model-with-reasoning"] }) }),
       ),
     ).toBe(false);
+    expect(
+      configsEqual(
+        first,
+        config({
+          colors: { ...structuredClone(DEFAULT_COLOR_SETTINGS), preset: "atelier" },
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      configsEqual(
+        first,
+        config({
+          colors: {
+            preset: "pi",
+            custom: { ...ATELIER_COLORS, error: "#010203" },
+            customInitialized: true,
+          },
+        }),
+      ),
+    ).toBe(false);
   });
 
   it("preserves assigned unavailable usage segments while hiding their controls", () => {
@@ -249,6 +277,7 @@ describe("dashboard Statusbar tab initialization", () => {
     const expectedRows = [
       { type: "statusbar_enabled" },
       { type: "sidebar_enabled" },
+      { type: "color_preset" },
       { type: "notifications" },
       { type: "save" },
     ] as const;
@@ -262,6 +291,98 @@ describe("dashboard Statusbar tab initialization", () => {
         "settings",
       ),
     ).toEqual(expectedRows);
+  });
+
+  it("shows Custom roles in canonical order", () => {
+    const state = initDashboardState(config(), []);
+    state.draft.colors.preset = "custom";
+
+    expect(
+      selectableRows(state, "settings")
+        .filter((row) => row.type === "color_role")
+        .map((row) => row.role),
+    ).toEqual(PALETTE_ROLES);
+  });
+
+  it("first Custom entry clones the selected fixed preset", () => {
+    let state = initDashboardState(
+      config({
+        colors: {
+          ...structuredClone(DEFAULT_COLOR_SETTINGS),
+          preset: "catppuccin-mocha",
+        },
+      }),
+      [],
+    );
+    state.activeTab = "settings";
+    state.navigation.settings.selectedIndex = 2;
+
+    // 6 forward adjusts cycle pi→atelier→catppuccin-mocha→…→tokyonight-day→custom.
+    for (let index = 0; index < 6; index += 1) {
+      state = reduceDashboardState(state, { type: "adjust", delta: 1 }).state;
+    }
+
+    expect(state.draft.colors).toEqual({
+      preset: "custom",
+      custom: FIXED_COLOR_PALETTES["tokyonight-day"],
+      customInitialized: true,
+    });
+  });
+
+  it("first Custom entry from Pi clones Atelier", () => {
+    expect(selectColorPreset(structuredClone(DEFAULT_COLOR_SETTINGS), "custom")).toEqual({
+      preset: "custom",
+      custom: ATELIER_COLORS,
+      customInitialized: true,
+    });
+  });
+
+  it("keeps first-use initialization dirty after cycling away from Custom", () => {
+    let state = initDashboardState(config(), []);
+    state.activeTab = "settings";
+    state.navigation.settings.selectedIndex = 2;
+
+    state = reduceDashboardState(state, { type: "adjust", delta: -1 }).state;
+    expect(state.draft.colors.preset).toBe("custom");
+    state = reduceDashboardState(state, { type: "adjust", delta: 1 }).state;
+
+    expect(state.draft.colors.preset).toBe("pi");
+    expect(state.draft.colors.customInitialized).toBe(true);
+    expect(isDashboardDirty(state)).toBe(true);
+  });
+
+  it("preserves initialized Custom values while cycling presets", () => {
+    const colors = {
+      preset: "atelier" as const,
+      custom: { ...ATELIER_COLORS, accent: "#010203" as const },
+      customInitialized: true,
+    };
+
+    expect(selectColorPreset(colors, "custom").custom.accent).toBe("#010203");
+  });
+
+  it("emits colour editing and updates only the draft palette", () => {
+    const state = initDashboardState(config(), []);
+    state.activeTab = "settings";
+    state.draft.colors = selectColorPreset(state.draft.colors, "custom");
+    state.navigation.settings.selectedIndex = selectableRows(state, "settings").findIndex(
+      (row) => row.type === "color_role" && row.role === "accent",
+    );
+
+    expect(reduceDashboardState(state, { type: "activate" }).effect).toEqual({
+      type: "edit_color",
+      role: "accent",
+    });
+
+    state.activeTab = "session"; // No rows: set_color must not depend on selected-row lookup.
+    const edited = reduceDashboardState(state, {
+      type: "set_color",
+      role: "accent",
+      value: "#010203",
+    });
+    expect(edited.state.draft.colors.custom.accent).toBe("#010203");
+    expect(edited.state.baseline.colors.custom.accent).toBe(ATELIER_COLORS.accent);
+    expect(isDashboardDirty(edited.state)).toBe(true);
   });
 
   it("Statusbar tab exposes the extension_status_zone row between zone and segments", () => {

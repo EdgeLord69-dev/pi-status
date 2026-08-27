@@ -73,21 +73,45 @@ export function isSidebarPanelId(value: unknown): value is SidebarPanelId {
 
 export type SidebarSegmentPersistence = "stable" | "session";
 export type SidebarSegmentPriority = "required" | "important" | "normal" | "optional";
-export type SidebarSegmentRole =
-  | "accent"
-  | "primary"
-  | "muted"
-  | "dim"
-  | "ready"
-  | "working"
-  | "input"
-  | "output"
-  | "cache"
-  | "context"
-  | "cost"
-  | "menu"
-  | "warning"
-  | "error";
+
+export const PALETTE_ROLES = [
+  "accent",
+  "primary",
+  "muted",
+  "dim",
+  "ready",
+  "working",
+  "input",
+  "output",
+  "cache",
+  "cost",
+  "context",
+  "menu",
+  "warning",
+  "error",
+] as const;
+
+export type PaletteRole = (typeof PALETTE_ROLES)[number];
+export type ColorPreset =
+  | "pi"
+  | "atelier"
+  | "catppuccin-mocha"
+  | "catppuccin-latte"
+  | "dracula"
+  | "dracula-alucard"
+  | "tokyonight-moon"
+  | "tokyonight-day"
+  | "custom";
+export type FixedColorPreset = Exclude<ColorPreset, "pi" | "custom">;
+export type HexColor = `#${string}`;
+export type ColorPalette = Record<PaletteRole, HexColor>;
+export type ColorSettings = {
+  preset: ColorPreset;
+  custom: ColorPalette;
+  customInitialized: boolean;
+};
+
+export type SidebarSegmentRole = PaletteRole;
 
 export interface SidebarSegmentSpan {
   text: string;
@@ -207,6 +231,7 @@ export type PiStatusConfig = {
   completionNotifications: boolean;
   sidebarPanelLayout: SidebarPanelLayout;
   sidebarHiddenSegments: string[];
+  colors: ColorSettings;
 };
 
 export const KNOWN_SEGMENTS: readonly StatusLineSegmentId[] = [
