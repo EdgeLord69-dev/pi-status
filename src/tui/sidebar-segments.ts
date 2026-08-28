@@ -120,6 +120,13 @@ function resetText(resetAt: number | undefined): string {
   return ` ${minutes}m`;
 }
 
+function burnRateParts(rate: number | undefined): SidebarSegmentSpan[] {
+  if (typeof rate !== "number" || !Number.isFinite(rate)) return [];
+  const arrow = rate > 0 ? "↑" : rate < 0 ? "↓" : "→";
+  const role: SidebarSegmentRole = rate > 0 ? "error" : rate < 0 ? "ready" : "muted";
+  return spans([` ${arrow}${Math.abs(Math.round(rate))}%`, role]);
+}
+
 function agentSegments(snapshot: SidebarSnapshot): SegmentDefinition[] {
   return [
     {
@@ -512,14 +519,17 @@ function usageSegments(snapshot: SidebarSnapshot): SegmentDefinition[] {
         snapshot.fiveHourPercent === undefined
           ? null
           : metric(
-              spans(
-                ["5h ", "muted"],
-                [
-                  `${remainingPercent(snapshot.fiveHourPercent)}%${resetText(snapshot.fiveHourResetAt)}`,
-                  "cost",
-                ],
-                [" left", "muted"],
-              ),
+              [
+                ...spans(
+                  ["5h ", "muted"],
+                  [
+                    `${remainingPercent(snapshot.fiveHourPercent)}%${resetText(snapshot.fiveHourResetAt)}`,
+                    "cost",
+                  ],
+                  [" left", "muted"],
+                ),
+                ...burnRateParts(snapshot.fiveHourBurnRate),
+              ],
               "usage-limits",
             ),
     },
@@ -534,14 +544,17 @@ function usageSegments(snapshot: SidebarSnapshot): SegmentDefinition[] {
         snapshot.weeklyPercent === undefined
           ? null
           : metric(
-              spans(
-                ["wk ", "muted"],
-                [
-                  `${remainingPercent(snapshot.weeklyPercent)}%${resetText(snapshot.weeklyResetAt)}`,
-                  "cost",
-                ],
-                [" left", "muted"],
-              ),
+              [
+                ...spans(
+                  ["wk ", "muted"],
+                  [
+                    `${remainingPercent(snapshot.weeklyPercent)}%${resetText(snapshot.weeklyResetAt)}`,
+                    "cost",
+                  ],
+                  [" left", "muted"],
+                ),
+                ...burnRateParts(snapshot.weeklyBurnRate),
+              ],
               "usage-limits",
             ),
     },

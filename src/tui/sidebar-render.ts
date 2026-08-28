@@ -14,7 +14,7 @@ import type {
 import { sanitizeSidebarPanelText, type SidebarPanelData } from "./sidebar-panels.ts";
 import type { FooterRenderInput } from "./render.ts";
 import { removeLeadingStatusKey } from "./render.ts";
-import { getRateWindow } from "./formatters.ts";
+import { getBurnRate, getRateWindow } from "./formatters.ts";
 import { createPalette, type Palette, type PaletteTheme } from "./sidebar-palette.ts";
 import type { StatusLineTheme } from "./theme.ts";
 
@@ -40,8 +40,10 @@ export interface SidebarSnapshot {
   contextPercent?: number;
   sessionMetrics?: SessionMetrics;
   fiveHourPercent?: number;
+  fiveHourBurnRate?: number;
   fiveHourResetAt?: number;
   weeklyPercent?: number;
+  weeklyBurnRate?: number;
   weeklyResetAt?: number;
   resetCreditsAvailable?: number;
   accessType?: AccessType;
@@ -137,10 +139,20 @@ export function buildSidebarSnapshot(input: SidebarSnapshotInput): SidebarSnapsh
     contextPercent: footer.contextUsage?.percent ?? undefined,
     sessionMetrics: footer.sessionMetrics,
     fiveHourPercent: fiveHour?.usedPercent,
+    fiveHourBurnRate:
+      fiveHour === null
+        ? undefined
+        : (getBurnRate(fiveHour.usedPercent, fiveHour.resetAt, fiveHour.windowDurationMins) ??
+          undefined),
     fiveHourResetAt: fiveHour?.resetAt,
     weeklyPercent: weekly?.usedPercent,
+    weeklyBurnRate:
+      weekly === null
+        ? undefined
+        : (getBurnRate(weekly.usedPercent, weekly.resetAt, weekly.windowDurationMins) ?? undefined),
     weeklyResetAt: weekly?.resetAt,
-    resetCreditsAvailable: footer.usageState?.compatibility?.currentLiveProviderSnapshot?.resetCredits?.length ?? 0,
+    resetCreditsAvailable:
+      footer.usageState?.compatibility?.currentLiveProviderSnapshot?.resetCredits?.length ?? 0,
     accessType: footer.accessType,
     pulse,
     branchEntryCount: input.branchEntryCount,

@@ -44,14 +44,43 @@ export function getRateWindow(
     return null;
   }
   if (key === "fiveHour") {
-    if (window.windowDurationMins !== undefined && window.windowDurationMins !== 5 * 60) return null;
-    if (window.resetAt !== undefined && window.resetAt - Date.now() > 5 * 60 * 60 * 1000) return null;
+    if (window.windowDurationMins !== undefined && window.windowDurationMins !== 5 * 60)
+      return null;
+    if (window.resetAt !== undefined && window.resetAt - Date.now() > 5 * 60 * 60 * 1000)
+      return null;
   }
   return {
     usedPercent: window.usedPercent,
     resetAt: window.resetAt,
     windowDurationMins: window.windowDurationMins,
   };
+}
+
+/** Return signed usage pace deviation; 0% means exactly on ideal pace. */
+export function getBurnRate(
+  usedPercent: number,
+  resetAt: number | undefined,
+  windowDurationMins?: number,
+  now = Date.now(),
+): number | null {
+  if (
+    !Number.isFinite(usedPercent) ||
+    typeof resetAt !== "number" ||
+    !Number.isFinite(resetAt) ||
+    typeof windowDurationMins !== "number" ||
+    !Number.isFinite(windowDurationMins) ||
+    windowDurationMins <= 0 ||
+    !Number.isFinite(now)
+  ) {
+    return null;
+  }
+  const durationMs = windowDurationMins * 60_000;
+  const elapsedMs = now - (resetAt - durationMs);
+  if (elapsedMs <= 0) return null;
+  const elapsedPercent = Math.min(100, (elapsedMs / durationMs) * 100);
+  if (elapsedPercent <= 0 || !Number.isFinite(elapsedPercent)) return null;
+  const boundedUsedPercent = Math.min(100, Math.max(0, usedPercent));
+  return Math.round(boundedUsedPercent - elapsedPercent);
 }
 
 function resetLabel(resetAt: number | undefined): string {
@@ -69,6 +98,22 @@ function rateColor(usedPercent: number): "success" | "warning" | "error" {
   if (usedPercent < RATE_WARNING_THRESHOLD) return "success";
   if (usedPercent < RATE_ERROR_THRESHOLD) return "warning";
   return "error";
+}
+
+function burnRateColor(percent: number): "success" | "dim" | "error" {
+  if (percent > 0) return "error";
+  if (percent < 0) return "success";
+  return "dim";
+}
+
+function formatBurnRate(
+  window: { usedPercent: number; resetAt?: number; windowDurationMins?: number },
+  theme: ThemeLike,
+): string {
+  const burnRate = getBurnRate(window.usedPercent, window.resetAt, window.windowDurationMins);
+  if (burnRate === null) return "";
+  const arrow = burnRate > 0 ? "↑" : burnRate < 0 ? "↓" : "→";
+  return ` ${theme.fg(burnRateColor(burnRate), `${arrow}${Math.abs(burnRate)}%`)}`;
 }
 
 export function formatModel(
@@ -199,8 +244,9 @@ export function formatFiveHourLimit(
   if (!window) return null;
   const remaining = Math.min(100, Math.max(0, 100 - Math.round(window.usedPercent)));
   const dim = (s: string) => theme.fg("dim", s);
+  const reset = resetLabel(window.resetAt);
   return [
-    `${dim("5h ")}${theme.fg(rateColor(window.usedPercent), `${remaining}%`)}${dim(resetLabel(window.resetAt) ? ` ${resetLabel(window.resetAt)} left` : " left")}`,
+    `${dim("5h ")}${theme.fg(rateColor(window.usedPercent), `${remaining}%`)}${dim(reset ? ` ${reset} left` : " left")}${formatBurnRate(window, theme)}`,
     null,
   ];
 }
@@ -213,8 +259,9 @@ export function formatWeeklyLimit(
   if (!window) return null;
   const remaining = Math.min(100, Math.max(0, 100 - Math.round(window.usedPercent)));
   const dim = (s: string) => theme.fg("dim", s);
+  const reset = resetLabel(window.resetAt);
   return [
-    `${dim("wk ")}${theme.fg(rateColor(window.usedPercent), `${remaining}%`)}${dim(resetLabel(window.resetAt) ? ` ${resetLabel(window.resetAt)} left` : " left")}`,
+    `${dim("wk ")}${theme.fg(rateColor(window.usedPercent), `${remaining}%`)}${dim(reset ? ` ${reset} left` : " left")}${formatBurnRate(window, theme)}`,
     null,
   ];
 }

@@ -24,6 +24,7 @@ import {
   formatTurnProgress,
   formatUsedTokens,
   formatWeeklyLimit,
+  getBurnRate,
   getRateWindow,
   segmentFormatters,
   type SegmentFormatter,
@@ -266,6 +267,26 @@ describe("telemetry segments", () => {
     expect(formatSegment("access-type", input(), identityTheme)).toBeNull();
   });
 });
+describe("getBurnRate", () => {
+  const now = Date.parse("2026-06-14T10:00:00Z");
+
+  it("reports faster-than-pace usage with an upward arrow", () => {
+    expect(getBurnRate(60, now + 2.5 * 60 * 60 * 1000, 5 * 60, now)).toBe(10);
+  });
+
+  it("reports slower-than-pace usage with a downward arrow", () => {
+    expect(getBurnRate(20, now + 3.5 * 24 * 60 * 60 * 1000, 7 * 24 * 60, now)).toBe(-30);
+  });
+
+  it("reports exactly-on-pace usage with a neutral arrow", () => {
+    expect(getBurnRate(50, now + 3.5 * 24 * 60 * 60 * 1000, 7 * 24 * 60, now)).toBe(0);
+  });
+
+  it("returns null when timing data cannot establish elapsed time", () => {
+    expect(getBurnRate(20, undefined, 5 * 60, now)).toBeNull();
+    expect(getBurnRate(20, now + 5 * 60 * 60 * 1000, undefined, now)).toBeNull();
+  });
+});
 
 describe("threshold constants", () => {
   it("exports expected numeric thresholds", () => {
@@ -503,6 +524,57 @@ describe("formatFiveHourLimit", () => {
     }
   });
 
+  it("does not infer burn rate from reset time without a duration", () => {
+    const now = Date.parse("2026-06-14T10:00:00Z");
+    vi.useFakeTimers({ now });
+    try {
+      const result = formatFiveHourLimit(
+        input({
+          usageState: {
+            compatibility: {
+              currentLiveProviderSnapshot: {
+                windows: [{ key: "fiveHour", usedPercent: 30, resetAt: now + 4 * 60 * 60 * 1000 }],
+              },
+            },
+          },
+        }),
+        identityTheme,
+      );
+      expect(result).toEqual(["5h 70% 4hr0min left", null]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shows percentage-point variance for OpenAI-style window metadata", () => {
+    const now = Date.parse("2026-06-14T10:00:00Z");
+    vi.useFakeTimers({ now });
+    try {
+      const result = formatFiveHourLimit(
+        input({
+          usageState: {
+            compatibility: {
+              currentLiveProviderSnapshot: {
+                windows: [
+                  {
+                    key: "fiveHour",
+                    usedPercent: 72,
+                    resetAt: now + 4.5 * 60 * 60 * 1000,
+                    windowDurationMins: 5 * 60,
+                  },
+                ],
+              },
+            },
+          },
+        }),
+        identityTheme,
+      );
+      expect(result).toEqual(["5h 28% 4hr30min left ↑62%", null]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("returns null when usageState is undefined", () => {
     expect(formatFiveHourLimit(input(), identityTheme)).toBeNull();
   });
@@ -523,6 +595,34 @@ describe("formatWeeklyLimit", () => {
       identityTheme,
     );
     expect(result).toEqual(["wk 80% left", null]);
+  });
+
+  it("appends the burn rate beside the weekly limit", () => {
+    vi.useFakeTimers({ now: Date.parse("2026-06-14T10:00:00Z") });
+    try {
+      const result = formatWeeklyLimit(
+        input({
+          usageState: {
+            compatibility: {
+              currentLiveProviderSnapshot: {
+                windows: [
+                  {
+                    key: "weekly",
+                    usedPercent: 20,
+                    resetAt: Date.parse("2026-06-17T22:00:00Z"),
+                    windowDurationMins: 7 * 24 * 60,
+                  },
+                ],
+              },
+            },
+          },
+        }),
+        identityTheme,
+      );
+      expect(result).toEqual(["wk 80% 3d12hr left ↓30%", null]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("returns null when usageState is undefined", () => {

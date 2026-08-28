@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import {
   buildFooterRows,
@@ -171,6 +171,38 @@ describe("render", () => {
     );
     expect(rows.join("\n")).toContain("5h 60% left");
     expect(rows.join("\n")).toContain("wk 80% left");
+  });
+  it("keeps the five-hour limit visible when the burn indicator is truncated", () => {
+    const now = Date.parse("2026-06-14T10:00:00Z");
+    vi.useFakeTimers({ now });
+    try {
+      const rows = buildFooterRows(
+        segmentInput({
+          zones: { topLeft: ["five-hour-limit"], topRight: [], bottomLeft: [], bottomRight: [] },
+          usageState: {
+            compatibility: {
+              currentLiveProviderSnapshot: {
+                windows: [
+                  {
+                    key: "fiveHour",
+                    usedPercent: 72,
+                    resetAt: now + 4.5 * 60 * 60 * 1000,
+                    windowDurationMins: 5 * 60,
+                  },
+                ],
+              },
+            },
+          },
+        }),
+        identityTheme,
+        23,
+      );
+      expect(rows[0]).toContain("5h 28%");
+      expect(rows[0]).toContain("left");
+      expect(rows[0]).not.toContain("↑62%");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

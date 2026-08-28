@@ -151,6 +151,44 @@ describe("SidebarSnapshot", () => {
 });
 
 describe("buildSidebarSnapshot", () => {
+  it("derives burn rates for usage windows", () => {
+    const now = Date.parse("2026-06-14T10:00:00Z");
+    vi.useFakeTimers({ now });
+    try {
+      const base = makeInput();
+      const snapshot = buildSidebarSnapshot({
+        ...base,
+        footer: {
+          ...base.footer,
+          usageState: {
+            compatibility: {
+              currentLiveProviderSnapshot: {
+                windows: [
+                  {
+                    key: "fiveHour",
+                    usedPercent: 60,
+                    resetAt: now + 2.5 * 60 * 60 * 1000,
+                    windowDurationMins: 5 * 60,
+                  },
+                  {
+                    key: "weekly",
+                    usedPercent: 20,
+                    resetAt: now + 3.5 * 24 * 60 * 60 * 1000,
+                    windowDurationMins: 7 * 24 * 60,
+                  },
+                ],
+              },
+            },
+          },
+        },
+      });
+      expect(snapshot.fiveHourBurnRate).toBe(10);
+      expect(snapshot.weeklyBurnRate).toBe(-30);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("splits statuses into alerts and statuses by the exception pattern", () => {
     const snap = buildSidebarSnapshot(makeInput());
     expect(snap.alerts.map((a) => a.key)).toEqual(["err"]);

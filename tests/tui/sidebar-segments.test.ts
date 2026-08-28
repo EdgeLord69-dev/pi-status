@@ -218,9 +218,28 @@ describe("sidebar catalog values", () => {
           fiveHourResetAt: now + (4 * 60 + 23) * 60_000,
         }),
       );
-      expect(textOf(byId(catalog).get("builtin:usage-5h"))).toBe(
-        "5h 65% 4hr23min left",
+      expect(textOf(byId(catalog).get("builtin:usage-5h"))).toBe("5h 65% 4hr23min left");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shows burn rate arrows beside both usage limits", () => {
+    const now = Date.parse("2026-06-14T10:00:00Z");
+    vi.useFakeTimers({ now });
+    try {
+      const catalog = buildSidebarSegmentCatalog(
+        snapshot({
+          fiveHourPercent: 60,
+          fiveHourResetAt: now + 2.5 * 60 * 60 * 1000,
+          fiveHourBurnRate: 10,
+          weeklyPercent: 20,
+          weeklyResetAt: now + 3.5 * 24 * 60 * 60 * 1000,
+          weeklyBurnRate: -30,
+        }),
       );
+      expect(textOf(byId(catalog).get("builtin:usage-5h"))).toBe("5h 40% 2hr30min left ↑10%");
+      expect(textOf(byId(catalog).get("builtin:usage-weekly"))).toBe("wk 80% 3d12hr left ↓30%");
     } finally {
       vi.useRealTimers();
     }
